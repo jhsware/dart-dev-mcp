@@ -533,7 +533,7 @@ Future<CallToolResult> _createDirectory(
 
   final dirPath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, dirPath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return _textResult('Error: Not allowed for: $path ($dirPath)');
   }
 
   final directory = Directory(dirPath);

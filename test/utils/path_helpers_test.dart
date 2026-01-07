@@ -222,6 +222,41 @@ void main() {
         );
       });
     });
+
+    group('create-directory scenarios', () {
+      test('allows creating subdirectory lib/models when lib is allowed', () {
+        // This is the exact scenario that was failing
+        final projectPath = '/Users/jhsware/DEV/dart_dev_mcp';
+        final allowed = ['$projectPath/lib'];
+        final newDirPath = '$projectPath/lib/models';
+        
+        expect(isAllowedPath(allowed, newDirPath), isTrue);
+      });
+
+      test('allows creating deeply nested directory', () {
+        final projectPath = '/Users/dev/project';
+        final allowed = ['$projectPath/lib'];
+        final newDirPath = '$projectPath/lib/src/models/entities';
+        
+        expect(isAllowedPath(allowed, newDirPath), isTrue);
+      });
+
+      test('rejects creating directory outside allowed path', () {
+        final projectPath = '/Users/dev/project';
+        final allowed = ['$projectPath/lib'];
+        final newDirPath = '$projectPath/src/models';
+        
+        expect(isAllowedPath(allowed, newDirPath), isFalse);
+      });
+
+      test('allows creating directory at exact allowed path', () {
+        final projectPath = '/Users/dev/project';
+        final allowed = ['$projectPath/lib/models'];
+        final newDirPath = '$projectPath/lib/models';
+        
+        expect(isAllowedPath(allowed, newDirPath), isTrue);
+      });
+    });
   });
 
   // Test the git_mcp.dart implementation pattern to ensure it matches

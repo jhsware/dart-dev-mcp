@@ -242,7 +242,7 @@ build_mcp_config() {
     first=false
     
     echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "${abs_paths[@]}"
+    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "$project_path" "${abs_paths[@]}"
     echo '    }'
   fi
   
