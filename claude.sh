@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Default to production mode (installed binaries)
 DEV_MODE=false
+PROJECT_DIR=""
 
 # Default allowed paths for fs and git operations
 DEFAULT_ALLOWED_PATHS=(
@@ -35,14 +36,13 @@ Servers (comma-separated):
   all         Enable all servers
 
 Options:
-  --help          Show this help message
-  --development   Use dart run with source files (for development)
+  --help              Show this help message
+  --development       Use dart run with source files (for development)
+  --project-dir=PATH  Working directory for the project (default: current directory)
 
 Arguments:
-  allowed_paths   Paths that fs and git servers can access
+  allowed_paths   Paths that fs and git servers can access (relative to project-dir)
                   Default: ${DEFAULT_ALLOWED_PATHS[*]}
-
-  For 'dart'/'flutter' servers: First path is used as project path (default: current directory)
 
 Examples:
   # Launch with file system tools (using installed binaries)
@@ -51,14 +51,14 @@ Examples:
   # Launch in development mode (using dart run)
   $0 --development fs ./lib ./bin ./test
 
+  # Launch with a specific project directory
+  $0 --project-dir=/path/to/project all
+
   # Launch with fetch and convert tools
   $0 fetch,convert
 
   # Launch with Dart runner for current project
   $0 dart
-
-  # Launch with Flutter runner for a specific project
-  $0 flutter /path/to/flutter/project
 
   # Launch with Git tools for current project
   $0 git
@@ -85,6 +85,10 @@ while [[ $# -gt 0 ]]; do
       DEV_MODE=true
       shift
       ;;
+    --project-dir=*)
+      PROJECT_DIR="${1#*=}"
+      shift
+      ;;
     --*)
       echo "Unknown option: $1" >&2
       exit 1
@@ -108,6 +112,22 @@ fi
 # Use default paths if none specified
 if [ ${#PATHS[@]} -eq 0 ]; then
   PATHS=("${DEFAULT_ALLOWED_PATHS[@]}")
+fi
+
+# Use current directory if project dir not specified
+if [ -z "$PROJECT_DIR" ]; then
+  PROJECT_DIR="$(pwd)"
+fi
+
+# Convert to absolute path
+if [[ "$PROJECT_DIR" != /* ]]; then
+  PROJECT_DIR="$(cd "$(pwd)" && realpath -m "$PROJECT_DIR")"
+fi
+
+# Verify project directory exists
+if [ ! -d "$PROJECT_DIR" ]; then
+  echo "Error: Project directory does not exist: $PROJECT_DIR" >&2
+  exit 1
 fi
 
 # Detect OS and set paths accordingly
@@ -137,7 +157,7 @@ if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json" ]; then
   cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json" "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak"
 fi
 
-# Convert paths to absolute paths
+# Convert paths to absolute paths relative to a base directory
 # Usage: get_absolute_paths <base_dir> <paths...>
 get_absolute_paths() {
   local base_dir="$1"
@@ -199,18 +219,11 @@ build_mcp_config() {
   shift
   local paths=("$@")
   
-  # Get current directory for resolving paths
-  local cwd="$(pwd)"
+  # Use PROJECT_DIR as the project path
+  local project_path="$PROJECT_DIR"
   
-  # Convert paths to absolute
-  local abs_paths=($(get_absolute_paths "$cwd" "${paths[@]}"))
-  
-  # Get project path (first path or current directory)
-  local project_path="${abs_paths[0]:-$cwd}"
-  # If project_path is a file, use its directory
-  if [ -f "$project_path" ]; then
-    project_path="$(dirname "$project_path")"
-  fi
+  # Convert allowed paths to absolute (relative to project_path)
+  local abs_paths=($(get_absolute_paths "$project_path" "${paths[@]}"))
   
   # Start JSON
   echo '{'
@@ -253,7 +266,7 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Dart Runner Server
+  # Dart Runner Server - uses project_path (cwd), not first allowed path
   if [[ "$servers" == *"dart"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
@@ -263,7 +276,7 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Flutter Runner Server
+  # Flutter Runner Server - uses project_path (cwd), not first allowed path
   if [[ "$servers" == *"flutter"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
@@ -273,7 +286,7 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Git Server - pass project path AND allowed paths
+  # Git Server - uses project_path (cwd) AND allowed paths for staging
   if [[ "$servers" == *"git"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
@@ -293,6 +306,7 @@ if [ "$DEV_MODE" = true ]; then
 else
   echo "Configuring Claude Desktop with MCP servers: $SERVERS"
 fi
+echo "Project directory: $PROJECT_DIR"
 
 build_mcp_config "$SERVERS" "${PATHS[@]}" > "$PATH_TO_CLAUDE/claude_desktop_config.json"
 
