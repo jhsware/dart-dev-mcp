@@ -142,6 +142,10 @@ build_mcp_config() {
       echo '        ,"./test"'
       echo '        ,"./pubspec.yaml"'
       echo '        ,"./README.md"'
+      echo '        ,"./CHANGELOG.md"'
+      echo '        ,"./.env.in"'
+      echo '        ,"./.gitignore"'
+      echo '        ,"./.github"'
     fi
     
     echo '      ]'
