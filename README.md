@@ -47,6 +47,24 @@ Run Flutter programs via FVM with polling:
 - `list_sessions` - List active sessions
 - `cancel` - Cancel a running session
 
+### 6. Git MCP (`bin/git_mcp.dart`)
+Git version control operations:
+- `status` - Show working tree status
+- `branch-create` - Create a new branch
+- `branch-list` - List all branches
+- `branch-switch` - Switch to a branch
+- `merge` - Merge a branch into current branch
+- `add` - Stage files for commit
+- `commit` - Commit staged changes
+- `stash` - Stash current changes
+- `stash-list` - List all stashes
+- `stash-apply` - Apply a stash
+- `stash-pop` - Apply and remove a stash
+- `tag-create` - Create a new tag
+- `tag-list` - List all tags
+- `log` - Show commit history
+- `diff` - Show changes
+
 ## Installation
 
 ```bash
@@ -63,6 +81,7 @@ dart compile exe bin/convert_to_md_mcp.dart -o bin/convert_to_md_mcp
 dart compile exe bin/fetch_mcp.dart -o bin/fetch_mcp
 dart compile exe bin/dart_runner_mcp.dart -o bin/dart_runner_mcp
 dart compile exe bin/flutter_runner_mcp.dart -o bin/flutter_runner_mcp
+dart compile exe bin/git_mcp.dart -o bin/git_mcp
 ```
 
 ## Usage with Claude Desktop
@@ -84,6 +103,9 @@ Use the `claude.sh` script to launch Claude with the MCP servers:
 
 # Launch with Flutter runner
 ./claude.sh flutter
+
+# Launch with Git capabilities
+./claude.sh git
 
 # Launch with multiple servers
 ./claude.sh fs,fetch,dart /path/to/project

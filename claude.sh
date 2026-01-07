@@ -15,6 +15,7 @@ Servers (comma-separated):
   fetch       URL fetching tools
   dart        Dart runner (analyze, test, run)
   flutter     Flutter runner via FVM (analyze, test, run, build)
+  git         Git version control (branch, merge, commit, stash, tag)
   all         Enable all servers
 
 Options:
@@ -36,6 +37,9 @@ Examples:
 
   # Launch with Flutter runner for a specific project
   $0 flutter /path/to/flutter/project
+
+  # Launch with Git tools for current project
+  $0 git
 
   # Launch with all tools
   $0 all ./lib ./bin ./test
@@ -110,7 +114,7 @@ build_mcp_config() {
   
   # Check for 'all' keyword
   if [[ "$servers" == *"all"* ]]; then
-    servers="fs,convert,fetch,dart,flutter"
+    servers="fs,convert,fetch,dart,flutter,git"
   fi
   
   # File System Server
@@ -205,6 +209,25 @@ build_mcp_config() {
     echo '      "args": ['
     echo '        "run",'
     echo "        \"$SCRIPT_DIR/bin/flutter_runner_mcp.dart\","
+    echo "        \"$abs_project_path\""
+    echo '      ]'
+    echo '    }'
+  fi
+  
+  # Git Server
+  if [[ "$servers" == *"git"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+    
+    # Use first path as project path, or current directory
+    local project_path="${paths[0]:-.}"
+    abs_project_path="$(cd "$project_path" 2>/dev/null && pwd)" 2>/dev/null || abs_project_path="$project_path"
+    
+    echo '    "dart-dev-mcp-git": {'
+    echo '      "command": "dart",'
+    echo '      "args": ['
+    echo '        "run",'
+    echo "        \"$SCRIPT_DIR/bin/git_mcp.dart\","
     echo "        \"$abs_project_path\""
     echo '      ]'
     echo '    }'
