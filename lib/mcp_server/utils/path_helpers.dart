@@ -13,14 +13,27 @@ bool isHiddenPath(String path) {
   return path.split('/').any((segment) => segment.startsWith('.'));
 }
 
-/// Check if a path is within the allowed paths
+/// Check if a path is within any of the allowed paths.
+/// Returns true if the path is exactly one of the allowed paths,
+/// or is a child/descendant of any allowed path.
 bool isAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = normalize(path);
-  return allowedPaths.any((String root) {
-    final normalizedRoot = normalize(root);
+  
+  return allowedPaths.any((String allowedRoot) {
+    final normalizedRoot = normalize(allowedRoot);
+    
+    // Exact match
+    if (normalizedPath == normalizedRoot) {
+      return true;
+    }
+    
+    // Check if path is a child of the allowed root
+    // Ensure we match complete path segments (not partial names)
+    // e.g., /lib should match /lib/models but NOT /library
     final rootWithSep = normalizedRoot.endsWith(separator)
         ? normalizedRoot
         : normalizedRoot + separator;
+    
     return normalizedPath.startsWith(rootWithSep);
   });
 }
