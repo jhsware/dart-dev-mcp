@@ -6,6 +6,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default to production mode (installed binaries)
 DEV_MODE=false
 
+# Default allowed paths for fs and git operations
+DEFAULT_ALLOWED_PATHS=(
+  "./lib"
+  "./bin"
+  "./test"
+  "./pubspec.yaml"
+  "./README.md"
+  "./CHANGELOG.md"
+  "./.env.in"
+  "./.gitignore"
+  "./.github"
+)
+
 __help_text__=$(cat <<EOF
 Dart Dev MCP - Claude Desktop Launcher
 =======================================
@@ -26,8 +39,10 @@ Options:
   --development   Use dart run with source files (for development)
 
 Arguments:
-  For 'fs' server: Specify allowed paths (directories/files)
-  For 'dart'/'flutter'/'git' servers: Specify project path (default: current directory)
+  allowed_paths   Paths that fs and git servers can access
+                  Default: ${DEFAULT_ALLOWED_PATHS[*]}
+
+  For 'dart'/'flutter' servers: First path is used as project path (default: current directory)
 
 Examples:
   # Launch with file system tools (using installed binaries)
@@ -90,6 +105,11 @@ if [ -z "$SERVERS" ]; then
   exit 0
 fi
 
+# Use default paths if none specified
+if [ ${#PATHS[@]} -eq 0 ]; then
+  PATHS=("${DEFAULT_ALLOWED_PATHS[@]}")
+fi
+
 # Detect OS and set paths accordingly
 case "$(uname -s)" in
   Darwin)
@@ -116,6 +136,27 @@ fi
 if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json" ]; then
   cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json" "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak"
 fi
+
+# Convert paths to absolute paths
+# Usage: get_absolute_paths <base_dir> <paths...>
+get_absolute_paths() {
+  local base_dir="$1"
+  shift
+  local paths=("$@")
+  local abs_paths=()
+  
+  for path in "${paths[@]}"; do
+    if [[ "$path" = /* ]]; then
+      # Already absolute
+      abs_paths+=("$path")
+    else
+      # Make absolute relative to base_dir
+      abs_paths+=("$(cd "$base_dir" 2>/dev/null && realpath -m "$path" 2>/dev/null || echo "$base_dir/$path")")
+    fi
+  done
+  
+  echo "${abs_paths[@]}"
+}
 
 # Output server command configuration based on mode
 # Usage: output_server_cmd <binary_name> <dart_source> [args...]
@@ -158,6 +199,19 @@ build_mcp_config() {
   shift
   local paths=("$@")
   
+  # Get current directory for resolving paths
+  local cwd="$(pwd)"
+  
+  # Convert paths to absolute
+  local abs_paths=($(get_absolute_paths "$cwd" "${paths[@]}"))
+  
+  # Get project path (first path or current directory)
+  local project_path="${abs_paths[0]:-$cwd}"
+  # If project_path is a file, use its directory
+  if [ -f "$project_path" ]; then
+    project_path="$(dirname "$project_path")"
+  fi
+  
   # Start JSON
   echo '{'
   echo '  "mcpServers": {'
@@ -174,21 +228,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    # Build allowed paths array
-    local fs_paths=()
-    if [ ${#paths[@]} -gt 0 ]; then
-      for path in "${paths[@]}"; do
-        # Convert to absolute path
-        abs_path="$(cd "$(dirname "$path")" 2>/dev/null && pwd)/$(basename "$path")" 2>/dev/null || abs_path="$path"
-        fs_paths+=("$abs_path")
-      done
-    else
-      # Default paths if none specified
-      fs_paths=("./lib" "./bin" "./test" "./pubspec.yaml" "./README.md" "./CHANGELOG.md" "./.env.in" "./.gitignore" "./.github")
-    fi
-    
     echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "${fs_paths[@]}"
+    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "${abs_paths[@]}"
     echo '    }'
   fi
   
@@ -217,12 +258,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    # Use first path as project path, or current directory
-    local project_path="${paths[0]:-.}"
-    abs_project_path="$(cd "$project_path" 2>/dev/null && pwd)" 2>/dev/null || abs_project_path="$project_path"
-    
     echo '    "dart-dev-mcp-dart-runner": {'
-    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "$abs_project_path"
+    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "$project_path"
     echo '    }'
   fi
   
@@ -231,26 +268,18 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    # Use first path as project path, or current directory
-    local project_path="${paths[0]:-.}"
-    abs_project_path="$(cd "$project_path" 2>/dev/null && pwd)" 2>/dev/null || abs_project_path="$project_path"
-    
     echo '    "dart-dev-mcp-flutter-runner": {'
-    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "$abs_project_path"
+    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "$project_path"
     echo '    }'
   fi
   
-  # Git Server
+  # Git Server - pass project path AND allowed paths
   if [[ "$servers" == *"git"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    # Use first path as project path, or current directory
-    local project_path="${paths[0]:-.}"
-    abs_project_path="$(cd "$project_path" 2>/dev/null && pwd)" 2>/dev/null || abs_project_path="$project_path"
-    
     echo '    "dart-dev-mcp-git": {'
-    output_server_cmd "git-mcp" "git_mcp.dart" "$abs_project_path"
+    output_server_cmd "git-mcp" "git_mcp.dart" "$project_path" "${abs_paths[@]}"
     echo '    }'
   fi
   

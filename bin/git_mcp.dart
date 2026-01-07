@@ -6,14 +6,38 @@ import 'package:path/path.dart' as p;
 
 /// Git MCP Server
 ///
-/// Provides Git operations for version control.
+/// Provides Git operations for version control with path restrictions.
 ///
-/// Usage: dart run bin/git_mcp.dart [project_path]
+/// Usage: `dart run bin/git_mcp.dart <project_path> [allowed_paths...]`
 void main(List<String> arguments) async {
-  // Determine working directory
-  final projectPath =
-      arguments.isNotEmpty ? arguments.first : Directory.current.path;
+  if (arguments.isEmpty) {
+    stderr.writeln('Usage: git_mcp <project_path> [allowed_paths...]');
+    stderr.writeln('');
+    stderr.writeln('Arguments:');
+    stderr.writeln('  project_path    Path to the git repository');
+    stderr.writeln('  allowed_paths   Paths that can be staged (default: project_path)');
+    exit(1);
+  }
+
+  // First argument is project path
+  final projectPath = arguments.first;
   final workingDir = Directory(p.normalize(p.absolute(projectPath)));
+
+  // Remaining arguments are allowed paths (default to project path)
+  final List<String> allowedPaths;
+  if (arguments.length > 1) {
+    allowedPaths = arguments.skip(1).map((path) {
+      // Convert to absolute path relative to working directory
+      if (p.isAbsolute(path)) {
+        return p.normalize(path);
+      } else {
+        return p.normalize(p.join(workingDir.path, path));
+      }
+    }).toList();
+  } else {
+    // Default: allow entire project
+    allowedPaths = [workingDir.path];
+  }
 
   if (!await workingDir.exists()) {
     stderr.writeln('Error: Project path does not exist: $projectPath');
@@ -30,6 +54,10 @@ void main(List<String> arguments) async {
   stderr.writeln('Git MCP Server starting...');
   stderr.writeln('Project path: ${workingDir.path}');
   stderr.writeln('Is git repository: $isGitDir');
+  stderr.writeln('Allowed paths:');
+  for (final path in allowedPaths) {
+    stderr.writeln('  - $path');
+  }
 
   final server = McpServer(
     Implementation(name: 'git-mcp', version: '1.0.0'),
@@ -139,7 +167,8 @@ Operations:
         },
       },
     ),
-    callback: ({args, extra}) => _handleGit(args, workingDir),
+    callback: ({args, extra}) =>
+        _handleGit(args, workingDir, allowedPaths),
   );
 
   final transport = StdioServerTransport();
@@ -156,6 +185,7 @@ CallToolResult _textResult(String text) {
 Future<CallToolResult> _handleGit(
   Map<String, dynamic>? args,
   Directory workingDir,
+  List<String> allowedPaths,
 ) async {
   final operation = args?['operation'] as String?;
 
@@ -192,7 +222,7 @@ Future<CallToolResult> _handleGit(
       case 'add':
         final files = _getFilesArg(args);
         final all = args?['all'] as bool? ?? false;
-        return _add(workingDir, files, all: all);
+        return _add(workingDir, files, allowedPaths, all: all);
       case 'commit':
         final message = args?['message'] as String?;
         return _commit(workingDir, message);
@@ -352,39 +382,146 @@ Future<CallToolResult> _merge(
   return _textResult('Merged $branch into current branch\n\n${result.stdout}');
 }
 
+/// Check if a path is within the allowed paths
+bool _isAllowedPath(List<String> allowedPaths, String path) {
+  final normalizedPath = p.normalize(path);
+  return allowedPaths.any((String root) {
+    final normalizedRoot = p.normalize(root);
+    return normalizedPath.startsWith(normalizedRoot) ||
+        normalizedPath == normalizedRoot;
+  });
+}
+
 /// Stage files
-Future<CallToolResult> _add(Directory workingDir, List<String>? files, {bool all = false}) async {
-  List<String> gitArgs;
-  
+Future<CallToolResult> _add(
+  Directory workingDir,
+  List<String>? files,
+  List<String> allowedPaths, {
+  bool all = false,
+}) async {
   if (all) {
-    // Stage all changes including untracked files
-    gitArgs = ['add', '--all', '--verbose'];
-  } else if (files == null || files.isEmpty) {
+    // For 'all', we need to get the list of changed files and filter them
+    final statusResult = await _runGit(workingDir, ['status', '--porcelain']);
+    if (statusResult.exitCode != 0) {
+      return _textResult('Error getting status: ${statusResult.stderr}');
+    }
+
+    final statusOutput = statusResult.stdout as String;
+    if (statusOutput.trim().isEmpty) {
+      return _textResult('Nothing to stage');
+    }
+
+    // Parse status output to get file paths
+    // Format: XY filename or XY "filename" for paths with spaces
+    final filesToAdd = <String>[];
+    final deniedFiles = <String>[];
+    
+    for (final line in statusOutput.split('\n')) {
+      if (line.length < 3) continue;
+      
+      // Extract filename (starts at position 3)
+      var fileName = line.substring(3);
+      
+      // Handle renamed files: "old -> new"
+      if (fileName.contains(' -> ')) {
+        fileName = fileName.split(' -> ').last;
+      }
+      
+      // Remove quotes if present
+      if (fileName.startsWith('"') && fileName.endsWith('"')) {
+        fileName = fileName.substring(1, fileName.length - 1);
+      }
+      
+      final absPath = p.normalize(p.join(workingDir.path, fileName));
+      
+      if (_isAllowedPath(allowedPaths, absPath)) {
+        filesToAdd.add(fileName);
+      } else {
+        deniedFiles.add(fileName);
+      }
+    }
+
+    if (filesToAdd.isEmpty) {
+      final msg = deniedFiles.isNotEmpty
+          ? 'No files to stage. The following files are outside allowed paths:\n  ${deniedFiles.join('\n  ')}'
+          : 'Nothing to stage';
+      return _textResult(msg);
+    }
+
+    final result = await _runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
+
+    if (result.exitCode != 0) {
+      return _textResult('Error staging files: ${result.stderr}');
+    }
+
+    final output = StringBuffer();
+    final verboseOutput = (result.stderr as String).trim();
+    if (verboseOutput.isNotEmpty) {
+      output.writeln(verboseOutput);
+    }
+    output.writeln('Staged ${filesToAdd.length} file(s)');
+    
+    if (deniedFiles.isNotEmpty) {
+      output.writeln('');
+      output.writeln('Skipped (outside allowed paths):');
+      for (final f in deniedFiles) {
+        output.writeln('  - $f');
+      }
+    }
+
+    return _textResult(output.toString().trim());
+  }
+  
+  // Specific files mode
+  if (files == null || files.isEmpty) {
     return _textResult(
-        'Error: files is required. Use ["."] to stage all files, or set all=true to include untracked files.');
-  } else {
-    // Stage specific files (works for both tracked and untracked)
-    gitArgs = ['add', '--verbose', ...files];
+        'Error: files is required. Use ["."] to stage all allowed files, or set all=true.');
   }
 
-  final result = await _runGit(workingDir, gitArgs);
+  // Validate each file path
+  final filesToAdd = <String>[];
+  final deniedFiles = <String>[];
+  
+  for (final file in files) {
+    // Handle "." specially - means all files, switch to 'all' mode
+    if (file == '.') {
+      return _add(workingDir, null, allowedPaths, all: true);
+    }
+    
+    final absPath = p.isAbsolute(file)
+        ? p.normalize(file)
+        : p.normalize(p.join(workingDir.path, file));
+    
+    if (_isAllowedPath(allowedPaths, absPath)) {
+      filesToAdd.add(file);
+    } else {
+      deniedFiles.add(file);
+    }
+  }
+
+  if (filesToAdd.isEmpty) {
+    return _textResult(
+        'Error: None of the specified files are within allowed paths.\n'
+        'Denied: ${deniedFiles.join(", ")}\n\n'
+        'Allowed paths:\n  ${allowedPaths.join('\n  ')}');
+  }
+
+  final result = await _runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
 
   if (result.exitCode != 0) {
     return _textResult('Error staging files: ${result.stderr}');
   }
 
   final output = StringBuffer();
-  
-  // Verbose output goes to stderr for git add
   final verboseOutput = (result.stderr as String).trim();
   if (verboseOutput.isNotEmpty) {
     output.writeln(verboseOutput);
   }
+  output.writeln('Staged files: ${filesToAdd.join(", ")}');
   
-  if (all) {
-    output.writeln('Staged all changes (including untracked files)');
-  } else {
-    output.writeln('Staged files: ${files!.join(", ")}');
+  if (deniedFiles.isNotEmpty) {
+    output.writeln('');
+    output.writeln('Skipped (outside allowed paths): ${deniedFiles.join(", ")}');
   }
 
   return _textResult(output.toString().trim());
