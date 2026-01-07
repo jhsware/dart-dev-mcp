@@ -8,22 +8,38 @@ import 'package:path/path.dart' as p;
 /// File System MCP Server
 ///
 /// Provides file system operations with restricted access to allowed paths.
-/// Pass allowed paths as command-line arguments.
+/// Pass project directory as first argument, followed by allowed paths.
 ///
-/// Usage: dart run bin/file_edit_mcp.dart /path/to/allowed/dir1 /path/to/allowed/dir2
+/// Usage: `dart run bin/file_edit_mcp.dart <project_dir> <allowed_path1> [allowed_path2] ...`
 void main(List<String> arguments) async {
-  if (arguments.isEmpty) {
-    stderr.writeln('Usage: file_edit_mcp <allowed_path1> [allowed_path2] ...');
+  if (arguments.length < 2) {
+    stderr.writeln('Usage: file_edit_mcp <project_dir> <allowed_path1> [allowed_path2] ...');
     stderr.writeln('');
-    stderr.writeln('At least one allowed path must be specified.');
+    stderr.writeln('Arguments:');
+    stderr.writeln('  project_dir     Working directory for the project');
+    stderr.writeln('  allowed_paths   Paths that can be accessed (relative to project_dir)');
     exit(1);
   }
 
-  // Validate and normalize allowed paths
+  // First argument is project directory
+  final projectDir = arguments.first;
+  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
+
+  if (!await workingDir.exists()) {
+    stderr.writeln('Error: Project directory does not exist: $projectDir');
+    exit(1);
+  }
+
+  // Remaining arguments are allowed paths
   final allowedPaths = <String>[];
-  for (final arg in arguments) {
-    final dir = Directory(arg);
-    final file = File(arg);
+  for (final arg in arguments.skip(1)) {
+    // Convert to absolute path relative to working directory
+    final absolutePath = p.isAbsolute(arg)
+        ? p.normalize(arg)
+        : p.normalize(p.join(workingDir.path, arg));
+    
+    final dir = Directory(absolutePath);
+    final file = File(absolutePath);
     
     // Check if path exists as either file or directory
     final dirExists = await dir.exists();
@@ -33,11 +49,7 @@ void main(List<String> arguments) async {
       stderr.writeln('Warning: Path does not exist: $arg');
     }
     
-    // Normalize the path (resolve . and .. and get absolute path)
-    final absolutePath = dirExists 
-        ? dir.absolute.path 
-        : file.absolute.path;
-    allowedPaths.add(p.normalize(absolutePath));
+    allowedPaths.add(absolutePath);
   }
 
   if (allowedPaths.isEmpty) {
@@ -46,11 +58,11 @@ void main(List<String> arguments) async {
   }
 
   stderr.writeln('File Edit MCP Server starting...');
+  stderr.writeln('Project directory: ${workingDir.path}');
   stderr.writeln('Allowed paths:');
   for (final path in allowedPaths) {
     stderr.writeln('  - $path');
   }
-
   final server = McpServer(
     Implementation(name: 'file-edit-mcp', version: '1.0.0'),
     options: ServerOptions(
@@ -124,7 +136,7 @@ Operations:
         },
       },
     ),
-    callback: ({args, extra}) => _handleFileSystem(args, allowedPaths),
+    callback: ({args, extra}) => _handleFileSystem(args, workingDir, allowedPaths),
   );
 
   final transport = StdioServerTransport();
@@ -134,6 +146,7 @@ Operations:
 
 Future<CallToolResult> _handleFileSystem(
   Map<String, dynamic>? args,
+  Directory workingDir,
   List<String> allowedPaths,
 ) async {
   final operation = args?['operation'] as String?;
@@ -142,8 +155,6 @@ Future<CallToolResult> _handleFileSystem(
   if (operation == null) {
     return _textResult('Error: operation is required');
   }
-
-  final workingDir = Directory.current;
 
   switch (operation) {
     case 'list-content':
