@@ -51,9 +51,9 @@ Operations:
 - branch-list: List all branches
 - branch-switch: Switch to a branch
 - merge: Merge a branch into current branch
-- add: Stage files for commit
+- add: Stage files for commit (supports untracked files, use all=true for all changes)
 - commit: Commit staged changes
-- stash: Stash current changes
+- stash: Stash current changes (use include_untracked=true for new files)
 - stash-list: List all stashes
 - stash-apply: Apply a stash
 - stash-pop: Apply and remove a stash
@@ -98,7 +98,12 @@ Operations:
           'type': 'array',
           'items': {'type': 'string'},
           'description':
-              'Files to stage (for add). Use ["."] for all files.',
+              'Files to stage (for add). Use ["."] for all files including untracked.',
+        },
+        'all': {
+          'type': 'boolean',
+          'description':
+              'Stage all changes including untracked files (for add). Default: false',
         },
         'message': {
           'type': 'string',
@@ -117,6 +122,11 @@ Operations:
           'type': 'boolean',
           'description':
               'Create an annotated tag with message (for tag-create). Default: false',
+        },
+        'include_untracked': {
+          'type': 'boolean',
+          'description':
+              'Include untracked files in stash (for stash). Default: false',
         },
         'max_count': {
           'type': 'integer',
@@ -181,13 +191,15 @@ Future<CallToolResult> _handleGit(
         return _merge(workingDir, branch, noFf);
       case 'add':
         final files = _getFilesArg(args);
-        return _add(workingDir, files);
+        final all = args?['all'] as bool? ?? false;
+        return _add(workingDir, files, all: all);
       case 'commit':
         final message = args?['message'] as String?;
         return _commit(workingDir, message);
       case 'stash':
         final message = args?['message'] as String?;
-        return _stash(workingDir, message);
+        final includeUntracked = args?['include_untracked'] as bool? ?? false;
+        return _stash(workingDir, message, includeUntracked: includeUntracked);
       case 'stash-list':
         return _stashList(workingDir);
       case 'stash-apply':
@@ -341,19 +353,41 @@ Future<CallToolResult> _merge(
 }
 
 /// Stage files
-Future<CallToolResult> _add(Directory workingDir, List<String>? files) async {
-  if (files == null || files.isEmpty) {
+Future<CallToolResult> _add(Directory workingDir, List<String>? files, {bool all = false}) async {
+  List<String> gitArgs;
+  
+  if (all) {
+    // Stage all changes including untracked files
+    gitArgs = ['add', '--all', '--verbose'];
+  } else if (files == null || files.isEmpty) {
     return _textResult(
-        'Error: files is required. Use ["."] to stage all files.');
+        'Error: files is required. Use ["."] to stage all files, or set all=true to include untracked files.');
+  } else {
+    // Stage specific files (works for both tracked and untracked)
+    gitArgs = ['add', '--verbose', ...files];
   }
 
-  final result = await _runGit(workingDir, ['add', ...files]);
+  final result = await _runGit(workingDir, gitArgs);
 
   if (result.exitCode != 0) {
     return _textResult('Error staging files: ${result.stderr}');
   }
 
-  return _textResult('Staged files: ${files.join(", ")}');
+  final output = StringBuffer();
+  
+  // Verbose output goes to stderr for git add
+  final verboseOutput = (result.stderr as String).trim();
+  if (verboseOutput.isNotEmpty) {
+    output.writeln(verboseOutput);
+  }
+  
+  if (all) {
+    output.writeln('Staged all changes (including untracked files)');
+  } else {
+    output.writeln('Staged files: ${files!.join(", ")}');
+  }
+
+  return _textResult(output.toString().trim());
 }
 
 /// Commit changes
@@ -376,8 +410,13 @@ Future<CallToolResult> _commit(Directory workingDir, String? message) async {
 }
 
 /// Stash changes
-Future<CallToolResult> _stash(Directory workingDir, String? message) async {
+Future<CallToolResult> _stash(Directory workingDir, String? message, {bool includeUntracked = false}) async {
   final args = ['stash', 'push'];
+  
+  if (includeUntracked) {
+    args.add('--include-untracked');
+  }
+  
   if (message != null && message.isNotEmpty) {
     args.addAll(['-m', message]);
   }
@@ -393,7 +432,8 @@ Future<CallToolResult> _stash(Directory workingDir, String? message) async {
     return _textResult('No changes to stash');
   }
 
-  return _textResult('Stashed changes${message != null ? ": $message" : ""}\n\n$output');
+  final untrackedNote = includeUntracked ? ' (including untracked files)' : '';
+  return _textResult('Stashed changes$untrackedNote${message != null ? ": $message" : ""}\n\n$output');
 }
 
 /// List stashes
