@@ -1,0 +1,55 @@
+# https://github.com/dart-lang/setup-dart
+name: Draft release
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+          architecture: x64
+
+      - name: Install dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Analyze code
+        run: dart analyze
+
+      - name: Run tests
+        run: dart test
+
+      - name: Compile file-edit-mcp
+        run: dart compile exe --verbosity error --target-os linux -o bin/file-edit-mcp bin/file_edit_mcp.dart
+
+      - name: Compile convert-to-md-mcp
+        run: dart compile exe --verbosity error --target-os linux -o bin/convert-to-md-mcp bin/convert_to_md_mcp.dart
+
+      - name: Compile fetch-mcp
+        run: dart compile exe --verbosity error --target-os linux -o bin/fetch-mcp bin/fetch_mcp.dart
+
+      - name: Compile dart-runner-mcp
+        run: dart compile exe --verbosity error --target-os linux -o bin/dart-runner-mcp bin/dart_runner_mcp.dart
+
+      - name: Compile flutter-runner-mcp
+        run: dart compile exe --verbosity error --target-os linux -o bin/flutter-runner-mcp bin/flutter_runner_mcp.dart
+
+      - name: Compile git-mcp
+        run: dart compile exe --verbosity error --target-os linux -o bin/git-mcp bin/git_mcp.dart
+
+      # Export the binaries
+      # https://github.com/marketplace/actions/upload-files-to-a-github-release
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          file: bin/*-mcp
+          file_glob: true
+          overwrite: true
+          tag: ${{ github.ref }}
+          body: "Dart Dev MCP servers for Linux"
