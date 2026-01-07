@@ -385,10 +385,23 @@ Future<CallToolResult> _merge(
 /// Check if a path is within the allowed paths
 bool _isAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = p.normalize(path);
-  return allowedPaths.any((String root) {
-    final normalizedRoot = p.normalize(root);
-    return normalizedPath.startsWith(normalizedRoot) ||
-        normalizedPath == normalizedRoot;
+  
+  return allowedPaths.any((String allowedRoot) {
+    final normalizedRoot = p.normalize(allowedRoot);
+    
+    // Exact match
+    if (normalizedPath == normalizedRoot) {
+      return true;
+    }
+    
+    // Check if path is a child of the allowed root
+    // Ensure we match complete path segments (not partial names)
+    // e.g., /lib should match /lib/models but NOT /library
+    final rootWithSep = normalizedRoot.endsWith(p.separator) 
+        ? normalizedRoot 
+        : normalizedRoot + p.separator;
+    
+    return normalizedPath.startsWith(rootWithSep);
   });
 }
 

@@ -18,8 +18,10 @@ bool isAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = normalize(path);
   return allowedPaths.any((String root) {
     final normalizedRoot = normalize(root);
-    return normalizedPath.startsWith(normalizedRoot) ||
-        normalizedPath == normalizedRoot;
+    final rootWithSep = normalizedRoot.endsWith(separator)
+        ? normalizedRoot
+        : normalizedRoot + separator;
+    return normalizedPath.startsWith(rootWithSep);
   });
 }
 
