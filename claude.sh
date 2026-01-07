@@ -236,13 +236,13 @@ build_mcp_config() {
     servers="fs,convert,fetch,dart,flutter,git"
   fi
   
-  # File System Server
+  # File System Server - uses --project-dir and allowed paths
   if [[ "$servers" == *"fs"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "$project_path" "${abs_paths[@]}"
+    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "--project-dir=$project_path" "${abs_paths[@]}"
     echo '    }'
   fi
   
@@ -266,33 +266,33 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Dart Runner Server - uses project_path (cwd), not first allowed path
+  # Dart Runner Server - uses --project-dir
   if [[ "$servers" == *"dart"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-dart-runner": {'
-    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "$project_path"
+    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "--project-dir=$project_path"
     echo '    }'
   fi
   
-  # Flutter Runner Server - uses project_path (cwd), not first allowed path
+  # Flutter Runner Server - uses --project-dir
   if [[ "$servers" == *"flutter"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-flutter-runner": {'
-    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "$project_path"
+    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "--project-dir=$project_path"
     echo '    }'
   fi
   
-  # Git Server - uses project_path (cwd) AND allowed paths for staging
+  # Git Server - uses --project-dir AND allowed paths for staging
   if [[ "$servers" == *"git"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-git": {'
-    output_server_cmd "git-mcp" "git_mcp.dart" "$project_path" "${abs_paths[@]}"
+    output_server_cmd "git-mcp" "git_mcp.dart" "--project-dir=$project_path" "${abs_paths[@]}"
     echo '    }'
   fi
   

@@ -11,7 +11,7 @@ void main() {
     test('file_edit_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/file_edit_mcp.dart',
-        ['./lib', './bin', './test'],
+        ['--project-dir=.', './lib', './bin', './test'],
       );
       await stopServer(process);
 
@@ -50,7 +50,7 @@ void main() {
     test('dart_runner_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/dart_runner_mcp.dart',
-        ['.'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 
@@ -63,7 +63,7 @@ void main() {
     test('flutter_runner_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/flutter_runner_mcp.dart',
-        ['.'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 
@@ -76,7 +76,7 @@ void main() {
     test('git_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/git_mcp.dart',
-        ['.'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 

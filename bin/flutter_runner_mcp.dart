@@ -9,21 +9,34 @@ import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 ///
 /// Provides Flutter program execution via FVM with polling support for long-running processes.
 ///
-/// Usage: dart run bin/flutter_runner_mcp.dart [project_path]
+/// Usage: dart run bin/flutter_runner_mcp.dart --project-dir=PATH
 void main(List<String> arguments) async {
-  // Determine working directory
-  final projectPath = arguments.isNotEmpty ? arguments.first : Directory.current.path;
-  final workingDir = Directory(p.normalize(p.absolute(projectPath)));
+  String? projectDir;
+
+  // Parse arguments
+  for (final arg in arguments) {
+    if (arg.startsWith('--project-dir=')) {
+      projectDir = arg.substring('--project-dir='.length);
+    } else if (arg == '--help' || arg == '-h') {
+      _printUsage();
+      exit(0);
+    }
+  }
+
+  // Default to current directory if not specified
+  projectDir ??= Directory.current.path;
+
+  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
 
   if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectPath');
+    stderr.writeln('Error: Project path does not exist: $projectDir');
     exit(1);
   }
 
   // Check if it's a Flutter project
   final pubspecFile = File(p.join(workingDir.path, 'pubspec.yaml'));
   if (!await pubspecFile.exists()) {
-    stderr.writeln('Warning: No pubspec.yaml found in $projectPath');
+    stderr.writeln('Warning: No pubspec.yaml found in $projectDir');
     stderr.writeln('This may not be a Flutter project.');
   }
 
@@ -129,6 +142,14 @@ Use get_output with the session_id to poll for output.''',
   final transport = StdioServerTransport();
   await server.connect(transport);
   stderr.writeln('Flutter Runner MCP Server running on stdio');
+}
+
+void _printUsage() {
+  stderr.writeln('Usage: flutter_runner_mcp [--project-dir=PATH]');
+  stderr.writeln('');
+  stderr.writeln('Options:');
+  stderr.writeln('  --project-dir=PATH  Working directory for the project (default: current directory)');
+  stderr.writeln('  --help, -h          Show this help message');
 }
 
 CallToolResult _textResult(String text) {

@@ -8,26 +8,42 @@ import 'package:path/path.dart' as p;
 ///
 /// Provides Git operations for version control with path restrictions.
 ///
-/// Usage: `dart run bin/git_mcp.dart <project_path> [allowed_paths...]`
+/// Usage: `dart run bin/git_mcp.dart --project-dir=PATH [allowed_paths...]`
 void main(List<String> arguments) async {
-  if (arguments.isEmpty) {
-    stderr.writeln('Usage: git_mcp <project_path> [allowed_paths...]');
+  String? projectDir;
+  final allowedPathArgs = <String>[];
+
+  // Parse arguments
+  for (final arg in arguments) {
+    if (arg.startsWith('--project-dir=')) {
+      projectDir = arg.substring('--project-dir='.length);
+    } else if (arg == '--help' || arg == '-h') {
+      _printUsage();
+      exit(0);
+    } else if (!arg.startsWith('-')) {
+      allowedPathArgs.add(arg);
+    }
+  }
+
+  // Validate required arguments
+  if (projectDir == null || projectDir.isEmpty) {
+    stderr.writeln('Error: --project-dir is required');
     stderr.writeln('');
-    stderr.writeln('Arguments:');
-    stderr.writeln('  project_path    Path to the git repository');
-    stderr.writeln('  allowed_paths   Paths that can be staged (default: project_path)');
+    _printUsage();
     exit(1);
   }
 
-  // First argument is project path
-  final projectPath = arguments.first;
-  final workingDir = Directory(p.normalize(p.absolute(projectPath)));
+  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
 
-  // Remaining arguments are allowed paths (default to project path)
+  if (!await workingDir.exists()) {
+    stderr.writeln('Error: Project path does not exist: $projectDir');
+    exit(1);
+  }
+
+  // Convert allowed paths to absolute paths (default to project path if none specified)
   final List<String> allowedPaths;
-  if (arguments.length > 1) {
-    allowedPaths = arguments.skip(1).map((path) {
-      // Convert to absolute path relative to working directory
+  if (allowedPathArgs.isNotEmpty) {
+    allowedPaths = allowedPathArgs.map((path) {
       if (p.isAbsolute(path)) {
         return p.normalize(path);
       } else {
@@ -39,15 +55,10 @@ void main(List<String> arguments) async {
     allowedPaths = [workingDir.path];
   }
 
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectPath');
-    exit(1);
-  }
-
   // Check if it's a git repository
   final isGitDir = await GitDir.isGitDir(workingDir.path);
   if (!isGitDir) {
-    stderr.writeln('Warning: Not a git repository: $projectPath');
+    stderr.writeln('Warning: Not a git repository: $projectDir');
     stderr.writeln('Some operations may fail.');
   }
 
@@ -174,6 +185,17 @@ Operations:
   final transport = StdioServerTransport();
   await server.connect(transport);
   stderr.writeln('Git MCP Server running on stdio');
+}
+
+void _printUsage() {
+  stderr.writeln('Usage: git_mcp --project-dir=PATH [allowed_paths...]');
+  stderr.writeln('');
+  stderr.writeln('Options:');
+  stderr.writeln('  --project-dir=PATH  Path to the git repository (required)');
+  stderr.writeln('  --help, -h          Show this help message');
+  stderr.writeln('');
+  stderr.writeln('Arguments:');
+  stderr.writeln('  allowed_paths       Paths that can be staged (default: project_path)');
 }
 
 CallToolResult _textResult(String text) {

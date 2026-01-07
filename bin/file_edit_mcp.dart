@@ -8,21 +8,39 @@ import 'package:path/path.dart' as p;
 /// File System MCP Server
 ///
 /// Provides file system operations with restricted access to allowed paths.
-/// Pass project directory as first argument, followed by allowed paths.
 ///
-/// Usage: `dart run bin/file_edit_mcp.dart <project_dir> <allowed_path1> [allowed_path2] ...`
+/// Usage: `dart run bin/file_edit_mcp.dart --project-dir=PATH <allowed_path1> [allowed_path2] ...`
 void main(List<String> arguments) async {
-  if (arguments.length < 2) {
-    stderr.writeln('Usage: file_edit_mcp <project_dir> <allowed_path1> [allowed_path2] ...');
+  String? projectDir;
+  final allowedPathArgs = <String>[];
+
+  // Parse arguments
+  for (final arg in arguments) {
+    if (arg.startsWith('--project-dir=')) {
+      projectDir = arg.substring('--project-dir='.length);
+    } else if (arg == '--help' || arg == '-h') {
+      _printUsage();
+      exit(0);
+    } else if (!arg.startsWith('-')) {
+      allowedPathArgs.add(arg);
+    }
+  }
+
+  // Validate required arguments
+  if (projectDir == null || projectDir.isEmpty) {
+    stderr.writeln('Error: --project-dir is required');
     stderr.writeln('');
-    stderr.writeln('Arguments:');
-    stderr.writeln('  project_dir     Working directory for the project');
-    stderr.writeln('  allowed_paths   Paths that can be accessed (relative to project_dir)');
+    _printUsage();
     exit(1);
   }
 
-  // First argument is project directory
-  final projectDir = arguments.first;
+  if (allowedPathArgs.isEmpty) {
+    stderr.writeln('Error: At least one allowed path is required');
+    stderr.writeln('');
+    _printUsage();
+    exit(1);
+  }
+
   final workingDir = Directory(p.normalize(p.absolute(projectDir)));
 
   if (!await workingDir.exists()) {
@@ -30,10 +48,9 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
-  // Remaining arguments are allowed paths
+  // Convert allowed paths to absolute paths
   final allowedPaths = <String>[];
-  for (final arg in arguments.skip(1)) {
-    // Convert to absolute path relative to working directory
+  for (final arg in allowedPathArgs) {
     final absolutePath = p.isAbsolute(arg)
         ? p.normalize(arg)
         : p.normalize(p.join(workingDir.path, arg));
@@ -41,7 +58,6 @@ void main(List<String> arguments) async {
     final dir = Directory(absolutePath);
     final file = File(absolutePath);
     
-    // Check if path exists as either file or directory
     final dirExists = await dir.exists();
     final fileExists = await file.exists();
     
@@ -63,6 +79,7 @@ void main(List<String> arguments) async {
   for (final path in allowedPaths) {
     stderr.writeln('  - $path');
   }
+
   final server = McpServer(
     Implementation(name: 'file-edit-mcp', version: '1.0.0'),
     options: ServerOptions(
@@ -142,6 +159,17 @@ Operations:
   final transport = StdioServerTransport();
   await server.connect(transport);
   stderr.writeln('File Edit MCP Server running on stdio');
+}
+
+void _printUsage() {
+  stderr.writeln('Usage: file_edit_mcp --project-dir=PATH <allowed_path1> [allowed_path2] ...');
+  stderr.writeln('');
+  stderr.writeln('Options:');
+  stderr.writeln('  --project-dir=PATH  Working directory for the project (required)');
+  stderr.writeln('  --help, -h          Show this help message');
+  stderr.writeln('');
+  stderr.writeln('Arguments:');
+  stderr.writeln('  allowed_paths       Paths that can be accessed (relative to project-dir)');
 }
 
 Future<CallToolResult> _handleFileSystem(
@@ -533,7 +561,7 @@ Future<CallToolResult> _createDirectory(
 
   final dirPath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, dirPath)) {
-    return _textResult('Error: Not allowed for: $path ($dirPath)');
+    return _textResult('Error: Not allowed for: $path');
   }
 
   final directory = Directory(dirPath);

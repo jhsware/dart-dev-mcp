@@ -8,17 +8,24 @@ void main() {
   });
 
   group('file_edit_mcp arguments', () {
-    test('shows error without arguments', () async {
+    test('shows error without --project-dir', () async {
       final result = await runServer('bin/file_edit_mcp.dart', []);
 
       expect(result.exitCode, isNot(0));
-      expect(result.stderr, contains('Usage: file_edit_mcp'));
+      expect(result.stderr, contains('--project-dir is required'));
+    });
+
+    test('shows error without allowed paths', () async {
+      final result = await runServer('bin/file_edit_mcp.dart', ['--project-dir=.']);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('At least one allowed path is required'));
     });
 
     test('shows allowed paths on startup', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/file_edit_mcp.dart',
-        ['./lib', './bin'],
+        ['--project-dir=.', './lib', './bin'],
       );
       await stopServer(process);
 
@@ -27,20 +34,31 @@ void main() {
       expect(stderr, contains('lib'));
       expect(stderr, contains('bin'));
     });
+
+    test('shows project directory on startup', () async {
+      final (process, stderrBuffer) = await startServer(
+        'bin/file_edit_mcp.dart',
+        ['--project-dir=.', './lib'],
+      );
+      await stopServer(process);
+
+      final stderr = stderrBuffer.toString();
+      expect(stderr, contains('Project directory:'));
+    });
   });
 
   group('dart_runner_mcp arguments', () {
-    test('shows project path on startup', () async {
+    test('shows project path on startup with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/dart_runner_mcp.dart',
-        ['.'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 
       expect(stderrBuffer.toString(), contains('Project path:'));
     });
 
-    test('uses current directory when no path specified', () async {
+    test('uses current directory when no --project-dir specified', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/dart_runner_mcp.dart',
         [],
@@ -54,10 +72,10 @@ void main() {
   });
 
   group('flutter_runner_mcp arguments', () {
-    test('shows project path and FVM status', () async {
+    test('shows project path and FVM status with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/flutter_runner_mcp.dart',
-        ['.'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 
@@ -65,19 +83,50 @@ void main() {
       expect(stderr, contains('Project path:'));
       expect(stderr, contains('Using FVM:'));
     });
+
+    test('uses current directory when no --project-dir specified', () async {
+      final (process, stderrBuffer) = await startServer(
+        'bin/flutter_runner_mcp.dart',
+        [],
+      );
+      await stopServer(process);
+
+      final stderr = stderrBuffer.toString();
+      expect(stderr, contains('Project path:'));
+    });
   });
 
   group('git_mcp arguments', () {
-    test('shows git status and project path', () async {
+    test('shows error without --project-dir', () async {
+      final result = await runServer('bin/git_mcp.dart', []);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('--project-dir is required'));
+    });
+
+    test('shows git status and project path with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/git_mcp.dart',
-        ['.'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 
       final stderr = stderrBuffer.toString();
       expect(stderr, contains('Is git repository:'));
       expect(stderr, contains('Project path:'));
+    });
+
+    test('shows allowed paths on startup', () async {
+      final (process, stderrBuffer) = await startServer(
+        'bin/git_mcp.dart',
+        ['--project-dir=.', './lib', './bin'],
+      );
+      await stopServer(process);
+
+      final stderr = stderrBuffer.toString();
+      expect(stderr, contains('Allowed paths:'));
+      expect(stderr, contains('lib'));
+      expect(stderr, contains('bin'));
     });
   });
 
