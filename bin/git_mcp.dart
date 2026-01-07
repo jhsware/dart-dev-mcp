@@ -297,6 +297,8 @@ Future<ProcessResult> _runGit(
     'git',
     args,
     workingDirectory: workingDir.path,
+    // Inherit environment variables (SSH_AUTH_SOCK, GPG_TTY, etc.)
+    environment: Platform.environment,
   );
 }
 
