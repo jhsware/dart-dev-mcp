@@ -44,6 +44,10 @@ Arguments:
   allowed_paths   Paths that fs and git servers can access (relative to project-dir)
                   Default: ${DEFAULT_ALLOWED_PATHS[*]}
 
+Path Prefixes:
+  git:<path>      Path is only passed to git server (not file editing)
+                  Example: git:./docs - allows git staging of docs but not editing
+
 Examples:
   # Launch with file system tools (using installed binaries)
   $0 fs ./lib ./bin ./test ./pubspec.yaml ./README.md
@@ -68,6 +72,9 @@ Examples:
 
   # Launch with multiple servers
   $0 fs,dart,fetch ./lib ./bin ./test
+
+  # Allow editing lib/bin/test but only git staging for docs
+  $0 all ./lib ./bin ./test git:./docs git:./scripts
 EOF
 )
 
@@ -178,6 +185,33 @@ get_absolute_paths() {
   echo "${abs_paths[@]}"
 }
 
+# Filter paths by prefix and return clean paths
+# Usage: filter_paths <prefix> <paths...>
+# prefix: "git:" for git-only paths, "" for regular paths
+# Returns paths that match (with prefix removed) or don't have any prefix
+filter_paths() {
+  local filter_prefix="$1"
+  shift
+  local paths=("$@")
+  local filtered=()
+  
+  for path in "${paths[@]}"; do
+    if [[ "$filter_prefix" == "git:" ]]; then
+      # Return git-only paths (strip prefix)
+      if [[ "$path" == git:* ]]; then
+        filtered+=("${path#git:}")
+      fi
+    else
+      # Return regular paths (no prefix)
+      if [[ "$path" != git:* ]]; then
+        filtered+=("$path")
+      fi
+    fi
+  done
+  
+  echo "${filtered[@]}"
+}
+
 # Output server command configuration based on mode
 # Usage: output_server_cmd <binary_name> <dart_source> [args...]
 output_server_cmd() {
@@ -222,8 +256,16 @@ build_mcp_config() {
   # Use PROJECT_DIR as the project path
   local project_path="$PROJECT_DIR"
   
-  # Convert allowed paths to absolute (relative to project_path)
-  local abs_paths=($(get_absolute_paths "$project_path" "${paths[@]}"))
+  # Separate regular paths from git-only paths
+  local regular_paths=($(filter_paths "" "${paths[@]}"))
+  local git_only_paths=($(filter_paths "git:" "${paths[@]}"))
+  
+  # Convert to absolute paths
+  local abs_regular_paths=($(get_absolute_paths "$project_path" "${regular_paths[@]}"))
+  local abs_git_only_paths=($(get_absolute_paths "$project_path" "${git_only_paths[@]}"))
+  
+  # Git gets both regular and git-only paths
+  local abs_git_paths=("${abs_regular_paths[@]}" "${abs_git_only_paths[@]}")
   
   # Start JSON
   echo '{'
@@ -236,13 +278,13 @@ build_mcp_config() {
     servers="fs,convert,fetch,dart,flutter,git"
   fi
   
-  # File System Server - uses --project-dir and allowed paths
+  # File System Server - uses --project-dir and regular paths only (not git-only)
   if [[ "$servers" == *"fs"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "--project-dir=$project_path" "${abs_paths[@]}"
+    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "--project-dir=$project_path" "${abs_regular_paths[@]}"
     echo '    }'
   fi
   
@@ -286,13 +328,13 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Git Server - uses --project-dir AND allowed paths for staging
+  # Git Server - uses --project-dir AND all paths (regular + git-only) for staging
   if [[ "$servers" == *"git"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-git": {'
-    output_server_cmd "git-mcp" "git_mcp.dart" "--project-dir=$project_path" "${abs_paths[@]}"
+    output_server_cmd "git-mcp" "git_mcp.dart" "--project-dir=$project_path" "${abs_git_paths[@]}"
     echo '    }'
   fi
   
@@ -308,8 +350,20 @@ else
 fi
 echo "Project directory: $PROJECT_DIR"
 
+# Show path summary
+regular_paths=($(filter_paths "" "${PATHS[@]}"))
+git_only_paths=($(filter_paths "git:" "${PATHS[@]}"))
+
+if [ ${#regular_paths[@]} -gt 0 ]; then
+  echo "Allowed paths (fs + git): ${regular_paths[*]}"
+fi
+if [ ${#git_only_paths[@]} -gt 0 ]; then
+  echo "Allowed paths (git only): ${git_only_paths[*]}"
+fi
+
 build_mcp_config "$SERVERS" "${PATHS[@]}" > "$PATH_TO_CLAUDE/claude_desktop_config.json"
 
+echo ""
 echo "Configuration written to: $PATH_TO_CLAUDE/claude_desktop_config.json"
 echo ""
 cat "$PATH_TO_CLAUDE/claude_desktop_config.json"
