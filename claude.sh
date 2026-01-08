@@ -18,6 +18,7 @@ DEFAULT_ALLOWED_PATHS=(
   "./.env.in"
   "./.gitignore"
   "./.github"
+  "git:./macos"
 )
 
 __help_text__=$(cat <<EOF
