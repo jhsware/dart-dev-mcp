@@ -243,7 +243,7 @@ Future<String?> _findSshAgentSocket() async {
   if (envSocket != null && envSocket.isNotEmpty) {
     // Verify the socket exists
     final socketFile = File(envSocket);
-    if (await socketFile.exists() || await FileSystemEntity.type(envSocket) == FileSystemEntityType.unixDomainSocket) {
+    if (await socketFile.exists() || await FileSystemEntity.type(envSocket) == FileSystemEntityType.unixDomainSock) {
       _cachedSshAgentSocket = envSocket;
       return envSocket;
     }
@@ -267,12 +267,7 @@ Future<String?> _findSshAgentSocket() async {
     // Try common macOS locations
     final home = Platform.environment['HOME'];
     if (home != null) {
-      final macOsPaths = [
-        '/private/tmp/com.apple.launchd.*/Listeners', // macOS agent socket pattern
-        '$home/Library/Group Containers/*.com.apple.ssh-agent/Listeners',
-      ];
-      
-      // Check for actual socket files
+      // Check for actual socket files in launchd directories
       try {
         final tmpDir = Directory('/private/tmp');
         if (await tmpDir.exists()) {
@@ -319,7 +314,7 @@ Future<String?> _findSshAgentSocket() async {
       final tmpDir = Directory('/tmp');
       await for (final entity in tmpDir.list()) {
         if (entity is Directory && entity.path.contains('ssh-')) {
-          await for (final file in (entity as Directory).list()) {
+          await for (final file in entity.list()) {
             if (file.path.contains('agent') && await _socketExists(file.path)) {
               _cachedSshAgentSocket = file.path;
               return file.path;
