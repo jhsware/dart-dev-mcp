@@ -6,6 +6,7 @@ import 'package:test/test.dart';
 /// Integration tests for git operations including SSH and GPG signing
 /// 
 /// These tests create real temporary git repositories and test operations.
+/// All SSH keys are generated in temporary directories - never in $HOME/.ssh
 void main() {
   group('Git Integration Tests', () {
     late Directory tempDir;
@@ -149,7 +150,7 @@ void main() {
       await repoDir.create();
       await sshDir.create();
       
-      // Generate a test SSH key (no passphrase)
+      // Generate a test SSH key (no passphrase) in TEMP directory, not $HOME/.ssh
       sshKeyPath = p.join(sshDir.path, 'id_ed25519');
       final keygenResult = await Process.run(
         'ssh-keygen',
@@ -380,7 +381,7 @@ void main() {
       await repoDir.create();
       await sshDir.create();
       
-      // Generate a test SSH key WITH passphrase
+      // Generate a test SSH key WITH passphrase in TEMP directory, not $HOME/.ssh
       sshKeyPath = p.join(sshDir.path, 'id_ed25519');
       var keygenResult = await Process.run(
         'ssh-keygen',
@@ -497,7 +498,7 @@ void main() {
         return;
       }
       
-      // Verify agent is running
+      // Verify agent is running and has our key
       final listResult = await Process.run(
         'ssh-add',
         ['-l'],
@@ -510,9 +511,8 @@ void main() {
       print('ssh-add -l stdout: ${listResult.stdout}');
       print('ssh-add -l stderr: ${listResult.stderr}');
       
-      // Exit code 0 means keys are loaded, 1 means no keys
-      expect(listResult.exitCode, anyOf(0, 1), 
-          reason: 'ssh-agent should be accessible');
+      expect(listResult.exitCode, 0, reason: 'ssh-agent should have keys loaded');
+      expect(listResult.stdout, contains('ED25519'), reason: 'Our test key should be in agent');
     });
 
     test('can sign commits using ssh-agent with passphrase-protected key', () async {
@@ -599,6 +599,7 @@ expect eof
       
       // Commit with SSH signing via agent
       // The key point: we pass SSH_AUTH_SOCK to git, and it uses the agent
+      // No passphrase prompt is needed because ssh-agent has it cached!
       result = await Process.run(
         'git',
         [
@@ -758,7 +759,7 @@ expect eof
       
       await Process.run('chmod', ['700', gnupgDir.path]);
       
-      // Create a test GPG key (no passphrase)
+      // Create a test GPG key (no passphrase) in TEMP directory, not $HOME/.gnupg
       final keyParams = '''
 %echo Generating test key
 %no-protection
@@ -1008,22 +1009,11 @@ Expire-Date: 0
       expect(result.stdout, contains('Unsigned commit'));
     });
 
-    test('simulates commit with sign="ssh" (if SSH key exists)', () async {
-      // Check for SSH key
-      final home = Platform.environment['HOME'];
-      String? sshKeyPath;
-      
-      for (final path in ['$home/.ssh/id_ed25519.pub', '$home/.ssh/id_ecdsa.pub', '$home/.ssh/id_rsa.pub']) {
-        if (await File(path).exists()) {
-          sshKeyPath = path;
-          break;
-        }
-      }
-      
-      if (sshKeyPath == null) {
-        markTestSkipped('No SSH key found');
-        return;
-      }
+    test('simulates commit with sign="ssh" using temp key', () async {
+      // Create temp SSH key for this test (not in $HOME/.ssh!)
+      final sshDir = Directory(p.join(tempDir.path, 'ssh'));
+      await sshDir.create();
+      final sshKeyPath = p.join(sshDir.path, 'id_ed25519');
       
       // Check git version
       final gitVersion = await Process.run('git', ['--version']);
@@ -1038,6 +1028,16 @@ Expire-Date: 0
       final minor = int.parse(match.group(2)!);
       if (major < 2 || (major == 2 && minor < 34)) {
         markTestSkipped('Git version too old for SSH signing');
+        return;
+      }
+      
+      // Generate temp key
+      final keygenResult = await Process.run(
+        'ssh-keygen',
+        ['-t', 'ed25519', '-f', sshKeyPath, '-N', '', '-C', 'test@example.com'],
+      );
+      if (keygenResult.exitCode != 0) {
+        markTestSkipped('Could not generate SSH key');
         return;
       }
       
@@ -1056,7 +1056,7 @@ Expire-Date: 0
         'git',
         [
           '-c', 'gpg.format=ssh',
-          '-c', 'user.signingkey=$sshKeyPath',
+          '-c', 'user.signingkey=$sshKeyPath.pub',
           'commit', '-S', '-m', 'SSH signed via simulation'
         ],
         workingDirectory: repoDir.path,
