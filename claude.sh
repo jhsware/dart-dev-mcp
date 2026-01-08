@@ -35,6 +35,7 @@ Servers (comma-separated):
   dart        Dart runner (analyze, test, run)
   flutter     Flutter runner via FVM (analyze, test, run, build)
   git         Git version control (branch, merge, commit, stash, tag)
+  planner     Task and step management with SQLite storage
   all         Enable all servers
 
 Options:
@@ -346,7 +347,7 @@ build_mcp_config() {
   
   # Check for 'all' keyword
   if [[ "$servers" == *"all"* ]]; then
-    servers="fs,convert,fetch,dart,flutter,git"
+    servers="fs,convert,fetch,dart,flutter,git,planner"
   fi
   
   # File System Server - uses --project-dir and regular paths only (not git-only)
@@ -407,6 +408,16 @@ build_mcp_config() {
     
     echo '    "dart-dev-mcp-git": {'
     output_server_cmd "git-mcp" "git_mcp.dart" "$git_env" "--project-dir=$project_path" "${abs_git_paths[@]}"
+    echo '    }'
+  fi
+  
+  # Planner Server - uses --project-dir for task/step management
+  if [[ "$servers" == *"planner"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+    
+    echo '    "dart-dev-mcp-planner": {'
+    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
   

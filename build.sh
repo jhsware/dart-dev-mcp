@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # All MCP server binaries
-BINARIES="file_edit_mcp convert_to_md_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp"
+BINARIES="file_edit_mcp convert_to_md_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp"
 
 show_help() {
   cat <<EOF
