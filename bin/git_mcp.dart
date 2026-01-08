@@ -570,7 +570,8 @@ Future<CallToolResult> _commit(Directory workingDir, String? message) async {
     return _textResult('Error: commit message is required');
   }
 
-  final result = await _runGit(workingDir, ['commit', '-m', message]);
+  // Use --no-gpg-sign to avoid GPG agent issues in restricted environments
+  final result = await _runGit(workingDir, ['commit', '--no-gpg-sign', '-m', message]);
 
   if (result.exitCode != 0) {
     final stderr = result.stderr as String;
