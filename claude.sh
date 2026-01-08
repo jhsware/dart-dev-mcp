@@ -49,6 +49,14 @@ Path Prefixes:
   git:<path>      Path is only passed to git server (not file editing)
                   Example: git:./docs - allows git staging of docs but not editing
 
+SSH Signing:
+  For SSH commit signing to work with passphrase-protected keys, make sure
+  your key is loaded in ssh-agent BEFORE running this script:
+    ssh-add ~/.ssh/id_rsa
+  
+  On macOS, to persist across reboots:
+    ssh-add --apple-use-keychain ~/.ssh/id_rsa
+
 Examples:
   # Launch with file system tools (using installed binaries)
   $0 fs ./lib ./bin ./test ./pubspec.yaml ./README.md
@@ -165,6 +173,53 @@ if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json" ]; then
   cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json" "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak"
 fi
 
+# Find SSH agent socket
+find_ssh_agent_socket() {
+  # 1. Check SSH_AUTH_SOCK environment variable
+  if [ -n "$SSH_AUTH_SOCK" ] && [ -e "$SSH_AUTH_SOCK" ]; then
+    echo "$SSH_AUTH_SOCK"
+    return
+  fi
+  
+  # 2. macOS: Try launchctl
+  if [ "$(uname -s)" = "Darwin" ]; then
+    local launchd_sock
+    launchd_sock=$(launchctl getenv SSH_AUTH_SOCK 2>/dev/null || true)
+    if [ -n "$launchd_sock" ] && [ -e "$launchd_sock" ]; then
+      echo "$launchd_sock"
+      return
+    fi
+  fi
+  
+  # 3. Linux: Check common locations
+  if [ "$(uname -s)" = "Linux" ]; then
+    local uid="${UID:-$(id -u)}"
+    local common_paths=(
+      "/run/user/$uid/ssh-agent.socket"
+      "/run/user/$uid/keyring/ssh"
+    )
+    for sock in "${common_paths[@]}"; do
+      if [ -e "$sock" ]; then
+        echo "$sock"
+        return
+      fi
+    done
+  fi
+  
+  echo ""
+}
+
+# Check if SSH agent has identities
+check_ssh_agent_identities() {
+  local sock="$1"
+  if [ -z "$sock" ]; then
+    return 1
+  fi
+  
+  SSH_AUTH_SOCK="$sock" ssh-add -l >/dev/null 2>&1
+  return $?
+}
+
 # Convert paths to absolute paths relative to a base directory
 # Usage: get_absolute_paths <base_dir> <paths...>
 get_absolute_paths() {
@@ -214,11 +269,13 @@ filter_paths() {
 }
 
 # Output server command configuration based on mode
-# Usage: output_server_cmd <binary_name> <dart_source> [args...]
+# Usage: output_server_cmd <binary_name> <dart_source> [env_json] [args...]
+# If env_json is "null", no env block is added
 output_server_cmd() {
   local binary_name="$1"
   local dart_source="$2"
-  shift 2
+  local env_json="$3"
+  shift 3
   local extra_args=("$@")
   
   if [ "$DEV_MODE" = true ]; then
@@ -246,12 +303,18 @@ output_server_cmd() {
     done
     echo '      ]'
   fi
+  
+  # Add env block if provided
+  if [ "$env_json" != "null" ] && [ -n "$env_json" ]; then
+    echo "      ,$env_json"
+  fi
 }
 
 # Build MCP servers configuration
 build_mcp_config() {
   local servers="$1"
-  shift
+  local ssh_agent_socket="$2"
+  shift 2
   local paths=("$@")
   
   # Use PROJECT_DIR as the project path
@@ -267,6 +330,12 @@ build_mcp_config() {
   
   # Git gets both regular and git-only paths
   local abs_git_paths=("${abs_regular_paths[@]}" "${abs_git_only_paths[@]}")
+  
+  # Build env JSON for git server (includes SSH_AUTH_SOCK)
+  local git_env="null"
+  if [ -n "$ssh_agent_socket" ]; then
+    git_env="\"env\": { \"SSH_AUTH_SOCK\": \"$ssh_agent_socket\" }"
+  fi
   
   # Start JSON
   echo '{'
@@ -285,7 +354,7 @@ build_mcp_config() {
     first=false
     
     echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "--project-dir=$project_path" "${abs_regular_paths[@]}"
+    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "null" "--project-dir=$project_path" "${abs_regular_paths[@]}"
     echo '    }'
   fi
   
@@ -295,7 +364,7 @@ build_mcp_config() {
     first=false
     
     echo '    "dart-dev-mcp-convert": {'
-    output_server_cmd "convert-to-md-mcp" "convert_to_md_mcp.dart"
+    output_server_cmd "convert-to-md-mcp" "convert_to_md_mcp.dart" "null"
     echo '    }'
   fi
   
@@ -305,7 +374,7 @@ build_mcp_config() {
     first=false
     
     echo '    "dart-dev-mcp-fetch": {'
-    output_server_cmd "fetch-mcp" "fetch_mcp.dart"
+    output_server_cmd "fetch-mcp" "fetch_mcp.dart" "null"
     echo '    }'
   fi
   
@@ -315,7 +384,7 @@ build_mcp_config() {
     first=false
     
     echo '    "dart-dev-mcp-dart-runner": {'
-    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "--project-dir=$project_path"
+    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
   
@@ -325,17 +394,18 @@ build_mcp_config() {
     first=false
     
     echo '    "dart-dev-mcp-flutter-runner": {'
-    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "--project-dir=$project_path"
+    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
   
   # Git Server - uses --project-dir AND all paths (regular + git-only) for staging
+  # Also includes SSH_AUTH_SOCK for SSH signing
   if [[ "$servers" == *"git"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-git": {'
-    output_server_cmd "git-mcp" "git_mcp.dart" "--project-dir=$project_path" "${abs_git_paths[@]}"
+    output_server_cmd "git-mcp" "git_mcp.dart" "$git_env" "--project-dir=$project_path" "${abs_git_paths[@]}"
     echo '    }'
   fi
   
@@ -362,7 +432,39 @@ if [ ${#git_only_paths[@]} -gt 0 ]; then
   echo "Allowed paths (git only): ${git_only_paths[*]}"
 fi
 
-build_mcp_config "$SERVERS" "${PATHS[@]}" > "$PATH_TO_CLAUDE/claude_desktop_config.json"
+# Check SSH agent for git signing
+SSH_AGENT_SOCKET=""
+if [[ "$SERVERS" == *"git"* ]] || [[ "$SERVERS" == *"all"* ]]; then
+  SSH_AGENT_SOCKET=$(find_ssh_agent_socket)
+  
+  if [ -n "$SSH_AGENT_SOCKET" ]; then
+    echo ""
+    echo "SSH Agent: $SSH_AGENT_SOCKET"
+    if check_ssh_agent_identities "$SSH_AGENT_SOCKET"; then
+      echo "SSH Keys: ✓ Keys loaded in agent"
+    else
+      echo "SSH Keys: ⚠ No keys loaded in agent"
+      echo ""
+      echo "  For SSH commit signing, add your key first:"
+      echo "    ssh-add ~/.ssh/id_rsa"
+      echo ""
+      echo "  On macOS, to persist across reboots:"
+      echo "    ssh-add --apple-use-keychain ~/.ssh/id_rsa"
+    fi
+  else
+    echo ""
+    echo "SSH Agent: ⚠ Not found"
+    echo ""
+    echo "  SSH commit signing will not work without ssh-agent."
+    echo "  Start ssh-agent and add your key:"
+    echo "    eval \$(ssh-agent)"
+    echo "    ssh-add ~/.ssh/id_rsa"
+    echo ""
+    echo "  Or use sign=\"none\" for unsigned commits."
+  fi
+fi
+
+build_mcp_config "$SERVERS" "$SSH_AGENT_SOCKET" "${PATHS[@]}" > "$PATH_TO_CLAUDE/claude_desktop_config.json"
 
 echo ""
 echo "Configuration written to: $PATH_TO_CLAUDE/claude_desktop_config.json"

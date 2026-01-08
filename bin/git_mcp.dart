@@ -70,6 +70,9 @@ void main(List<String> arguments) async {
   stderr.writeln('Project path: ${workingDir.path}');
   stderr.writeln('Is git repository: $isGitDir');
   stderr.writeln('Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
+  if (signingInfo.sshAgentSocket != null) {
+    stderr.writeln('SSH Agent: ${signingInfo.sshAgentSocket}');
+  }
   stderr.writeln('Allowed paths:');
   for (final path in allowedPaths) {
     stderr.writeln('  - $path');
@@ -218,6 +221,176 @@ CallToolResult _textResult(String text) {
 }
 
 // =============================================================================
+// SSH Agent Support
+// =============================================================================
+
+/// Cached SSH agent socket path
+String? _cachedSshAgentSocket;
+
+/// Find the SSH agent socket
+/// 
+/// Checks in order:
+/// 1. SSH_AUTH_SOCK environment variable
+/// 2. macOS launchd socket
+/// 3. Common Linux locations
+Future<String?> _findSshAgentSocket() async {
+  if (_cachedSshAgentSocket != null) {
+    return _cachedSshAgentSocket;
+  }
+  
+  // 1. Check SSH_AUTH_SOCK environment variable
+  final envSocket = Platform.environment['SSH_AUTH_SOCK'];
+  if (envSocket != null && envSocket.isNotEmpty) {
+    // Verify the socket exists
+    final socketFile = File(envSocket);
+    if (await socketFile.exists() || await FileSystemEntity.type(envSocket) == FileSystemEntityType.unixDomainSocket) {
+      _cachedSshAgentSocket = envSocket;
+      return envSocket;
+    }
+  }
+  
+  // 2. macOS: Try launchd socket
+  if (Platform.isMacOS) {
+    try {
+      final result = await Process.run('launchctl', ['getenv', 'SSH_AUTH_SOCK']);
+      if (result.exitCode == 0) {
+        final socket = (result.stdout as String).trim();
+        if (socket.isNotEmpty && await _socketExists(socket)) {
+          _cachedSshAgentSocket = socket;
+          return socket;
+        }
+      }
+    } catch (e) {
+      // launchctl not available
+    }
+    
+    // Try common macOS locations
+    final home = Platform.environment['HOME'];
+    if (home != null) {
+      final macOsPaths = [
+        '/private/tmp/com.apple.launchd.*/Listeners', // macOS agent socket pattern
+        '$home/Library/Group Containers/*.com.apple.ssh-agent/Listeners',
+      ];
+      
+      // Check for actual socket files
+      try {
+        final tmpDir = Directory('/private/tmp');
+        if (await tmpDir.exists()) {
+          await for (final entity in tmpDir.list()) {
+            if (entity is Directory && entity.path.contains('com.apple.launchd')) {
+              final listenersDir = Directory('${entity.path}/Listeners');
+              if (await listenersDir.exists()) {
+                await for (final listener in listenersDir.list()) {
+                  if (await _socketExists(listener.path)) {
+                    _cachedSshAgentSocket = listener.path;
+                    return listener.path;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+  }
+  
+  // 3. Linux: Check common locations
+  if (Platform.isLinux) {
+    final uid = Platform.environment['UID'] ?? 
+                Platform.environment['EUID'] ?? 
+                '1000';
+    final commonPaths = [
+      '/run/user/$uid/ssh-agent.socket',
+      '/run/user/$uid/keyring/ssh',
+      '/tmp/ssh-agent-$uid/agent.sock',
+    ];
+    
+    for (final path in commonPaths) {
+      if (await _socketExists(path)) {
+        _cachedSshAgentSocket = path;
+        return path;
+      }
+    }
+    
+    // Try to find ssh-agent sockets in /tmp
+    try {
+      final tmpDir = Directory('/tmp');
+      await for (final entity in tmpDir.list()) {
+        if (entity is Directory && entity.path.contains('ssh-')) {
+          await for (final file in (entity as Directory).list()) {
+            if (file.path.contains('agent') && await _socketExists(file.path)) {
+              _cachedSshAgentSocket = file.path;
+              return file.path;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+  
+  return null;
+}
+
+/// Check if a path is a socket (or at least exists)
+Future<bool> _socketExists(String path) async {
+  try {
+    final type = await FileSystemEntity.type(path);
+    return type != FileSystemEntityType.notFound;
+  } catch (e) {
+    return false;
+  }
+}
+
+/// Check if SSH agent has identities loaded
+Future<bool> _sshAgentHasIdentities(String? socketPath) async {
+  if (socketPath == null) return false;
+  
+  try {
+    final result = await Process.run(
+      'ssh-add',
+      ['-l'],
+      environment: {
+        ...Platform.environment,
+        'SSH_AUTH_SOCK': socketPath,
+      },
+    );
+    // Exit code 0 = has identities, 1 = no identities, 2 = can't connect
+    return result.exitCode == 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+/// Get list of identities from SSH agent
+Future<List<String>> _getSshAgentIdentities(String? socketPath) async {
+  if (socketPath == null) return [];
+  
+  try {
+    final result = await Process.run(
+      'ssh-add',
+      ['-l'],
+      environment: {
+        ...Platform.environment,
+        'SSH_AUTH_SOCK': socketPath,
+      },
+    );
+    if (result.exitCode == 0) {
+      return (result.stdout as String)
+          .split('\n')
+          .where((line) => line.trim().isNotEmpty)
+          .toList();
+    }
+  } catch (e) {
+    // Ignore
+  }
+  return [];
+}
+
+// =============================================================================
 // Signing Detection and Configuration
 // =============================================================================
 
@@ -225,6 +398,8 @@ CallToolResult _textResult(String text) {
 class SigningInfo {
   final bool sshAvailable;
   final String? sshKeyPath;
+  final String? sshAgentSocket;
+  final bool sshAgentHasKey;
   final bool gpgAvailable;
   final String? gpgKeyId;
   final String defaultMethod; // 'ssh', 'gpg', or 'none'
@@ -233,6 +408,8 @@ class SigningInfo {
   SigningInfo({
     required this.sshAvailable,
     this.sshKeyPath,
+    this.sshAgentSocket,
+    required this.sshAgentHasKey,
     required this.gpgAvailable,
     this.gpgKeyId,
     required this.defaultMethod,
@@ -255,7 +432,6 @@ Future<SigningInfo> _detectSigningCapabilities() async {
     final gitVersion = await Process.run('git', ['--version']);
     if (gitVersion.exitCode == 0) {
       final versionStr = (gitVersion.stdout as String).trim();
-      // Parse version like "git version 2.43.0"
       final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
       if (match != null) {
         final major = int.parse(match.group(1)!);
@@ -267,12 +443,15 @@ Future<SigningInfo> _detectSigningCapabilities() async {
     // Git not available
   }
 
+  // Find SSH agent
+  final sshAgentSocket = await _findSshAgentSocket();
+  final sshAgentHasKey = await _sshAgentHasIdentities(sshAgentSocket);
+
   // Check for SSH keys
   bool sshAvailable = false;
   String? sshKeyPath;
   final home = Platform.environment['HOME'];
   if (home != null && gitSupportsSSH) {
-    // Check common SSH key locations in order of preference
     final sshKeyPaths = [
       '$home/.ssh/id_ed25519.pub',
       '$home/.ssh/id_ecdsa.pub',
@@ -282,7 +461,9 @@ Future<SigningInfo> _detectSigningCapabilities() async {
     for (final path in sshKeyPaths) {
       if (await File(path).exists()) {
         sshKeyPath = path;
-        sshAvailable = true;
+        // SSH is only truly available if agent has the key loaded
+        // (for passphrase-protected keys)
+        sshAvailable = sshAgentHasKey || await _isKeyUnprotected(path);
         break;
       }
     }
@@ -296,7 +477,6 @@ Future<SigningInfo> _detectSigningCapabilities() async {
     if (gpgCheck.exitCode == 0) {
       final output = gpgCheck.stdout as String;
       if (output.trim().isNotEmpty) {
-        // Extract first key ID
         final match = RegExp(r'sec\s+\w+/([A-F0-9]+)').firstMatch(output);
         if (match != null) {
           gpgKeyId = match.group(1);
@@ -308,7 +488,7 @@ Future<SigningInfo> _detectSigningCapabilities() async {
     // GPG not available
   }
 
-  // Determine default method: prefer SSH if available
+  // Determine default method
   String defaultMethod;
   if (sshAvailable) {
     defaultMethod = 'ssh';
@@ -321,6 +501,8 @@ Future<SigningInfo> _detectSigningCapabilities() async {
   _cachedSigningInfo = SigningInfo(
     sshAvailable: sshAvailable,
     sshKeyPath: sshKeyPath,
+    sshAgentSocket: sshAgentSocket,
+    sshAgentHasKey: sshAgentHasKey,
     gpgAvailable: gpgAvailable,
     gpgKeyId: gpgKeyId,
     defaultMethod: defaultMethod,
@@ -330,12 +512,30 @@ Future<SigningInfo> _detectSigningCapabilities() async {
   return _cachedSigningInfo!;
 }
 
+/// Check if an SSH key is unprotected (no passphrase)
+Future<bool> _isKeyUnprotected(String pubKeyPath) async {
+  // The private key is the public key without .pub
+  final privateKeyPath = pubKeyPath.endsWith('.pub') 
+      ? pubKeyPath.substring(0, pubKeyPath.length - 4) 
+      : pubKeyPath;
+  
+  try {
+    // Try to load the key with empty passphrase
+    final result = await Process.run(
+      'ssh-keygen',
+      ['-y', '-P', '', '-f', privateKeyPath],
+    );
+    return result.exitCode == 0;
+  } catch (e) {
+    return false;
+  }
+}
+
 /// Get the SSH key path for signing
 Future<String?> _getSSHKeyPath() async {
   final home = Platform.environment['HOME'];
   if (home == null) return null;
 
-  // Check common SSH key locations in order of preference
   final sshKeyPaths = [
     '$home/.ssh/id_ed25519.pub',
     '$home/.ssh/id_ecdsa.pub',
@@ -515,8 +715,17 @@ Future<bool> _ensureGpgAgent() async {
 }
 
 /// Build environment for git commands
-Future<Map<String, String>> _buildGitEnvironment({bool forGpgSign = false}) async {
+Future<Map<String, String>> _buildGitEnvironment({
+  bool forGpgSign = false,
+  bool forSshSign = false,
+  String? sshAgentSocket,
+}) async {
   final env = Map<String, String>.from(Platform.environment);
+  
+  // Always ensure SSH_AUTH_SOCK is set if we found an agent
+  if (sshAgentSocket != null) {
+    env['SSH_AUTH_SOCK'] = sshAgentSocket;
+  }
   
   if (forGpgSign) {
     if (!env.containsKey('GPG_TTY') || env['GPG_TTY']!.isEmpty) {
@@ -549,8 +758,14 @@ Future<ProcessResult> _runGit(
   Directory workingDir,
   List<String> args, {
   bool forGpgSign = false,
+  bool forSshSign = false,
+  String? sshAgentSocket,
 }) async {
-  final env = await _buildGitEnvironment(forGpgSign: forGpgSign);
+  final env = await _buildGitEnvironment(
+    forGpgSign: forGpgSign,
+    forSshSign: forSshSign,
+    sshAgentSocket: sshAgentSocket,
+  );
   return Process.run(
     'git',
     args,
@@ -838,12 +1053,24 @@ Future<CallToolResult> _commit(
   }
 
   // Validate requested method is available
-  if (actualMethod == 'ssh' && !signingInfo.sshAvailable) {
-    return _textResult(
-      'Error: SSH signing requested but no SSH key found.\n'
-      'Expected key at: ~/.ssh/id_ed25519.pub, ~/.ssh/id_ecdsa.pub, or ~/.ssh/id_rsa.pub\n\n'
-      'Use sign="none" to commit without signing, or sign="gpg" for GPG signing.'
-    );
+  if (actualMethod == 'ssh') {
+    if (signingInfo.sshKeyPath == null) {
+      return _textResult(
+        'Error: SSH signing requested but no SSH key found.\n'
+        'Expected key at: ~/.ssh/id_ed25519.pub, ~/.ssh/id_ecdsa.pub, or ~/.ssh/id_rsa.pub\n\n'
+        'Use sign="none" to commit without signing, or sign="gpg" for GPG signing.'
+      );
+    }
+    if (!signingInfo.sshAgentHasKey) {
+      return _textResult(
+        'Error: SSH signing requires your key to be loaded in ssh-agent.\n\n'
+        'Your key appears to be passphrase-protected. Before launching Claude, run:\n'
+        '  ssh-add ~/.ssh/id_rsa\n\n'
+        'Or use sign="none" to commit without signing.\n\n'
+        'SSH Agent Socket: ${signingInfo.sshAgentSocket ?? "not found"}\n'
+        'Keys in agent: ${signingInfo.sshAgentHasKey ? "yes" : "no"}'
+      );
+    }
   }
   if (actualMethod == 'gpg' && !signingInfo.gpgAvailable) {
     return _textResult(
@@ -855,21 +1082,21 @@ Future<CallToolResult> _commit(
 
   final args = <String>['commit'];
   bool forGpgSign = false;
+  bool forSshSign = false;
   
   switch (actualMethod) {
     case 'ssh':
-      // For SSH signing, we need to configure git temporarily
       final sshKeyPath = signingInfo.sshKeyPath ?? await _getSSHKeyPath();
       if (sshKeyPath == null) {
         return _textResult('Error: Could not find SSH key for signing');
       }
       
-      // Set up SSH signing with -c options
       args.insertAll(0, [
         '-c', 'gpg.format=ssh',
         '-c', 'user.signingkey=$sshKeyPath',
       ]);
-      args.add('-S'); // Sign the commit
+      args.add('-S');
+      forSshSign = true;
       break;
       
     case 'gpg':
@@ -885,7 +1112,13 @@ Future<CallToolResult> _commit(
   
   args.addAll(['-m', message]);
 
-  final result = await _runGit(workingDir, args, forGpgSign: forGpgSign);
+  final result = await _runGit(
+    workingDir, 
+    args, 
+    forGpgSign: forGpgSign,
+    forSshSign: forSshSign,
+    sshAgentSocket: signingInfo.sshAgentSocket,
+  );
 
   if (result.exitCode != 0) {
     final stderr = result.stderr as String;
@@ -895,6 +1128,17 @@ Future<CallToolResult> _commit(
     
     // Provide helpful error messages for signing failures
     if (actualMethod == 'ssh') {
+      if (stderr.contains('Load key') && stderr.contains('passphrase')) {
+        return _textResult(
+          'Error: SSH key requires passphrase but ssh-agent is not available.\n\n'
+          'Before launching Claude, run:\n'
+          '  ssh-add ~/.ssh/id_rsa\n\n'
+          'This will cache your passphrase in the SSH agent.\n'
+          'Then restart Claude Desktop.\n\n'
+          'Or use sign="none" to commit without signing.\n\n'
+          'Original error: ${result.stderr}'
+        );
+      }
       if (stderr.contains('error: Load key') || stderr.contains('invalid format')) {
         return _textResult(
           'Error: SSH signing failed - could not load key.\n'
@@ -1123,8 +1367,34 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
   output.writeln('   (Used when sign="auto")');
   output.writeln('');
   
-  // 3. SSH Signing Status
-  output.writeln('3. SSH Signing:');
+  // 3. SSH Agent Status
+  output.writeln('3. SSH Agent:');
+  if (signingInfo.sshAgentSocket != null) {
+    output.writeln('   ✓ Socket: ${signingInfo.sshAgentSocket}');
+    
+    final identities = await _getSshAgentIdentities(signingInfo.sshAgentSocket);
+    if (identities.isNotEmpty) {
+      output.writeln('   ✓ Keys loaded: ${identities.length}');
+      for (final identity in identities) {
+        output.writeln('     - $identity');
+      }
+    } else {
+      output.writeln('   ✗ No keys loaded in agent');
+      output.writeln('   To add your key: ssh-add ~/.ssh/id_rsa');
+    }
+  } else {
+    output.writeln('   ✗ SSH agent not found');
+    output.writeln('   The SSH_AUTH_SOCK environment variable is not set.');
+    if (Platform.isMacOS) {
+      output.writeln('   On macOS, try: ssh-add --apple-use-keychain ~/.ssh/id_rsa');
+    } else {
+      output.writeln('   Start ssh-agent: eval \$(ssh-agent) && ssh-add ~/.ssh/id_rsa');
+    }
+  }
+  output.writeln('');
+  
+  // 4. SSH Keys
+  output.writeln('4. SSH Keys:');
   final home = Platform.environment['HOME'] ?? '';
   final sshKeyPaths = [
     '$home/.ssh/id_ed25519.pub',
@@ -1140,7 +1410,6 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
       output.writeln('   $status $path (will be used for signing)');
       foundSshKey = true;
       
-      // Show key fingerprint
       try {
         final fingerprint = await Process.run('ssh-keygen', ['-lf', path]);
         if (fingerprint.exitCode == 0) {
@@ -1149,6 +1418,12 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
       } catch (e) {
         // Ignore
       }
+      
+      // Check if key needs passphrase
+      final isUnprotected = await _isKeyUnprotected(path);
+      if (!isUnprotected) {
+        output.writeln('     ⚠ Key is passphrase-protected (requires ssh-agent)');
+      }
     } else {
       output.writeln('   $status $path');
     }
@@ -1156,14 +1431,17 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
   
   if (signingInfo.sshAvailable) {
     output.writeln('   Status: ✓ Ready for SSH signing');
+  } else if (foundSshKey) {
+    output.writeln('   Status: ⚠ Key found but not loaded in ssh-agent');
+    output.writeln('   Run: ssh-add ~/.ssh/id_rsa');
   } else {
     output.writeln('   Status: ✗ No SSH key found');
-    output.writeln('   To enable: ssh-keygen -t ed25519 -C "your_email@example.com"');
+    output.writeln('   To create: ssh-keygen -t ed25519 -C "your_email@example.com"');
   }
   output.writeln('');
   
-  // 4. GPG Signing Status
-  output.writeln('4. GPG Signing:');
+  // 5. GPG Signing Status
+  output.writeln('5. GPG Signing:');
   try {
     final gpgVersion = await Process.run('gpg', ['--version']);
     if (gpgVersion.exitCode == 0) {
@@ -1176,7 +1454,6 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
     output.writeln('   ✗ GPG not found');
   }
   
-  // Check GPG keys
   try {
     final keysResult = await Process.run(
       'gpg',
@@ -1190,71 +1467,16 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
       } else {
         final keyMatches = RegExp(r'sec\s+').allMatches(keysOutput);
         output.writeln('   ✓ Found ${keyMatches.length} GPG secret key(s)');
-        
-        final lines = keysOutput.split('\n');
-        for (var i = 0; i < lines.length; i++) {
-          if (lines[i].contains('sec ')) {
-            final keyMatch = RegExp(r'sec\s+\w+/([A-F0-9]+)').firstMatch(lines[i]);
-            if (keyMatch != null) {
-              output.writeln('   - Key ID: ${keyMatch.group(1)}');
-            }
-            for (var j = i + 1; j < lines.length && j < i + 5; j++) {
-              if (lines[j].contains('uid ')) {
-                output.writeln('     ${lines[j].trim()}');
-                break;
-              }
-            }
-          }
-        }
       }
     }
   } catch (e) {
-    // Already reported GPG not found
-  }
-  
-  // Check GPG agent
-  try {
-    final agentCheck = await Process.run(
-      'gpg-connect-agent',
-      ['/bye'],
-      environment: Platform.environment,
-    );
-    if (agentCheck.exitCode == 0) {
-      output.writeln('   ✓ GPG agent is running');
-    } else {
-      output.writeln('   ? GPG agent not responding (may need: gpgconf --launch gpg-agent)');
-    }
-  } catch (e) {
-    output.writeln('   ? Could not check GPG agent');
+    // Already reported
   }
   
   if (signingInfo.gpgAvailable) {
     output.writeln('   Status: ✓ Ready for GPG signing');
   } else {
     output.writeln('   Status: ✗ GPG signing not available');
-  }
-  output.writeln('');
-  
-  // 5. Git configuration
-  output.writeln('5. Git Signing Configuration:');
-  
-  final gpgFormat = await _runGit(workingDir, ['config', '--get', 'gpg.format']);
-  output.writeln('   gpg.format: ${gpgFormat.exitCode == 0 ? (gpgFormat.stdout as String).trim() : '(not set, default: openpgp)'}');
-  
-  final signingKey = await _runGit(workingDir, ['config', '--get', 'user.signingkey']);
-  output.writeln('   user.signingkey: ${signingKey.exitCode == 0 ? (signingKey.stdout as String).trim() : '(not set)'}');
-  
-  final commitSign = await _runGit(workingDir, ['config', '--get', 'commit.gpgsign']);
-  output.writeln('   commit.gpgsign: ${commitSign.exitCode == 0 ? (commitSign.stdout as String).trim() : 'false (default)'}');
-  
-  final gpgProgram = await _runGit(workingDir, ['config', '--get', 'gpg.program']);
-  if (gpgProgram.exitCode == 0) {
-    output.writeln('   gpg.program: ${(gpgProgram.stdout as String).trim()}');
-  }
-  
-  final sshProgram = await _runGit(workingDir, ['config', '--get', 'gpg.ssh.program']);
-  if (sshProgram.exitCode == 0) {
-    output.writeln('   gpg.ssh.program: ${(sshProgram.stdout as String).trim()}');
   }
   output.writeln('');
   
@@ -1265,6 +1487,14 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
   output.writeln('   commit with sign="gpg"   - Force GPG signing');
   output.writeln('   commit with sign="none"  - No signing');
   output.writeln('');
+  
+  if (!signingInfo.sshAvailable && signingInfo.sshKeyPath != null) {
+    output.writeln('⚠ IMPORTANT: Your SSH key is passphrase-protected.');
+    output.writeln('  Before launching Claude Desktop, run:');
+    output.writeln('    ssh-add ~/.ssh/id_rsa');
+    output.writeln('  Then restart Claude Desktop to pick up the agent.');
+    output.writeln('');
+  }
   
   output.writeln('=== End of Signing Status Report ===');
   

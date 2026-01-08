@@ -338,6 +338,396 @@ void main() {
     });
   });
 
+  group('SSH Agent Signing Tests', () {
+    late Directory tempDir;
+    late Directory repoDir;
+    late Directory sshDir;
+    late String sshKeyPath;
+    late String sshAgentSocket;
+    late int sshAgentPid;
+    late bool gitSupportsSSH;
+    late bool sshAgentStarted;
+    
+    const testPassphrase = 'test-passphrase-123';
+
+    setUpAll(() async {
+      // Check git version for SSH signing support (requires 2.34+)
+      final gitVersion = await Process.run('git', ['--version']);
+      if (gitVersion.exitCode == 0) {
+        final versionStr = (gitVersion.stdout as String).trim();
+        final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
+        if (match != null) {
+          final major = int.parse(match.group(1)!);
+          final minor = int.parse(match.group(2)!);
+          gitSupportsSSH = major > 2 || (major == 2 && minor >= 34);
+        } else {
+          gitSupportsSSH = false;
+        }
+        print('Git version: $versionStr (SSH signing: ${gitSupportsSSH ? "supported" : "not supported"})');
+      } else {
+        gitSupportsSSH = false;
+      }
+    });
+
+    setUp(() async {
+      sshAgentStarted = false;
+      
+      if (!gitSupportsSSH) return;
+      
+      tempDir = await Directory.systemTemp.createTemp('git_ssh_agent_test_');
+      repoDir = Directory(p.join(tempDir.path, 'test_repo'));
+      sshDir = Directory(p.join(tempDir.path, 'ssh'));
+      await repoDir.create();
+      await sshDir.create();
+      
+      // Generate a test SSH key WITH passphrase
+      sshKeyPath = p.join(sshDir.path, 'id_ed25519');
+      var keygenResult = await Process.run(
+        'ssh-keygen',
+        ['-t', 'ed25519', '-f', sshKeyPath, '-N', testPassphrase, '-C', 'test@example.com'],
+      );
+      
+      if (keygenResult.exitCode != 0) {
+        print('Failed to generate SSH key with passphrase: ${keygenResult.stderr}');
+        return;
+      }
+      
+      print('Generated passphrase-protected SSH key: $sshKeyPath');
+      
+      // Start a temporary ssh-agent
+      final agentResult = await Process.run('ssh-agent', ['-s']);
+      if (agentResult.exitCode != 0) {
+        print('Failed to start ssh-agent: ${agentResult.stderr}');
+        return;
+      }
+      
+      // Parse ssh-agent output to get SSH_AUTH_SOCK and SSH_AGENT_PID
+      // Output format: SSH_AUTH_SOCK=/tmp/ssh-xxx/agent.xxx; export SSH_AUTH_SOCK;
+      //                SSH_AGENT_PID=12345; export SSH_AGENT_PID;
+      final agentOutput = agentResult.stdout as String;
+      final sockMatch = RegExp(r'SSH_AUTH_SOCK=([^;]+)').firstMatch(agentOutput);
+      final pidMatch = RegExp(r'SSH_AGENT_PID=(\d+)').firstMatch(agentOutput);
+      
+      if (sockMatch == null || pidMatch == null) {
+        print('Failed to parse ssh-agent output: $agentOutput');
+        return;
+      }
+      
+      sshAgentSocket = sockMatch.group(1)!;
+      sshAgentPid = int.parse(pidMatch.group(1)!);
+      sshAgentStarted = true;
+      
+      print('Started ssh-agent (PID: $sshAgentPid, socket: $sshAgentSocket)');
+      
+      // Add the key to the agent using SSH_ASKPASS
+      // Create a temporary script that echoes the passphrase
+      final askpassScript = File(p.join(tempDir.path, 'askpass.sh'));
+      await askpassScript.writeAsString('#!/bin/sh\necho "$testPassphrase"');
+      await Process.run('chmod', ['+x', askpassScript.path]);
+      
+      // Add key to agent
+      final addResult = await Process.run(
+        'ssh-add',
+        [sshKeyPath],
+        environment: {
+          ...Platform.environment,
+          'SSH_AUTH_SOCK': sshAgentSocket,
+          'SSH_ASKPASS': askpassScript.path,
+          'SSH_ASKPASS_REQUIRE': 'force',
+          'DISPLAY': ':0', // Required for SSH_ASKPASS to work
+        },
+      );
+      
+      if (addResult.exitCode != 0) {
+        print('Failed to add key to agent: ${addResult.stderr}');
+        // Try alternative method using expect-like approach
+        print('Trying alternative method...');
+      } else {
+        print('Added key to ssh-agent');
+      }
+      
+      // Verify key was added
+      final listResult = await Process.run(
+        'ssh-add',
+        ['-l'],
+        environment: {
+          'SSH_AUTH_SOCK': sshAgentSocket,
+        },
+      );
+      print('Keys in agent: ${listResult.stdout}');
+      
+      // Initialize git repo
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['config', 'user.email', 'test@example.com'],
+        workingDirectory: repoDir.path,
+      );
+      await Process.run(
+        'git', ['config', 'user.name', 'Test User'],
+        workingDirectory: repoDir.path,
+      );
+    });
+
+    tearDown(() async {
+      // Kill the ssh-agent
+      if (sshAgentStarted) {
+        try {
+          await Process.run('kill', [sshAgentPid.toString()]);
+          print('Killed ssh-agent (PID: $sshAgentPid)');
+        } catch (e) {
+          print('Failed to kill ssh-agent: $e');
+        }
+      }
+      
+      if (!gitSupportsSSH) return;
+      
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('can start ssh-agent and add passphrase-protected key', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      if (!sshAgentStarted) {
+        markTestSkipped('ssh-agent could not be started');
+        return;
+      }
+      
+      // Verify agent is running
+      final listResult = await Process.run(
+        'ssh-add',
+        ['-l'],
+        environment: {
+          'SSH_AUTH_SOCK': sshAgentSocket,
+        },
+      );
+      
+      print('ssh-add -l exit code: ${listResult.exitCode}');
+      print('ssh-add -l stdout: ${listResult.stdout}');
+      print('ssh-add -l stderr: ${listResult.stderr}');
+      
+      // Exit code 0 means keys are loaded, 1 means no keys
+      expect(listResult.exitCode, anyOf(0, 1), 
+          reason: 'ssh-agent should be accessible');
+    });
+
+    test('can sign commits using ssh-agent with passphrase-protected key', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      if (!sshAgentStarted) {
+        markTestSkipped('ssh-agent could not be started');
+        return;
+      }
+      
+      // Check if key is in agent
+      final listResult = await Process.run(
+        'ssh-add',
+        ['-l'],
+        environment: {
+          'SSH_AUTH_SOCK': sshAgentSocket,
+        },
+      );
+      
+      if (listResult.exitCode != 0) {
+        // Key not in agent - try to add it using expect
+        print('Key not in agent, trying to add via expect...');
+        
+        // Check if expect is available
+        final expectCheck = await Process.run('which', ['expect']);
+        if (expectCheck.exitCode != 0) {
+          markTestSkipped('expect not available and key not in agent');
+          return;
+        }
+        
+        // Create expect script to add key
+        final expectScript = '''
+#!/usr/bin/expect -f
+spawn ssh-add $sshKeyPath
+expect "Enter passphrase"
+send "$testPassphrase\\r"
+expect eof
+''';
+        final expectFile = File(p.join(tempDir.path, 'add_key.exp'));
+        await expectFile.writeAsString(expectScript);
+        await Process.run('chmod', ['+x', expectFile.path]);
+        
+        final addResult = await Process.run(
+          expectFile.path,
+          [],
+          environment: {
+            ...Platform.environment,
+            'SSH_AUTH_SOCK': sshAgentSocket,
+          },
+        );
+        
+        print('expect script result: ${addResult.exitCode}');
+        print('expect stdout: ${addResult.stdout}');
+        print('expect stderr: ${addResult.stderr}');
+        
+        // Verify key was added
+        final verifyResult = await Process.run(
+          'ssh-add',
+          ['-l'],
+          environment: {
+            'SSH_AUTH_SOCK': sshAgentSocket,
+          },
+        );
+        
+        if (verifyResult.exitCode != 0) {
+          markTestSkipped('Could not add passphrase-protected key to agent');
+          return;
+        }
+      }
+      
+      // Create a file
+      final testFile = File(p.join(repoDir.path, 'agent_signed.txt'));
+      await testFile.writeAsString('This commit uses ssh-agent for signing\n');
+      
+      // Stage the file
+      var result = await Process.run(
+        'git', ['add', 'agent_signed.txt'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      
+      // Commit with SSH signing via agent
+      // The key point: we pass SSH_AUTH_SOCK to git, and it uses the agent
+      result = await Process.run(
+        'git',
+        [
+          '-c', 'gpg.format=ssh',
+          '-c', 'user.signingkey=$sshKeyPath.pub',
+          'commit', '-S', '-m', 'Commit signed via ssh-agent'
+        ],
+        workingDirectory: repoDir.path,
+        environment: {
+          ...Platform.environment,
+          'SSH_AUTH_SOCK': sshAgentSocket,
+        },
+      );
+      
+      print('SSH agent commit stdout: ${result.stdout}');
+      print('SSH agent commit stderr: ${result.stderr}');
+      
+      expect(result.exitCode, 0, reason: 'SSH-signed commit via agent failed: ${result.stderr}');
+      
+      // Verify the commit exists
+      result = await Process.run(
+        'git', ['log', '--oneline'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.stdout, contains('Commit signed via ssh-agent'));
+      
+      // Show signature
+      result = await Process.run(
+        'git', ['log', '--show-signature', '-1'],
+        workingDirectory: repoDir.path,
+        environment: {
+          'SSH_AUTH_SOCK': sshAgentSocket,
+        },
+      );
+      print('Commit signature info:\n${result.stdout}${result.stderr}');
+    });
+
+    test('SSH signing fails without agent for passphrase-protected key', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      if (!sshAgentStarted) {
+        markTestSkipped('ssh-agent could not be started');
+        return;
+      }
+      
+      // Create a file
+      final testFile = File(p.join(repoDir.path, 'test_no_agent.txt'));
+      await testFile.writeAsString('Test without agent\n');
+      
+      await Process.run(
+        'git', ['add', 'test_no_agent.txt'],
+        workingDirectory: repoDir.path,
+      );
+      
+      // Try to sign WITHOUT passing SSH_AUTH_SOCK
+      // This should fail because the key has a passphrase
+      final result = await Process.run(
+        'git',
+        [
+          '-c', 'gpg.format=ssh',
+          '-c', 'user.signingkey=$sshKeyPath.pub',
+          'commit', '-S', '-m', 'This should fail without agent'
+        ],
+        workingDirectory: repoDir.path,
+        environment: {
+          // Explicitly remove SSH_AUTH_SOCK to simulate Claude Desktop without agent
+          'HOME': Platform.environment['HOME'] ?? '/tmp',
+          'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
+          'USER': Platform.environment['USER'] ?? 'test',
+          // No SSH_AUTH_SOCK!
+        },
+      );
+      
+      print('Expected failure (no agent) stderr: ${result.stderr}');
+      
+      // Should fail because key requires passphrase but no agent
+      expect(result.exitCode, isNot(0), 
+          reason: 'Commit should fail without SSH_AUTH_SOCK for passphrase-protected key');
+      expect(result.stderr, contains('passphrase'),
+          reason: 'Error should mention passphrase');
+    });
+
+    test('verifies SSH_AUTH_SOCK environment passing', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      if (!sshAgentStarted) {
+        markTestSkipped('ssh-agent could not be started');
+        return;
+      }
+      
+      // This test verifies that passing SSH_AUTH_SOCK works correctly
+      // It simulates what claude.sh does when passing env to the MCP server
+      
+      final envWithAgent = {
+        ...Platform.environment,
+        'SSH_AUTH_SOCK': sshAgentSocket,
+      };
+      
+      final envWithoutAgent = {
+        'HOME': Platform.environment['HOME'] ?? '/tmp',
+        'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
+        'USER': Platform.environment['USER'] ?? 'test',
+        // No SSH_AUTH_SOCK
+      };
+      
+      // With agent socket - should list keys
+      var result = await Process.run(
+        'ssh-add', ['-l'],
+        environment: envWithAgent,
+      );
+      print('With SSH_AUTH_SOCK: exit=${result.exitCode}, keys=${result.stdout}');
+      expect(result.exitCode, anyOf(0, 1)); // 0 = keys, 1 = no keys, both OK
+      
+      // Without agent socket - should fail to connect
+      result = await Process.run(
+        'ssh-add', ['-l'],
+        environment: envWithoutAgent,
+      );
+      print('Without SSH_AUTH_SOCK: exit=${result.exitCode}, stderr=${result.stderr}');
+      expect(result.exitCode, 2, reason: 'Should fail to connect without SSH_AUTH_SOCK');
+    });
+  });
+
   group('GPG Signing Tests', () {
     late Directory tempDir;
     late Directory repoDir;
