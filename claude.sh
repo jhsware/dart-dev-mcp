@@ -19,6 +19,7 @@ DEFAULT_ALLOWED_PATHS=(
   "./.gitignore"
   "./.github"
   "git:./macos"
+  "git:./pubspec.lock"
 )
 
 __help_text__=$(cat <<EOF
