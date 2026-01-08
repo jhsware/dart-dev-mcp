@@ -85,5 +85,18 @@ void main() {
         contains('Git MCP Server running on stdio'),
       );
     });
+
+    test('planner_mcp starts successfully', () async {
+      final (process, stderrBuffer) = await startServer(
+        'bin/planner_mcp.dart',
+        ['--project-dir=.'],
+      );
+      await stopServer(process);
+
+      expect(
+        stderrBuffer.toString(),
+        contains('Planner MCP Server running on stdio'),
+      );
+    });
   });
 }

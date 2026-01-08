@@ -9,6 +9,7 @@ const serverScripts = [
   'bin/dart_runner_mcp.dart',
   'bin/flutter_runner_mcp.dart',
   'bin/git_mcp.dart',
+  'bin/planner_mcp.dart',
 ];
 
 /// Compiles a Dart script to kernel format (.dill) for faster execution.
