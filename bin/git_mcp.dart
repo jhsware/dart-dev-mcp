@@ -187,11 +187,6 @@ Operations:
           'type': 'integer',
           'description': 'Maximum number of commits to show (for log). Default: 10',
         },
-        'no_ff': {
-          'type': 'boolean',
-          'description':
-              'Create a merge commit even for fast-forward merges. Default: false',
-        },
       },
     ),
     callback: ({args, extra}) =>
@@ -586,8 +581,7 @@ Future<CallToolResult> _handleGit(
         return _branchSwitch(workingDir, branch);
       case 'merge':
         final branch = args?['branch'] as String?;
-        final noFf = args?['no_ff'] as bool? ?? false;
-        return _merge(workingDir, branch, noFf);
+        return _merge(workingDir, branch);
       case 'add':
         final files = _getFilesArg(args);
         final all = args?['all'] as bool? ?? false;
@@ -847,34 +841,80 @@ Future<CallToolResult> _branchSwitch(
   return _textResult('Switched to branch: $branch');
 }
 
-/// Merge a branch
+/// Merge a branch (always creates a merge commit, never fast-forward or rebase)
+/// 
+/// This ensures proper merge history is maintained. If the current branch has
+/// no commits yet, an empty initial commit is created first to enable a proper merge.
 Future<CallToolResult> _merge(
   Directory workingDir,
   String? branch,
-  bool noFf,
 ) async {
   if (branch == null || branch.isEmpty) {
     return _textResult('Error: branch name is required');
   }
 
-  final args = ['merge'];
-  if (noFf) {
-    args.add('--no-ff');
+  // Check if current branch has any commits
+  final hasCommits = await _branchHasCommits(workingDir);
+  
+  if (!hasCommits) {
+    // Create an empty initial commit to enable proper merge
+    // This ensures we get a real merge commit, not just moving the branch pointer
+    final initResult = await _runGit(workingDir, [
+      'commit', '--allow-empty', '-m', 'Initial commit (created for merge)'
+    ]);
+    
+    if (initResult.exitCode != 0) {
+      return _textResult(
+        'Error: Current branch has no commits and failed to create initial commit.\n'
+        'Error: ${initResult.stderr}'
+      );
+    }
   }
-  args.add(branch);
+
+  // Always use --no-ff to ensure a merge commit is created
+  // This prevents fast-forward merges which would just move the branch pointer
+  final args = ['merge', '--no-ff', branch];
 
   final result = await _runGit(workingDir, args);
 
   if (result.exitCode != 0) {
     final stderr = result.stderr as String;
-    if (stderr.contains('CONFLICT')) {
+    final stdout = result.stdout as String;
+    
+    if (stderr.contains('CONFLICT') || stdout.contains('CONFLICT')) {
       return _textResult(
-          'Merge conflict detected. Resolve conflicts and commit.\n\n${result.stdout}\n${result.stderr}');
+          'Merge conflict detected. Resolve conflicts and commit.\n\n$stdout\n$stderr');
     }
-    return _textResult('Error merging: ${result.stderr}');
+    
+    // Handle case where branches have unrelated histories
+    if (stderr.contains('refusing to merge unrelated histories')) {
+      // Retry with --allow-unrelated-histories
+      final retryArgs = ['merge', '--no-ff', '--allow-unrelated-histories', branch];
+      final retryResult = await _runGit(workingDir, retryArgs);
+      
+      if (retryResult.exitCode != 0) {
+        final retryStderr = retryResult.stderr as String;
+        final retryStdout = retryResult.stdout as String;
+        if (retryStderr.contains('CONFLICT') || retryStdout.contains('CONFLICT')) {
+          return _textResult(
+              'Merge conflict detected. Resolve conflicts and commit.\n\n$retryStdout\n$retryStderr');
+        }
+        return _textResult('Error merging: $retryStderr');
+      }
+      
+      return _textResult('Merged $branch into current branch (with unrelated histories)\n\n${retryResult.stdout}');
+    }
+    
+    return _textResult('Error merging: $stderr');
   }
 
   return _textResult('Merged $branch into current branch\n\n${result.stdout}');
+}
+
+/// Check if the current branch has any commits
+Future<bool> _branchHasCommits(Directory workingDir) async {
+  final result = await _runGit(workingDir, ['rev-parse', 'HEAD']);
+  return result.exitCode == 0;
 }
 
 /// Check if a path is within the allowed paths
