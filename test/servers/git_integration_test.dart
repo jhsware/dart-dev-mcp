@@ -666,12 +666,14 @@ expect eof
           '-c', 'user.signingkey=$sshKeyPath.pub',
           'commit', '-S', '-m', 'This should fail without agent'
         ],
+        includeParentEnvironment: false,
         workingDirectory: repoDir.path,
         environment: {
-          // Explicitly remove SSH_AUTH_SOCK to simulate Claude Desktop without agent
           'HOME': Platform.environment['HOME'] ?? '/tmp',
           'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
           'USER': Platform.environment['USER'] ?? 'test',
+          'SSH_ASKPASS': '/bin/false',  // Use false to immediately fail password prompts
+          'SSH_ASKPASS_REQUIRE': 'force',  // Force SSH to prompt for passphrase using SSH_ASKPASS
           // No SSH_AUTH_SOCK!
         },
       );
@@ -722,6 +724,7 @@ expect eof
       // Without agent socket - should fail to connect
       result = await Process.run(
         'ssh-add', ['-l'],
+        includeParentEnvironment: false,
         environment: envWithoutAgent,
       );
       print('Without SSH_AUTH_SOCK: exit=${result.exitCode}, stderr=${result.stderr}');
