@@ -449,6 +449,12 @@ Expire-Date: 0
         'GPG_TTY': '/dev/tty',
       };
       
+      // Configure git for GPG signing
+      await Process.run(
+        'git', ['config', 'gpg.format', 'openpgp'],  // Explicitly use GPG, not SSH
+        workingDirectory: repoDir.path,
+        environment: gpgEnv,
+      );
       await Process.run(
         'git', ['config', 'user.signingkey', testKeyId!],
         workingDirectory: repoDir.path,
@@ -473,7 +479,7 @@ Expire-Date: 0
       expect(result.exitCode, 0);
       
       result = await Process.run(
-        'git', ['commit', '--gpg-sign=$testKeyId', '-m', 'GPG signed commit'],
+        'git', ['commit', '-S', '-m', 'GPG signed commit'],
         workingDirectory: repoDir.path,
         environment: gpgEnv,
       );
