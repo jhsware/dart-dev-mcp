@@ -10,8 +10,8 @@ in pkgs.mkShell rec {
   buildInputs = with pkgs; [    
     pkgs.dart
     pkgs.openssl
-    pkgs.gnupg      # For GPG commit signing
-    pkgs.pinentry   # For GPG passphrase entry
+    pkgs.gnupg           # For GPG commit signing
+    pkgs.pinentry-curses # For GPG passphrase entry (terminal-based)
   ] ++ (if !isMacOS then [
     pkgs.openssh
   ] else []);
