@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 /// Git MCP Server
 ///
 /// Provides Git operations for version control with path restrictions.
+/// Supports SSH and GPG commit signing.
 ///
 /// Usage: `dart run bin/git_mcp.dart --project-dir=PATH [allowed_paths...]`
 void main(List<String> arguments) async {
@@ -62,9 +63,13 @@ void main(List<String> arguments) async {
     stderr.writeln('Some operations may fail.');
   }
 
+  // Detect available signing methods
+  final signingInfo = await _detectSigningCapabilities();
+  
   stderr.writeln('Git MCP Server starting...');
   stderr.writeln('Project path: ${workingDir.path}');
   stderr.writeln('Is git repository: $isGitDir');
+  stderr.writeln('Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
   stderr.writeln('Allowed paths:');
   for (final path in allowedPaths) {
     stderr.writeln('  - $path');
@@ -82,7 +87,7 @@ void main(List<String> arguments) async {
   // Register the git tool
   server.tool(
     'git',
-    description: '''Git version control operations.
+    description: '''Git version control operations with SSH/GPG signing support.
 
 Operations:
 - status: Show working tree status
@@ -91,7 +96,7 @@ Operations:
 - branch-switch: Switch to a branch
 - merge: Merge a branch into current branch
 - add: Stage files for commit (supports untracked files, use all=true for all changes)
-- commit: Commit staged changes
+- commit: Commit staged changes (supports SSH and GPG signing)
 - stash: Stash current changes (use include_untracked=true for new files)
 - stash-list: List all stashes
 - stash-apply: Apply a stash
@@ -99,7 +104,8 @@ Operations:
 - tag-create: Create a new tag
 - tag-list: List all tags
 - log: Show commit history
-- diff: Show changes''',
+- diff: Show changes
+- signing-status: Check SSH/GPG signing configuration and status''',
     toolInputSchema: ToolInputSchema(
       properties: {
         'operation': {
@@ -121,6 +127,7 @@ Operations:
             'tag-list',
             'log',
             'diff',
+            'signing-status',
           ],
         },
         'branch': {
@@ -147,6 +154,12 @@ Operations:
         'message': {
           'type': 'string',
           'description': 'Commit or stash message (for commit, stash, tag-create)',
+        },
+        'sign': {
+          'type': 'string',
+          'description':
+              'Signing method for commit: "auto" (default - uses SSH if available, else GPG if available, else none), "ssh", "gpg", or "none"',
+          'enum': ['auto', 'ssh', 'gpg', 'none'],
         },
         'stash_index': {
           'type': 'integer',
@@ -179,7 +192,7 @@ Operations:
       },
     ),
     callback: ({args, extra}) =>
-        _handleGit(args, workingDir, allowedPaths),
+        _handleGit(args, workingDir, allowedPaths, signingInfo),
   );
 
   final transport = StdioServerTransport();
@@ -204,10 +217,149 @@ CallToolResult _textResult(String text) {
   );
 }
 
+// =============================================================================
+// Signing Detection and Configuration
+// =============================================================================
+
+/// Information about available signing methods
+class SigningInfo {
+  final bool sshAvailable;
+  final String? sshKeyPath;
+  final bool gpgAvailable;
+  final String? gpgKeyId;
+  final String defaultMethod; // 'ssh', 'gpg', or 'none'
+  final bool gitSupportsSSH; // Git 2.34+
+
+  SigningInfo({
+    required this.sshAvailable,
+    this.sshKeyPath,
+    required this.gpgAvailable,
+    this.gpgKeyId,
+    required this.defaultMethod,
+    required this.gitSupportsSSH,
+  });
+}
+
+/// Cached signing info
+SigningInfo? _cachedSigningInfo;
+
+/// Detect available signing capabilities
+Future<SigningInfo> _detectSigningCapabilities() async {
+  if (_cachedSigningInfo != null) {
+    return _cachedSigningInfo!;
+  }
+
+  // Check git version for SSH signing support (requires 2.34+)
+  bool gitSupportsSSH = false;
+  try {
+    final gitVersion = await Process.run('git', ['--version']);
+    if (gitVersion.exitCode == 0) {
+      final versionStr = (gitVersion.stdout as String).trim();
+      // Parse version like "git version 2.43.0"
+      final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
+      if (match != null) {
+        final major = int.parse(match.group(1)!);
+        final minor = int.parse(match.group(2)!);
+        gitSupportsSSH = major > 2 || (major == 2 && minor >= 34);
+      }
+    }
+  } catch (e) {
+    // Git not available
+  }
+
+  // Check for SSH keys
+  bool sshAvailable = false;
+  String? sshKeyPath;
+  final home = Platform.environment['HOME'];
+  if (home != null && gitSupportsSSH) {
+    // Check common SSH key locations in order of preference
+    final sshKeyPaths = [
+      '$home/.ssh/id_ed25519.pub',
+      '$home/.ssh/id_ecdsa.pub',
+      '$home/.ssh/id_rsa.pub',
+    ];
+    
+    for (final path in sshKeyPaths) {
+      if (await File(path).exists()) {
+        sshKeyPath = path;
+        sshAvailable = true;
+        break;
+      }
+    }
+  }
+
+  // Check for GPG
+  bool gpgAvailable = false;
+  String? gpgKeyId;
+  try {
+    final gpgCheck = await Process.run('gpg', ['--list-secret-keys', '--keyid-format', 'LONG']);
+    if (gpgCheck.exitCode == 0) {
+      final output = gpgCheck.stdout as String;
+      if (output.trim().isNotEmpty) {
+        // Extract first key ID
+        final match = RegExp(r'sec\s+\w+/([A-F0-9]+)').firstMatch(output);
+        if (match != null) {
+          gpgKeyId = match.group(1);
+          gpgAvailable = true;
+        }
+      }
+    }
+  } catch (e) {
+    // GPG not available
+  }
+
+  // Determine default method: prefer SSH if available
+  String defaultMethod;
+  if (sshAvailable) {
+    defaultMethod = 'ssh';
+  } else if (gpgAvailable) {
+    defaultMethod = 'gpg';
+  } else {
+    defaultMethod = 'none';
+  }
+
+  _cachedSigningInfo = SigningInfo(
+    sshAvailable: sshAvailable,
+    sshKeyPath: sshKeyPath,
+    gpgAvailable: gpgAvailable,
+    gpgKeyId: gpgKeyId,
+    defaultMethod: defaultMethod,
+    gitSupportsSSH: gitSupportsSSH,
+  );
+
+  return _cachedSigningInfo!;
+}
+
+/// Get the SSH key path for signing
+Future<String?> _getSSHKeyPath() async {
+  final home = Platform.environment['HOME'];
+  if (home == null) return null;
+
+  // Check common SSH key locations in order of preference
+  final sshKeyPaths = [
+    '$home/.ssh/id_ed25519.pub',
+    '$home/.ssh/id_ecdsa.pub',
+    '$home/.ssh/id_rsa.pub',
+  ];
+
+  for (final path in sshKeyPaths) {
+    if (await File(path).exists()) {
+      return path;
+    }
+  }
+
+  return null;
+}
+
+// =============================================================================
+// Main Handler
+// =============================================================================
+
 Future<CallToolResult> _handleGit(
   Map<String, dynamic>? args,
   Directory workingDir,
   List<String> allowedPaths,
+  SigningInfo signingInfo,
 ) async {
   final operation = args?['operation'] as String?;
 
@@ -216,7 +368,7 @@ Future<CallToolResult> _handleGit(
   }
 
   // Verify it's a git directory for most operations
-  if (operation != 'status') {
+  if (operation != 'status' && operation != 'signing-status') {
     final isGitDir = await GitDir.isGitDir(workingDir.path);
     if (!isGitDir) {
       return _textResult(
@@ -247,7 +399,8 @@ Future<CallToolResult> _handleGit(
         return _add(workingDir, files, allowedPaths, all: all);
       case 'commit':
         final message = args?['message'] as String?;
-        return _commit(workingDir, message);
+        final sign = args?['sign'] as String? ?? 'auto';
+        return _commit(workingDir, message, sign: sign, signingInfo: signingInfo);
       case 'stash':
         final message = args?['message'] as String?;
         final includeUntracked = args?['include_untracked'] as bool? ?? false;
@@ -272,6 +425,8 @@ Future<CallToolResult> _handleGit(
         return _log(workingDir, maxCount);
       case 'diff':
         return _diff(workingDir);
+      case 'signing-status':
+        return _signingStatus(workingDir, signingInfo);
       default:
         return _textResult('Error: Unknown operation: $operation');
     }
@@ -288,19 +443,125 @@ List<String>? _getFilesArg(Map<String, dynamic>? args) {
   return null;
 }
 
+// =============================================================================
+// GPG Support Functions
+// =============================================================================
+
+/// Cached GPG agent socket path
+String? _gpgAgentSocket;
+
+/// Find the GPG agent socket path
+Future<String?> _findGpgAgentSocket() async {
+  if (_gpgAgentSocket != null) {
+    return _gpgAgentSocket;
+  }
+  
+  try {
+    final result = await Process.run('gpgconf', ['--list-dirs', 'agent-socket']);
+    if (result.exitCode == 0) {
+      final socket = (result.stdout as String).trim();
+      if (socket.isNotEmpty && await File(socket).exists()) {
+        _gpgAgentSocket = socket;
+        return socket;
+      }
+    }
+  } catch (e) {
+    // gpgconf not available
+  }
+  
+  final home = Platform.environment['HOME'];
+  if (home != null) {
+    final commonPaths = [
+      '$home/.gnupg/S.gpg-agent',
+      '/run/user/${Platform.environment['UID'] ?? '1000'}/gnupg/S.gpg-agent',
+    ];
+    
+    for (final path in commonPaths) {
+      if (await File(path).exists()) {
+        _gpgAgentSocket = path;
+        return path;
+      }
+    }
+  }
+  
+  return null;
+}
+
+/// Ensure gpg-agent is running
+Future<bool> _ensureGpgAgent() async {
+  try {
+    final result = await Process.run(
+      'gpg-connect-agent', 
+      ['/bye'],
+      environment: Platform.environment,
+    );
+    if (result.exitCode == 0) {
+      return true;
+    }
+  } catch (e) {
+    // Agent not running
+  }
+  
+  try {
+    final result = await Process.run(
+      'gpgconf', 
+      ['--launch', 'gpg-agent'],
+      environment: Platform.environment,
+    );
+    return result.exitCode == 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+/// Build environment for git commands
+Future<Map<String, String>> _buildGitEnvironment({bool forGpgSign = false}) async {
+  final env = Map<String, String>.from(Platform.environment);
+  
+  if (forGpgSign) {
+    if (!env.containsKey('GPG_TTY') || env['GPG_TTY']!.isEmpty) {
+      env['GPG_TTY'] = '/dev/tty';
+    }
+    
+    if (!env.containsKey('GNUPGHOME')) {
+      final home = env['HOME'];
+      if (home != null) {
+        final gnupgHome = '$home/.gnupg';
+        if (await Directory(gnupgHome).exists()) {
+          env['GNUPGHOME'] = gnupgHome;
+        }
+      }
+    }
+    
+    final socket = await _findGpgAgentSocket();
+    if (socket != null && !env.containsKey('GPG_AGENT_INFO')) {
+      env['GPG_AGENT_INFO'] = '$socket:0:1';
+    }
+    
+    await _ensureGpgAgent();
+  }
+  
+  return env;
+}
+
 /// Run a git command and return the result
 Future<ProcessResult> _runGit(
   Directory workingDir,
-  List<String> args,
-) async {
+  List<String> args, {
+  bool forGpgSign = false,
+}) async {
+  final env = await _buildGitEnvironment(forGpgSign: forGpgSign);
   return Process.run(
     'git',
     args,
     workingDirectory: workingDir.path,
-    // Inherit environment variables (SSH_AUTH_SOCK, GPG_TTY, etc.)
-    environment: Platform.environment,
+    environment: env,
   );
 }
+
+// =============================================================================
+// Git Operations
+// =============================================================================
 
 /// Get git status
 Future<CallToolResult> _gitStatus(Directory workingDir) async {
@@ -413,14 +674,10 @@ bool _isAllowedPath(List<String> allowedPaths, String path) {
   return allowedPaths.any((String allowedRoot) {
     final normalizedRoot = p.normalize(allowedRoot);
     
-    // Exact match
     if (normalizedPath == normalizedRoot) {
       return true;
     }
     
-    // Check if path is a child of the allowed root
-    // Ensure we match complete path segments (not partial names)
-    // e.g., /lib should match /lib/models but NOT /library
     final rootWithSep = normalizedRoot.endsWith(p.separator) 
         ? normalizedRoot 
         : normalizedRoot + p.separator;
@@ -437,7 +694,6 @@ Future<CallToolResult> _add(
   bool all = false,
 }) async {
   if (all) {
-    // For 'all', we need to get the list of changed files and filter them
     final statusResult = await _runGit(workingDir, ['status', '--porcelain']);
     if (statusResult.exitCode != 0) {
       return _textResult('Error getting status: ${statusResult.stderr}');
@@ -448,23 +704,18 @@ Future<CallToolResult> _add(
       return _textResult('Nothing to stage');
     }
 
-    // Parse status output to get file paths
-    // Format: XY filename or XY "filename" for paths with spaces
     final filesToAdd = <String>[];
     final deniedFiles = <String>[];
     
     for (final line in statusOutput.split('\n')) {
       if (line.length < 3) continue;
       
-      // Extract filename (starts at position 3)
       var fileName = line.substring(3);
       
-      // Handle renamed files: "old -> new"
       if (fileName.contains(' -> ')) {
         fileName = fileName.split(' -> ').last;
       }
       
-      // Remove quotes if present
       if (fileName.startsWith('"') && fileName.endsWith('"')) {
         fileName = fileName.substring(1, fileName.length - 1);
       }
@@ -509,18 +760,15 @@ Future<CallToolResult> _add(
     return _textResult(output.toString().trim());
   }
   
-  // Specific files mode
   if (files == null || files.isEmpty) {
     return _textResult(
         'Error: files is required. Use ["."] to stage all allowed files, or set all=true.');
   }
 
-  // Validate each file path
   final filesToAdd = <String>[];
   final deniedFiles = <String>[];
   
   for (final file in files) {
-    // Handle "." specially - means all files, switch to 'all' mode
     if (file == '.') {
       return _add(workingDir, null, allowedPaths, all: true);
     }
@@ -564,24 +812,135 @@ Future<CallToolResult> _add(
   return _textResult(output.toString().trim());
 }
 
-/// Commit changes
-Future<CallToolResult> _commit(Directory workingDir, String? message) async {
+/// Commit changes with optional signing
+/// 
+/// Sign parameter:
+/// - 'auto': Use SSH if available, else GPG if available, else no signing
+/// - 'ssh': Force SSH signing (requires SSH key)
+/// - 'gpg': Force GPG signing (requires GPG key and agent)
+/// - 'none': No signing
+Future<CallToolResult> _commit(
+  Directory workingDir,
+  String? message, {
+  required String sign,
+  required SigningInfo signingInfo,
+}) async {
   if (message == null || message.isEmpty) {
     return _textResult('Error: commit message is required');
   }
 
-  // Use --no-gpg-sign to avoid GPG agent issues in restricted environments
-  final result = await _runGit(workingDir, ['commit', '--no-gpg-sign', '-m', message]);
+  // Determine actual signing method
+  String actualMethod;
+  if (sign == 'auto') {
+    actualMethod = signingInfo.defaultMethod;
+  } else {
+    actualMethod = sign;
+  }
+
+  // Validate requested method is available
+  if (actualMethod == 'ssh' && !signingInfo.sshAvailable) {
+    return _textResult(
+      'Error: SSH signing requested but no SSH key found.\n'
+      'Expected key at: ~/.ssh/id_ed25519.pub, ~/.ssh/id_ecdsa.pub, or ~/.ssh/id_rsa.pub\n\n'
+      'Use sign="none" to commit without signing, or sign="gpg" for GPG signing.'
+    );
+  }
+  if (actualMethod == 'gpg' && !signingInfo.gpgAvailable) {
+    return _textResult(
+      'Error: GPG signing requested but no GPG key found.\n'
+      'Run "gpg --list-secret-keys" to check your keys.\n\n'
+      'Use sign="none" to commit without signing, or sign="ssh" for SSH signing.'
+    );
+  }
+
+  final args = <String>['commit'];
+  bool forGpgSign = false;
+  
+  switch (actualMethod) {
+    case 'ssh':
+      // For SSH signing, we need to configure git temporarily
+      final sshKeyPath = signingInfo.sshKeyPath ?? await _getSSHKeyPath();
+      if (sshKeyPath == null) {
+        return _textResult('Error: Could not find SSH key for signing');
+      }
+      
+      // Set up SSH signing with -c options
+      args.insertAll(0, [
+        '-c', 'gpg.format=ssh',
+        '-c', 'user.signingkey=$sshKeyPath',
+      ]);
+      args.add('-S'); // Sign the commit
+      break;
+      
+    case 'gpg':
+      args.add('--gpg-sign');
+      forGpgSign = true;
+      break;
+      
+    case 'none':
+    default:
+      args.add('--no-gpg-sign');
+      break;
+  }
+  
+  args.addAll(['-m', message]);
+
+  final result = await _runGit(workingDir, args, forGpgSign: forGpgSign);
 
   if (result.exitCode != 0) {
     final stderr = result.stderr as String;
     if (stderr.contains('nothing to commit')) {
       return _textResult('Nothing to commit. Stage changes with "add" first.');
     }
+    
+    // Provide helpful error messages for signing failures
+    if (actualMethod == 'ssh') {
+      if (stderr.contains('error: Load key') || stderr.contains('invalid format')) {
+        return _textResult(
+          'Error: SSH signing failed - could not load key.\n'
+          'Make sure your SSH key exists and is valid.\n\n'
+          'Original error: ${result.stderr}'
+        );
+      }
+    }
+    
+    if (actualMethod == 'gpg') {
+      if (stderr.contains('secret key not available') || 
+          stderr.contains('No secret key')) {
+        return _textResult(
+          'Error: GPG signing failed - no secret key available.\n'
+          'Make sure you have configured git with a valid signing key:\n'
+          '  git config user.signingkey <KEY_ID>\n\n'
+          'Original error: ${result.stderr}'
+        );
+      }
+      if (stderr.contains('agent') || stderr.contains('socket')) {
+        return _textResult(
+          'Error: GPG signing failed - cannot connect to gpg-agent.\n'
+          'Make sure gpg-agent is running:\n'
+          '  gpgconf --launch gpg-agent\n\n'
+          'Or commit with sign="none" or sign="ssh".\n\n'
+          'Original error: ${result.stderr}'
+        );
+      }
+    }
+    
     return _textResult('Error committing: ${result.stderr}');
   }
 
-  return _textResult('Committed: $message\n\n${result.stdout}');
+  String signedNote;
+  switch (actualMethod) {
+    case 'ssh':
+      signedNote = ' (SSH signed)';
+      break;
+    case 'gpg':
+      signedNote = ' (GPG signed)';
+      break;
+    default:
+      signedNote = '';
+  }
+  
+  return _textResult('Committed$signedNote: $message\n\n${result.stdout}');
 }
 
 /// Stash changes
@@ -711,7 +1070,6 @@ Future<CallToolResult> _log(Directory workingDir, int maxCount) async {
 
 /// Show diff
 Future<CallToolResult> _diff(Directory workingDir) async {
-  // Show both staged and unstaged changes
   final stagedResult = await _runGit(workingDir, ['diff', '--cached']);
   final unstagedResult = await _runGit(workingDir, ['diff']);
 
@@ -733,5 +1091,182 @@ Future<CallToolResult> _diff(Directory workingDir) async {
     return _textResult('No changes');
   }
 
+  return _textResult(output.toString());
+}
+
+// =============================================================================
+// Signing Status Report
+// =============================================================================
+
+/// Check signing configuration and status
+Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingInfo) async {
+  final output = StringBuffer();
+  output.writeln('=== Commit Signing Status Report ===');
+  output.writeln('');
+  
+  // 1. Git version and SSH signing support
+  output.writeln('1. Git Version:');
+  try {
+    final gitVersion = await Process.run('git', ['--version']);
+    if (gitVersion.exitCode == 0) {
+      final versionStr = (gitVersion.stdout as String).trim();
+      output.writeln('   $versionStr');
+      output.writeln('   SSH signing: ${signingInfo.gitSupportsSSH ? "✓ supported (2.34+)" : "✗ not supported (requires 2.34+)"}');
+    }
+  } catch (e) {
+    output.writeln('   ✗ Git not available: $e');
+  }
+  output.writeln('');
+  
+  // 2. Default signing method
+  output.writeln('2. Default Signing Method: ${signingInfo.defaultMethod.toUpperCase()}');
+  output.writeln('   (Used when sign="auto")');
+  output.writeln('');
+  
+  // 3. SSH Signing Status
+  output.writeln('3. SSH Signing:');
+  final home = Platform.environment['HOME'] ?? '';
+  final sshKeyPaths = [
+    '$home/.ssh/id_ed25519.pub',
+    '$home/.ssh/id_ecdsa.pub',
+    '$home/.ssh/id_rsa.pub',
+  ];
+  
+  bool foundSshKey = false;
+  for (final path in sshKeyPaths) {
+    final exists = await File(path).exists();
+    final status = exists ? '✓' : '✗';
+    if (exists && !foundSshKey) {
+      output.writeln('   $status $path (will be used for signing)');
+      foundSshKey = true;
+      
+      // Show key fingerprint
+      try {
+        final fingerprint = await Process.run('ssh-keygen', ['-lf', path]);
+        if (fingerprint.exitCode == 0) {
+          output.writeln('     Fingerprint: ${(fingerprint.stdout as String).trim()}');
+        }
+      } catch (e) {
+        // Ignore
+      }
+    } else {
+      output.writeln('   $status $path');
+    }
+  }
+  
+  if (signingInfo.sshAvailable) {
+    output.writeln('   Status: ✓ Ready for SSH signing');
+  } else {
+    output.writeln('   Status: ✗ No SSH key found');
+    output.writeln('   To enable: ssh-keygen -t ed25519 -C "your_email@example.com"');
+  }
+  output.writeln('');
+  
+  // 4. GPG Signing Status
+  output.writeln('4. GPG Signing:');
+  try {
+    final gpgVersion = await Process.run('gpg', ['--version']);
+    if (gpgVersion.exitCode == 0) {
+      final firstLine = (gpgVersion.stdout as String).split('\n').first;
+      output.writeln('   ✓ GPG installed: $firstLine');
+    } else {
+      output.writeln('   ✗ GPG not working: ${gpgVersion.stderr}');
+    }
+  } catch (e) {
+    output.writeln('   ✗ GPG not found');
+  }
+  
+  // Check GPG keys
+  try {
+    final keysResult = await Process.run(
+      'gpg',
+      ['--list-secret-keys', '--keyid-format', 'LONG'],
+      environment: Platform.environment,
+    );
+    if (keysResult.exitCode == 0) {
+      final keysOutput = keysResult.stdout as String;
+      if (keysOutput.trim().isEmpty) {
+        output.writeln('   ✗ No GPG secret keys found');
+      } else {
+        final keyMatches = RegExp(r'sec\s+').allMatches(keysOutput);
+        output.writeln('   ✓ Found ${keyMatches.length} GPG secret key(s)');
+        
+        final lines = keysOutput.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i].contains('sec ')) {
+            final keyMatch = RegExp(r'sec\s+\w+/([A-F0-9]+)').firstMatch(lines[i]);
+            if (keyMatch != null) {
+              output.writeln('   - Key ID: ${keyMatch.group(1)}');
+            }
+            for (var j = i + 1; j < lines.length && j < i + 5; j++) {
+              if (lines[j].contains('uid ')) {
+                output.writeln('     ${lines[j].trim()}');
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Already reported GPG not found
+  }
+  
+  // Check GPG agent
+  try {
+    final agentCheck = await Process.run(
+      'gpg-connect-agent',
+      ['/bye'],
+      environment: Platform.environment,
+    );
+    if (agentCheck.exitCode == 0) {
+      output.writeln('   ✓ GPG agent is running');
+    } else {
+      output.writeln('   ? GPG agent not responding (may need: gpgconf --launch gpg-agent)');
+    }
+  } catch (e) {
+    output.writeln('   ? Could not check GPG agent');
+  }
+  
+  if (signingInfo.gpgAvailable) {
+    output.writeln('   Status: ✓ Ready for GPG signing');
+  } else {
+    output.writeln('   Status: ✗ GPG signing not available');
+  }
+  output.writeln('');
+  
+  // 5. Git configuration
+  output.writeln('5. Git Signing Configuration:');
+  
+  final gpgFormat = await _runGit(workingDir, ['config', '--get', 'gpg.format']);
+  output.writeln('   gpg.format: ${gpgFormat.exitCode == 0 ? (gpgFormat.stdout as String).trim() : '(not set, default: openpgp)'}');
+  
+  final signingKey = await _runGit(workingDir, ['config', '--get', 'user.signingkey']);
+  output.writeln('   user.signingkey: ${signingKey.exitCode == 0 ? (signingKey.stdout as String).trim() : '(not set)'}');
+  
+  final commitSign = await _runGit(workingDir, ['config', '--get', 'commit.gpgsign']);
+  output.writeln('   commit.gpgsign: ${commitSign.exitCode == 0 ? (commitSign.stdout as String).trim() : 'false (default)'}');
+  
+  final gpgProgram = await _runGit(workingDir, ['config', '--get', 'gpg.program']);
+  if (gpgProgram.exitCode == 0) {
+    output.writeln('   gpg.program: ${(gpgProgram.stdout as String).trim()}');
+  }
+  
+  final sshProgram = await _runGit(workingDir, ['config', '--get', 'gpg.ssh.program']);
+  if (sshProgram.exitCode == 0) {
+    output.writeln('   gpg.ssh.program: ${(sshProgram.stdout as String).trim()}');
+  }
+  output.writeln('');
+  
+  // 6. Usage hints
+  output.writeln('6. Usage:');
+  output.writeln('   commit with sign="auto"  - Uses ${signingInfo.defaultMethod.toUpperCase()} (auto-detected)');
+  output.writeln('   commit with sign="ssh"   - Force SSH signing');
+  output.writeln('   commit with sign="gpg"   - Force GPG signing');
+  output.writeln('   commit with sign="none"  - No signing');
+  output.writeln('');
+  
+  output.writeln('=== End of Signing Status Report ===');
+  
   return _textResult(output.toString());
 }

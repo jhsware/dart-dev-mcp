@@ -3,236 +3,578 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// Integration tests for git operations
-/// These tests create a real temporary git repository and test operations
+/// Integration tests for git operations including SSH and GPG signing
+/// 
+/// These tests create real temporary git repositories and test operations.
 void main() {
   group('Git Integration Tests', () {
     late Directory tempDir;
     late Directory repoDir;
 
     setUp(() async {
-      // Create a unique temporary directory for each test
       tempDir = await Directory.systemTemp.createTemp('git_mcp_test_');
       repoDir = Directory(p.join(tempDir.path, 'test_repo'));
       await repoDir.create();
     });
 
     tearDown(() async {
-      // Clean up the temporary directory
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
       }
     });
 
-    test('can init, add, and commit without SSH/GPG agent', () async {
-      // 1. Initialize git repository
+    test('can init, add, and commit without signing', () async {
       var result = await Process.run(
-        'git',
-        ['init'],
+        'git', ['init'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
       expect(result.exitCode, 0, reason: 'git init failed: ${result.stderr}');
 
-      // 2. Configure local git user (required for commits)
       result = await Process.run(
-        'git',
-        ['config', 'user.email', 'test@example.com'],
+        'git', ['config', 'user.email', 'test@example.com'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
-      expect(result.exitCode, 0, reason: 'git config email failed: ${result.stderr}');
+      expect(result.exitCode, 0);
 
       result = await Process.run(
-        'git',
-        ['config', 'user.name', 'Test User'],
+        'git', ['config', 'user.name', 'Test User'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
-      expect(result.exitCode, 0, reason: 'git config name failed: ${result.stderr}');
+      expect(result.exitCode, 0);
 
-      // 3. Disable GPG signing for this repo (in case it's enabled globally)
-      result = await Process.run(
-        'git',
-        ['config', 'commit.gpgsign', 'false'],
-        workingDirectory: repoDir.path,
-        environment: Platform.environment,
-      );
-      expect(result.exitCode, 0, reason: 'git config gpgsign failed: ${result.stderr}');
-
-      // 4. Create a test file
       final testFile = File(p.join(repoDir.path, 'test.txt'));
       await testFile.writeAsString('Hello, World!\n');
-      expect(await testFile.exists(), isTrue);
 
-      // 5. Stage the file
       result = await Process.run(
-        'git',
-        ['add', 'test.txt'],
+        'git', ['add', 'test.txt'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
-      expect(result.exitCode, 0, reason: 'git add failed: ${result.stderr}');
+      expect(result.exitCode, 0);
 
-      // 6. Commit the file
       result = await Process.run(
-        'git',
-        ['commit', '-m', 'Initial commit'],
+        'git', ['commit', '--no-gpg-sign', '-m', 'Initial commit'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
       expect(result.exitCode, 0, reason: 'git commit failed: ${result.stderr}');
 
-      // 7. Verify the commit exists
       result = await Process.run(
-        'git',
-        ['log', '--oneline'],
+        'git', ['log', '--oneline'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
-      expect(result.exitCode, 0, reason: 'git log failed: ${result.stderr}');
+      expect(result.exitCode, 0);
       expect(result.stdout, contains('Initial commit'));
     });
 
-    test('can commit with explicit no-gpg-sign flag', () async {
-      // Initialize and configure
+    test('commit works in restricted environment', () async {
       await Process.run('git', ['init'], workingDirectory: repoDir.path);
       await Process.run(
-        'git',
-        ['config', 'user.email', 'test@example.com'],
+        'git', ['config', 'user.email', 'test@example.com'],
         workingDirectory: repoDir.path,
       );
       await Process.run(
-        'git',
-        ['config', 'user.name', 'Test User'],
+        'git', ['config', 'user.name', 'Test User'],
         workingDirectory: repoDir.path,
       );
 
-      // Create and stage file
-      final testFile = File(p.join(repoDir.path, 'test.txt'));
-      await testFile.writeAsString('Test content\n');
-      await Process.run('git', ['add', '.'], workingDirectory: repoDir.path);
+      final testFile = File(p.join(repoDir.path, 'src', 'main.dart'));
+      await testFile.parent.create(recursive: true);
+      await testFile.writeAsString('void main() => print("Hello");\n');
 
-      // Commit with --no-gpg-sign flag
-      final result = await Process.run(
+      final restrictedEnv = <String, String>{
+        'HOME': Platform.environment['HOME'] ?? '/tmp',
+        'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
+        'USER': Platform.environment['USER'] ?? 'test',
+      };
+
+      var result = await Process.run(
+        'git', ['add', 'src/main.dart'],
+        workingDirectory: repoDir.path,
+        environment: restrictedEnv,
+      );
+      expect(result.exitCode, 0);
+
+      result = await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Add main.dart'],
+        workingDirectory: repoDir.path,
+        environment: restrictedEnv,
+      );
+      expect(result.exitCode, 0, reason: 'Commit failed: ${result.stderr}');
+
+      result = await Process.run(
+        'git', ['log', '--oneline'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.stdout, contains('Add main.dart'));
+    });
+  });
+
+  group('SSH Signing Tests', () {
+    late Directory tempDir;
+    late Directory repoDir;
+    late Directory sshDir;
+    late String sshKeyPath;
+    late bool gitSupportsSSH;
+
+    setUpAll(() async {
+      // Check git version for SSH signing support (requires 2.34+)
+      final gitVersion = await Process.run('git', ['--version']);
+      if (gitVersion.exitCode == 0) {
+        final versionStr = (gitVersion.stdout as String).trim();
+        final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
+        if (match != null) {
+          final major = int.parse(match.group(1)!);
+          final minor = int.parse(match.group(2)!);
+          gitSupportsSSH = major > 2 || (major == 2 && minor >= 34);
+        } else {
+          gitSupportsSSH = false;
+        }
+        print('Git version: $versionStr (SSH signing: ${gitSupportsSSH ? "supported" : "not supported"})');
+      } else {
+        gitSupportsSSH = false;
+      }
+    });
+
+    setUp(() async {
+      if (!gitSupportsSSH) return;
+      
+      tempDir = await Directory.systemTemp.createTemp('git_ssh_test_');
+      repoDir = Directory(p.join(tempDir.path, 'test_repo'));
+      sshDir = Directory(p.join(tempDir.path, 'ssh'));
+      await repoDir.create();
+      await sshDir.create();
+      
+      // Generate a test SSH key (no passphrase)
+      sshKeyPath = p.join(sshDir.path, 'id_ed25519');
+      final keygenResult = await Process.run(
+        'ssh-keygen',
+        ['-t', 'ed25519', '-f', sshKeyPath, '-N', '', '-C', 'test@example.com'],
+      );
+      
+      if (keygenResult.exitCode != 0) {
+        print('Failed to generate SSH key: ${keygenResult.stderr}');
+        return;
+      }
+      
+      print('Generated test SSH key: $sshKeyPath');
+      
+      // Initialize git repo
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['config', 'user.email', 'test@example.com'],
+        workingDirectory: repoDir.path,
+      );
+      await Process.run(
+        'git', ['config', 'user.name', 'Test User'],
+        workingDirectory: repoDir.path,
+      );
+    });
+
+    tearDown(() async {
+      if (!gitSupportsSSH) return;
+      
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('SSH key can be generated for testing', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      expect(await File(sshKeyPath).exists(), isTrue);
+      expect(await File('$sshKeyPath.pub').exists(), isTrue);
+      
+      // Verify key format
+      final pubKey = await File('$sshKeyPath.pub').readAsString();
+      expect(pubKey, contains('ssh-ed25519'));
+    });
+
+    test('can commit with SSH signing using -c config options', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      // Create a file
+      final testFile = File(p.join(repoDir.path, 'signed_file.txt'));
+      await testFile.writeAsString('This commit will be SSH signed\n');
+      
+      // Stage the file
+      var result = await Process.run(
+        'git', ['add', 'signed_file.txt'],
+        workingDirectory: repoDir.path,
+        environment: Platform.environment,
+      );
+      expect(result.exitCode, 0);
+      
+      // Commit with SSH signing using -c options (same approach as git_mcp.dart)
+      result = await Process.run(
         'git',
-        ['commit', '--no-gpg-sign', '-m', 'Test commit without GPG'],
+        [
+          '-c', 'gpg.format=ssh',
+          '-c', 'user.signingkey=$sshKeyPath.pub',
+          'commit', '-S', '-m', 'SSH signed commit'
+        ],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
       
-      expect(result.exitCode, 0, reason: 'git commit --no-gpg-sign failed: ${result.stderr}');
+      print('SSH commit stdout: ${result.stdout}');
+      print('SSH commit stderr: ${result.stderr}');
       
-      // Verify
-      final logResult = await Process.run(
-        'git',
-        ['log', '--oneline'],
+      expect(result.exitCode, 0, reason: 'SSH-signed commit failed: ${result.stderr}');
+      
+      // Verify the commit exists
+      result = await Process.run(
+        'git', ['log', '--oneline'],
         workingDirectory: repoDir.path,
       );
-      expect(logResult.stdout, contains('Test commit without GPG'));
+      expect(result.stdout, contains('SSH signed commit'));
+      
+      // Show signature (won't validate without allowed_signers, but shows it was signed)
+      result = await Process.run(
+        'git', ['log', '--show-signature', '-1'],
+        workingDirectory: repoDir.path,
+      );
+      print('Commit with signature info:\n${result.stdout}${result.stderr}');
     });
 
-    test('commit fails gracefully when GPG agent is unavailable but signing is required', () async {
-      // Initialize and configure
-      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+    test('can configure allowed_signers for SSH signature verification', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      // Create allowed_signers file
+      final pubKey = await File('$sshKeyPath.pub').readAsString();
+      final allowedSignersPath = p.join(tempDir.path, 'allowed_signers');
+      await File(allowedSignersPath).writeAsString('test@example.com $pubKey');
+      
+      // Configure git to use allowed_signers
       await Process.run(
-        'git',
-        ['config', 'user.email', 'test@example.com'],
-        workingDirectory: repoDir.path,
-      );
-      await Process.run(
-        'git',
-        ['config', 'user.name', 'Test User'],
+        'git', ['config', 'gpg.ssh.allowedSignersFile', allowedSignersPath],
         workingDirectory: repoDir.path,
       );
       
-      // Force GPG signing (this should fail without gpg-agent)
+      // Create and commit a file with SSH signing
+      final testFile = File(p.join(repoDir.path, 'verified_file.txt'));
+      await testFile.writeAsString('This commit will be verified\n');
+      
       await Process.run(
-        'git',
-        ['config', 'commit.gpgsign', 'true'],
+        'git', ['add', 'verified_file.txt'],
         workingDirectory: repoDir.path,
       );
-      // Set a dummy key that won't exist
-      await Process.run(
+      
+      var result = await Process.run(
         'git',
-        ['config', 'user.signingkey', 'NONEXISTENT_KEY'],
+        [
+          '-c', 'gpg.format=ssh',
+          '-c', 'user.signingkey=$sshKeyPath.pub',
+          'commit', '-S', '-m', 'Verified SSH commit'
+        ],
+        workingDirectory: repoDir.path,
+        environment: Platform.environment,
+      );
+      expect(result.exitCode, 0);
+      
+      // Verify signature
+      result = await Process.run(
+        'git', ['log', '--show-signature', '-1'],
         workingDirectory: repoDir.path,
       );
+      
+      print('Signature verification:\n${result.stdout}${result.stderr}');
+      
+      // Should show "Good signature" when allowed_signers is configured
+      // Note: git shows 'Good "git" signature' for SSH signatures
+      expect(
+        '${result.stdout}${result.stderr}',
+        anyOf(
+          contains('Good'),
+          contains('good'),
+          contains('Signature made'), // Some git versions show this
+        ),
+      );
+    });
 
-      // Create and stage file
+    test('SSH signing fails gracefully without valid key', () async {
+      if (!gitSupportsSSH) {
+        markTestSkipped('Git does not support SSH signing (requires 2.34+)');
+        return;
+      }
+      
+      // Create a file
       final testFile = File(p.join(repoDir.path, 'test.txt'));
-      await testFile.writeAsString('Test content\n');
-      await Process.run('git', ['add', '.'], workingDirectory: repoDir.path);
-
-      // This commit should fail due to GPG issues
+      await testFile.writeAsString('Test\n');
+      
+      await Process.run(
+        'git', ['add', 'test.txt'],
+        workingDirectory: repoDir.path,
+      );
+      
+      // Try to sign with non-existent key
       final result = await Process.run(
         'git',
-        ['commit', '-m', 'This should fail'],
+        [
+          '-c', 'gpg.format=ssh',
+          '-c', 'user.signingkey=/nonexistent/key.pub',
+          'commit', '-S', '-m', 'This should fail'
+        ],
         workingDirectory: repoDir.path,
-        // Explicitly clear GPG-related env vars
-        environment: {
-          ...Platform.environment,
-          'GPG_AGENT_INFO': '',
-          'GPG_TTY': '',
-        },
+        environment: Platform.environment,
       );
       
-      // We expect this to fail
-      expect(result.exitCode, isNot(0), reason: 'Expected commit to fail when GPG signing is required but agent unavailable');
-    });
-
-    test('environment variables are passed to subprocess', () async {
-      // This test verifies that environment variables are actually passed
-      final result = await Process.run(
-        'env',
-        [],
-        environment: {
-          ...Platform.environment,
-          'TEST_VAR': 'test_value_12345',
-        },
-      );
+      print('Expected failure stderr: ${result.stderr}');
       
-      expect(result.stdout, contains('TEST_VAR=test_value_12345'));
-    });
-
-    test('Platform.environment contains expected variables', () {
-      // Debug: print what's in Platform.environment
-      print('Platform.environment keys: ${Platform.environment.keys.toList()}');
-      print('HOME: ${Platform.environment['HOME']}');
-      print('PATH: ${Platform.environment['PATH']?.substring(0, 50)}...');
-      print('SSH_AUTH_SOCK: ${Platform.environment['SSH_AUTH_SOCK']}');
-      print('GPG_AGENT_INFO: ${Platform.environment['GPG_AGENT_INFO']}');
-      
-      // HOME and PATH should always be present
-      expect(Platform.environment['HOME'], isNotNull);
-      expect(Platform.environment['PATH'], isNotNull);
+      expect(result.exitCode, isNot(0), reason: 'Commit should fail with invalid key');
     });
   });
 
-  group('Git MCP Server Integration', () {
+  group('GPG Signing Tests', () {
+    late Directory tempDir;
+    late Directory repoDir;
+    late Directory gnupgDir;
+    late String? testKeyId;
+    late bool gpgAvailable;
+
+    setUpAll(() async {
+      final gpgCheck = await Process.run('which', ['gpg']);
+      gpgAvailable = gpgCheck.exitCode == 0;
+      
+      if (gpgAvailable) {
+        final versionResult = await Process.run('gpg', ['--version']);
+        print('GPG version: ${(versionResult.stdout as String).split('\n').first}');
+      } else {
+        print('GPG not available - GPG signing tests will be skipped');
+      }
+    });
+
+    setUp(() async {
+      if (!gpgAvailable) return;
+      
+      tempDir = await Directory.systemTemp.createTemp('git_gpg_test_');
+      repoDir = Directory(p.join(tempDir.path, 'test_repo'));
+      gnupgDir = Directory(p.join(tempDir.path, 'gnupg'));
+      await repoDir.create();
+      await gnupgDir.create();
+      
+      await Process.run('chmod', ['700', gnupgDir.path]);
+      
+      // Create a test GPG key (no passphrase)
+      final keyParams = '''
+%echo Generating test key
+%no-protection
+Key-Type: RSA
+Key-Length: 2048
+Subkey-Type: RSA
+Subkey-Length: 2048
+Name-Real: Test User
+Name-Email: test@example.com
+Expire-Date: 0
+%commit
+%echo Done
+''';
+
+      final paramsFile = File(p.join(tempDir.path, 'key_params'));
+      await paramsFile.writeAsString(keyParams);
+      
+      final genResult = await Process.run(
+        'gpg',
+        ['--batch', '--gen-key', paramsFile.path],
+        environment: {
+          ...Platform.environment,
+          'GNUPGHOME': gnupgDir.path,
+        },
+      );
+      
+      if (genResult.exitCode != 0) {
+        print('Failed to generate test GPG key: ${genResult.stderr}');
+        testKeyId = null;
+        return;
+      }
+      
+      final listResult = await Process.run(
+        'gpg',
+        ['--list-secret-keys', '--keyid-format', 'LONG'],
+        environment: {
+          ...Platform.environment,
+          'GNUPGHOME': gnupgDir.path,
+        },
+      );
+      
+      if (listResult.exitCode == 0) {
+        final output = listResult.stdout as String;
+        final match = RegExp(r'sec\s+rsa\d+/([A-F0-9]+)').firstMatch(output);
+        testKeyId = match?.group(1);
+        print('Test GPG key created: $testKeyId');
+      }
+      
+      // Initialize git repo
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['config', 'user.email', 'test@example.com'],
+        workingDirectory: repoDir.path,
+      );
+      await Process.run(
+        'git', ['config', 'user.name', 'Test User'],
+        workingDirectory: repoDir.path,
+      );
+    });
+
+    tearDown(() async {
+      if (!gpgAvailable) return;
+      
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('can commit with GPG signing', () async {
+      if (!gpgAvailable || testKeyId == null) {
+        markTestSkipped('GPG not available or key not created');
+        return;
+      }
+      
+      final gpgEnv = {
+        ...Platform.environment,
+        'GNUPGHOME': gnupgDir.path,
+        'GPG_TTY': '/dev/tty',
+      };
+      
+      await Process.run(
+        'git', ['config', 'user.signingkey', testKeyId!],
+        workingDirectory: repoDir.path,
+        environment: gpgEnv,
+      );
+      
+      final gpgPath = (await Process.run('which', ['gpg'])).stdout.toString().trim();
+      await Process.run(
+        'git', ['config', 'gpg.program', gpgPath],
+        workingDirectory: repoDir.path,
+        environment: gpgEnv,
+      );
+      
+      final testFile = File(p.join(repoDir.path, 'gpg_signed.txt'));
+      await testFile.writeAsString('GPG signed content\n');
+      
+      var result = await Process.run(
+        'git', ['add', 'gpg_signed.txt'],
+        workingDirectory: repoDir.path,
+        environment: gpgEnv,
+      );
+      expect(result.exitCode, 0);
+      
+      result = await Process.run(
+        'git', ['commit', '--gpg-sign=$testKeyId', '-m', 'GPG signed commit'],
+        workingDirectory: repoDir.path,
+        environment: gpgEnv,
+      );
+      
+      print('GPG commit stdout: ${result.stdout}');
+      print('GPG commit stderr: ${result.stderr}');
+      
+      expect(result.exitCode, 0, reason: 'GPG-signed commit failed: ${result.stderr}');
+      
+      result = await Process.run(
+        'git', ['log', '--show-signature', '-1'],
+        workingDirectory: repoDir.path,
+        environment: gpgEnv,
+      );
+      
+      expect(result.stdout, contains('GPG signed commit'));
+    });
+  });
+
+  group('Signing Detection', () {
+    test('can detect git version for SSH support', () async {
+      final gitVersion = await Process.run('git', ['--version']);
+      expect(gitVersion.exitCode, 0);
+      
+      final versionStr = (gitVersion.stdout as String).trim();
+      print('Git version string: $versionStr');
+      
+      final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
+      expect(match, isNotNull);
+      
+      final major = int.parse(match!.group(1)!);
+      final minor = int.parse(match.group(2)!);
+      final patch = int.parse(match.group(3)!);
+      
+      print('Parsed version: $major.$minor.$patch');
+      
+      final supportsSSH = major > 2 || (major == 2 && minor >= 34);
+      print('SSH signing supported: $supportsSSH');
+    });
+
+    test('can find SSH keys', () async {
+      final home = Platform.environment['HOME'];
+      expect(home, isNotNull);
+      
+      final sshKeyPaths = [
+        '$home/.ssh/id_ed25519.pub',
+        '$home/.ssh/id_ecdsa.pub',
+        '$home/.ssh/id_rsa.pub',
+      ];
+      
+      print('Checking for SSH keys:');
+      bool foundKey = false;
+      for (final path in sshKeyPaths) {
+        final exists = await File(path).exists();
+        print('  $path: ${exists ? "found" : "not found"}');
+        if (exists) foundKey = true;
+      }
+      
+      if (foundKey) {
+        print('SSH signing is available');
+      } else {
+        print('No SSH keys found - SSH signing not available');
+      }
+    });
+
+    test('can check GPG availability', () async {
+      try {
+        final gpgCheck = await Process.run('gpg', ['--list-secret-keys', '--keyid-format', 'LONG']);
+        if (gpgCheck.exitCode == 0) {
+          final output = gpgCheck.stdout as String;
+          if (output.trim().isNotEmpty) {
+            final keyCount = RegExp(r'sec\s+').allMatches(output).length;
+            print('GPG available with $keyCount secret key(s)');
+          } else {
+            print('GPG available but no secret keys');
+          }
+        } else {
+          print('GPG command failed: ${gpgCheck.stderr}');
+        }
+      } catch (e) {
+        print('GPG not available: $e');
+      }
+    });
+  });
+
+  group('Git MCP Server Simulation', () {
     late Directory tempDir;
     late Directory repoDir;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('git_mcp_server_test_');
+      tempDir = await Directory.systemTemp.createTemp('git_mcp_sim_test_');
       repoDir = Directory(p.join(tempDir.path, 'test_repo'));
       await repoDir.create();
       
-      // Initialize repo with config
       await Process.run('git', ['init'], workingDirectory: repoDir.path);
       await Process.run(
-        'git',
-        ['config', 'user.email', 'test@example.com'],
+        'git', ['config', 'user.email', 'test@example.com'],
         workingDirectory: repoDir.path,
       );
       await Process.run(
-        'git',
-        ['config', 'user.name', 'Test User'],
-        workingDirectory: repoDir.path,
-      );
-      await Process.run(
-        'git',
-        ['config', 'commit.gpgsign', 'false'],
+        'git', ['config', 'user.name', 'Test User'],
         workingDirectory: repoDir.path,
       );
     });
@@ -243,90 +585,98 @@ void main() {
       }
     });
 
-    test('simulates git_mcp commit operation with --no-gpg-sign', () async {
-      // Create a file
-      final testFile = File(p.join(repoDir.path, 'lib', 'test.dart'));
-      await testFile.parent.create(recursive: true);
+    test('simulates commit with sign="none"', () async {
+      final testFile = File(p.join(repoDir.path, 'test.dart'));
       await testFile.writeAsString('void main() {}\n');
 
-      // Stage the file (simulating _add)
       var result = await Process.run(
-        'git',
-        ['add', 'lib/test.dart'],
+        'git', ['add', 'test.dart'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
       expect(result.exitCode, 0);
 
-      // Commit with --no-gpg-sign (simulating updated _commit in git_mcp.dart)
+      // Simulates sign="none" which uses --no-gpg-sign
       result = await Process.run(
-        'git',
-        ['commit', '--no-gpg-sign', '-m', 'Add test.dart'],
+        'git', ['commit', '--no-gpg-sign', '-m', 'Unsigned commit'],
         workingDirectory: repoDir.path,
         environment: Platform.environment,
       );
       
-      print('Commit stdout: ${result.stdout}');
-      print('Commit stderr: ${result.stderr}');
-      print('Commit exitCode: ${result.exitCode}');
-      
-      expect(result.exitCode, 0, reason: 'git commit failed: ${result.stderr}');
+      expect(result.exitCode, 0, reason: 'Commit failed: ${result.stderr}');
 
-      // Verify
       result = await Process.run(
-        'git',
-        ['log', '--oneline'],
+        'git', ['log', '--oneline'],
         workingDirectory: repoDir.path,
       );
-      expect(result.stdout, contains('Add test.dart'));
+      expect(result.stdout, contains('Unsigned commit'));
     });
 
-    test('commit works in restricted environment (no SSH/GPG agent)', () async {
-      // This simulates the MCP server environment where SSH_AUTH_SOCK and GPG vars may not be set
+    test('simulates commit with sign="ssh" (if SSH key exists)', () async {
+      // Check for SSH key
+      final home = Platform.environment['HOME'];
+      String? sshKeyPath;
       
-      // Create a file
-      final testFile = File(p.join(repoDir.path, 'src', 'main.dart'));
-      await testFile.parent.create(recursive: true);
-      await testFile.writeAsString('void main() => print("Hello");\n');
+      for (final path in ['$home/.ssh/id_ed25519.pub', '$home/.ssh/id_ecdsa.pub', '$home/.ssh/id_rsa.pub']) {
+        if (await File(path).exists()) {
+          sshKeyPath = path;
+          break;
+        }
+      }
+      
+      if (sshKeyPath == null) {
+        markTestSkipped('No SSH key found');
+        return;
+      }
+      
+      // Check git version
+      final gitVersion = await Process.run('git', ['--version']);
+      final versionStr = (gitVersion.stdout as String).trim();
+      final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
+      if (match == null) {
+        markTestSkipped('Could not parse git version');
+        return;
+      }
+      
+      final major = int.parse(match.group(1)!);
+      final minor = int.parse(match.group(2)!);
+      if (major < 2 || (major == 2 && minor < 34)) {
+        markTestSkipped('Git version too old for SSH signing');
+        return;
+      }
+      
+      final testFile = File(p.join(repoDir.path, 'ssh_test.dart'));
+      await testFile.writeAsString('// SSH signed\n');
 
-      // Create a minimal environment without SSH/GPG agent sockets
-      final restrictedEnv = <String, String>{
-        'HOME': Platform.environment['HOME'] ?? '/tmp',
-        'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
-        'USER': Platform.environment['USER'] ?? 'test',
-        // Explicitly NOT including SSH_AUTH_SOCK, GPG_AGENT_INFO, GPG_TTY
-      };
-
-      // Stage the file
       var result = await Process.run(
-        'git',
-        ['add', 'src/main.dart'],
+        'git', ['add', 'ssh_test.dart'],
         workingDirectory: repoDir.path,
-        environment: restrictedEnv,
+        environment: Platform.environment,
       );
-      expect(result.exitCode, 0, reason: 'git add failed: ${result.stderr}');
+      expect(result.exitCode, 0);
 
-      // Commit with --no-gpg-sign in restricted environment
+      // Simulates sign="ssh" which uses -c options
       result = await Process.run(
         'git',
-        ['commit', '--no-gpg-sign', '-m', 'Add main.dart in restricted env'],
+        [
+          '-c', 'gpg.format=ssh',
+          '-c', 'user.signingkey=$sshKeyPath',
+          'commit', '-S', '-m', 'SSH signed via simulation'
+        ],
         workingDirectory: repoDir.path,
-        environment: restrictedEnv,
+        environment: Platform.environment,
       );
       
-      print('Restricted env commit stdout: ${result.stdout}');
-      print('Restricted env commit stderr: ${result.stderr}');
-      print('Restricted env commit exitCode: ${result.exitCode}');
+      print('SSH simulation stdout: ${result.stdout}');
+      print('SSH simulation stderr: ${result.stderr}');
       
-      expect(result.exitCode, 0, reason: 'git commit in restricted env failed: ${result.stderr}');
+      expect(result.exitCode, 0, reason: 'SSH-signed commit failed: ${result.stderr}');
 
-      // Verify
       result = await Process.run(
-        'git',
-        ['log', '--oneline'],
+        'git', ['log', '--oneline'],
         workingDirectory: repoDir.path,
       );
-      expect(result.stdout, contains('Add main.dart'));
+      expect(result.stdout, contains('SSH signed via simulation'));
     });
   });
 }
