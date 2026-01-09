@@ -54,6 +54,9 @@ void main(List<String> arguments) async {
   stderr.writeln('Project path: ${workingDir.path}');
   stderr.writeln('Database: $dbPath');
 
+  // Set up graceful shutdown to close database
+  _setupShutdownHandlers(db);
+
   final server = McpServer(
     Implementation(name: 'planner-mcp', version: '1.0.0'),
     options: ServerOptions(
@@ -148,6 +151,35 @@ void _printUsage() {
   stderr.writeln('Project instructions are read from .ai_coding_tool/INSTRUCTIONS.md');
 }
 
+/// Set up signal handlers for graceful shutdown
+void _setupShutdownHandlers(Database db) {
+  // Handle SIGINT (Ctrl+C)
+  ProcessSignal.sigint.watch().listen((_) {
+    stderr.writeln('Received SIGINT, closing database...');
+    _closeDatabase(db);
+    exit(0);
+  });
+
+  // Handle SIGTERM
+  ProcessSignal.sigterm.watch().listen((_) {
+    stderr.writeln('Received SIGTERM, closing database...');
+    _closeDatabase(db);
+    exit(0);
+  });
+}
+
+/// Safely close the database
+void _closeDatabase(Database db) {
+  try {
+    // Checkpoint WAL to main database before closing
+    db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+    db.dispose();
+    stderr.writeln('Database closed successfully');
+  } catch (e) {
+    stderr.writeln('Error closing database: $e');
+  }
+}
+
 CallToolResult _textResult(String text) {
   return CallToolResult.fromContent(
     content: [TextContent(text: text)],
@@ -166,6 +198,20 @@ CallToolResult _jsonResult(Map<String, dynamic> data) {
 
 Database _initializeDatabase(String dbPath) {
   final db = sqlite3.open(dbPath);
+  
+  // Enable WAL mode for better concurrent access and crash recovery
+  // WAL mode is more resilient to corruption from unexpected shutdowns
+  db.execute('PRAGMA journal_mode=WAL');
+  
+  // Set busy timeout to wait up to 5 seconds if database is locked
+  db.execute('PRAGMA busy_timeout=5000');
+  
+  // Use NORMAL synchronous mode (good balance of safety and performance)
+  // FULL is safer but slower, NORMAL is safe for WAL mode
+  db.execute('PRAGMA synchronous=NORMAL');
+  
+  // Enable foreign key enforcement
+  db.execute('PRAGMA foreign_keys=ON');
   
   // Create tasks table
   db.execute('''
@@ -242,7 +288,12 @@ Future<CallToolResult> _handlePlanner(
       default:
         return _textResult('Error: Unknown operation: $operation');
     }
+  } on SqliteException catch (e) {
+    // Handle SQLite-specific errors with more detail
+    stderr.writeln('SQLite error: $e');
+    return _textResult('Database error: ${e.message}');
   } catch (e) {
+    stderr.writeln('Error in planner operation: $e');
     return _textResult('Error: $e');
   }
 }
