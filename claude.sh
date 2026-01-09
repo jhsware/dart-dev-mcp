@@ -18,7 +18,7 @@ DEFAULT_ALLOWED_PATHS=(
   "./.env.in"
   "./.gitignore"
   "./.github"
-  "git:./macos"
+  "./macos"
   "git:./pubspec.lock"
 )
 
