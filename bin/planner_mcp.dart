@@ -6,6 +6,11 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:dart_dev_mcp/planner/transaction_log.dart';
+import 'package:dart_dev_mcp/planner/transaction_log_repository.dart';
+import 'package:dart_dev_mcp/planner/transaction_summary.dart';
+
+
 /// Planner MCP Server
 ///
 /// Provides task and step management for AI-assisted development workflows.
@@ -49,10 +54,15 @@ void main(List<String> arguments) async {
   // Initialize database
   final dbPath = p.join(aiToolDir.path, 'db.sqlite');
   final db = _initializeDatabase(dbPath);
+  
+  // Initialize transaction log repository
+  final txLogRepo = TransactionLogRepository(db);
+  txLogRepo.initializeTable();
 
   stderr.writeln('Planner MCP Server starting...');
   stderr.writeln('Project path: ${workingDir.path}');
   stderr.writeln('Database: $dbPath');
+
 
   // Set up graceful shutdown to close database
   _setupShutdownHandlers(db);
@@ -136,7 +146,7 @@ Step statuses: todo, started, canceled, done''',
         },
       },
     ),
-    callback: ({args, extra}) => _handlePlanner(args, workingDir, db),
+    callback: ({args, extra}) => _handlePlanner(args, workingDir, db, txLogRepo),
   );
 
   final transport = StdioServerTransport();
@@ -262,6 +272,7 @@ Future<CallToolResult> _handlePlanner(
   Map<String, dynamic>? args,
   Directory workingDir,
   Database db,
+  TransactionLogRepository txLogRepo,
 ) async {
   final operation = args?['operation'] as String?;
 
@@ -274,23 +285,23 @@ Future<CallToolResult> _handlePlanner(
       case 'get-project-instructions':
         return _getProjectInstructions(workingDir);
       case 'add-task':
-        return _addTask(db, args);
+        return _addTask(db, args, txLogRepo);
       case 'show-task':
         return _showTask(db, args);
       case 'update-task':
-        return _updateTask(db, args);
+        return _updateTask(db, args, txLogRepo);
       case 'show-task-memory':
         return _showTaskMemory(db, args);
       case 'update-task-memory':
-        return _updateTaskMemory(db, args);
+        return _updateTaskMemory(db, args, txLogRepo);
       case 'list-tasks':
         return _listTasks(db, args);
       case 'add-step':
-        return _addStep(db, args);
+        return _addStep(db, args, txLogRepo);
       case 'show-step':
         return _showStep(db, args);
       case 'update-step':
-        return _updateStep(db, args);
+        return _updateStep(db, args, txLogRepo);
       default:
         return _textResult('Error: Unknown operation: $operation');
     }
@@ -346,7 +357,7 @@ String _normalizeStepStatus(String status) {
   }
 }
 
-CallToolResult _addTask(Database db, Map<String, dynamic>? args) {
+CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
   final projectId = args?['project_id'] as String?;
   final title = args?['title'] as String?;
   final details = args?['details'] as String?;
@@ -373,19 +384,39 @@ CallToolResult _addTask(Database db, Map<String, dynamic>? args) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   ''', [id, projectId, title, details, status, memory, now, now]);
   
+  // Log the transaction
+  final taskData = {
+    'id': id,
+    'project_id': projectId,
+    'title': title,
+    'details': details,
+    'status': status,
+    'memory': memory,
+    'created_at': now,
+    'updated_at': now,
+  };
+  
+  txLogRepo.log(
+    entityType: EntityType.task,
+    entityId: id,
+    transactionType: TransactionType.create,
+    summary: generateSummary(
+      transactionType: TransactionType.create,
+      entityType: EntityType.task,
+      entityTitle: title,
+      projectId: projectId,
+    ),
+    changes: calculateChanges(
+      transactionType: TransactionType.create,
+      after: taskData,
+    ),
+    projectId: projectId,
+  );
+  
   return _jsonResult({
     'success': true,
     'message': 'Task created',
-    'task': {
-      'id': id,
-      'project_id': projectId,
-      'title': title,
-      'details': details,
-      'status': status,
-      'memory': memory,
-      'created_at': now,
-      'updated_at': now,
-    },
+    'task': taskData,
   });
 }
 
@@ -428,18 +459,20 @@ CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
   });
 }
 
-CallToolResult _updateTask(Database db, Map<String, dynamic>? args) {
+CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
     return _textResult('Error: id is required');
   }
   
-  // Check task exists
-  final existing = db.select('SELECT id FROM tasks WHERE id = ?', [id]);
-  if (existing.isEmpty) {
+  // Get task before update for diff calculation
+  final existingResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  if (existingResult.isEmpty) {
     return _textResult('Error: Task not found: $id');
   }
+  
+  final before = taskToLoggable(Map<String, dynamic>.from(existingResult.first));
   
   final updates = <String>[];
   final values = <Object?>[];
@@ -482,6 +515,33 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args) {
     values
   );
   
+  // Get task after update
+  final afterResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
+  
+  // Calculate changes for audit
+  final changes = calculateChanges(
+    transactionType: TransactionType.update,
+    before: before,
+    after: after,
+  );
+  
+  // Log the transaction
+  txLogRepo.log(
+    entityType: EntityType.task,
+    entityId: id,
+    transactionType: TransactionType.update,
+    summary: generateSummary(
+      transactionType: TransactionType.update,
+      entityType: EntityType.task,
+      entityTitle: after['title'] as String,
+      projectId: after['project_id'] as String?,
+      changes: changes,
+    ),
+    changes: changes,
+    projectId: after['project_id'] as String?,
+  );
+  
   // Return updated task
   return _showTask(db, args);
 }
@@ -509,7 +569,7 @@ CallToolResult _showTaskMemory(Database db, Map<String, dynamic>? args) {
   });
 }
 
-CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args) {
+CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
   final id = args?['id'] as String?;
   final memory = args?['memory'] as String?;
   
@@ -517,17 +577,46 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args) {
     return _textResult('Error: id is required');
   }
   
-  // Check task exists
-  final existing = db.select('SELECT id FROM tasks WHERE id = ?', [id]);
-  if (existing.isEmpty) {
+  // Get task before update for diff calculation
+  final existingResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  if (existingResult.isEmpty) {
     return _textResult('Error: Task not found: $id');
   }
+  
+  final before = taskToLoggable(Map<String, dynamic>.from(existingResult.first));
   
   final now = DateTime.now().toUtc().toIso8601String();
   
   db.execute(
     'UPDATE tasks SET memory = ?, updated_at = ? WHERE id = ?',
     [memory, now, id]
+  );
+  
+  // Get task after update
+  final afterResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
+  
+  // Calculate changes for audit
+  final changes = calculateChanges(
+    transactionType: TransactionType.update,
+    before: before,
+    after: after,
+  );
+  
+  // Log the transaction
+  txLogRepo.log(
+    entityType: EntityType.task,
+    entityId: id,
+    transactionType: TransactionType.update,
+    summary: generateSummary(
+      transactionType: TransactionType.update,
+      entityType: EntityType.task,
+      entityTitle: after['title'] as String,
+      projectId: after['project_id'] as String?,
+      changes: changes,
+    ),
+    changes: changes,
+    projectId: after['project_id'] as String?,
   );
   
   return _jsonResult({
@@ -605,7 +694,7 @@ CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
 // Step Operations
 // =============================================================================
 
-CallToolResult _addStep(Database db, Map<String, dynamic>? args) {
+CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
   final taskId = args?['task_id'] as String?;
   final title = args?['title'] as String?;
   final details = args?['details'] as String?;
@@ -624,11 +713,12 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args) {
     return _textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
   }
   
-  // Check task exists
-  final taskExists = db.select('SELECT id FROM tasks WHERE id = ?', [taskId]);
-  if (taskExists.isEmpty) {
+  // Check task exists and get task info for logging
+  final taskResult = db.select('SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
+  if (taskResult.isEmpty) {
     return _textResult('Error: Task not found: $taskId');
   }
+  final taskInfo = taskResult.first;
   
   final id = _uuid.v4();
   final now = DateTime.now().toUtc().toIso8601String();
@@ -638,18 +728,38 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args) {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   ''', [id, taskId, title, details, status, now, now]);
   
+  // Log the transaction
+  final stepData = {
+    'id': id,
+    'task_id': taskId,
+    'title': title,
+    'details': details,
+    'status': status,
+    'created_at': now,
+    'updated_at': now,
+  };
+  
+  txLogRepo.log(
+    entityType: EntityType.step,
+    entityId: id,
+    transactionType: TransactionType.create,
+    summary: generateSummary(
+      transactionType: TransactionType.create,
+      entityType: EntityType.step,
+      entityTitle: title,
+      taskTitle: taskInfo['title'] as String?,
+    ),
+    changes: calculateChanges(
+      transactionType: TransactionType.create,
+      after: stepData,
+    ),
+    projectId: taskInfo['project_id'] as String?,
+  );
+  
   return _jsonResult({
     'success': true,
     'message': 'Step created',
-    'step': {
-      'id': id,
-      'task_id': taskId,
-      'title': title,
-      'details': details,
-      'status': status,
-      'created_at': now,
-      'updated_at': now,
-    },
+    'step': stepData,
   });
 }
 
@@ -679,18 +789,27 @@ CallToolResult _showStep(Database db, Map<String, dynamic>? args) {
   });
 }
 
-CallToolResult _updateStep(Database db, Map<String, dynamic>? args) {
+CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
     return _textResult('Error: id is required');
   }
   
-  // Check step exists
-  final existing = db.select('SELECT id FROM steps WHERE id = ?', [id]);
-  if (existing.isEmpty) {
+  // Get step before update for diff calculation
+  final existingResult = db.select('''
+    SELECT s.*, t.title as task_title, t.project_id
+    FROM steps s
+    JOIN tasks t ON s.task_id = t.id
+    WHERE s.id = ?
+  ''', [id]);
+  if (existingResult.isEmpty) {
     return _textResult('Error: Step not found: $id');
   }
+  
+  final existingRow = existingResult.first;
+  final before = stepToLoggable(Map<String, dynamic>.from(existingRow));
+  final projectId = existingRow['project_id'] as String?;
   
   final updates = <String>[];
   final values = <Object?>[];
@@ -727,6 +846,32 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args) {
   db.execute(
     'UPDATE steps SET ${updates.join(", ")} WHERE id = ?',
     values
+  );
+  
+  // Get step after update
+  final afterResult = db.select('SELECT * FROM steps WHERE id = ?', [id]);
+  final after = stepToLoggable(Map<String, dynamic>.from(afterResult.first));
+  
+  // Calculate changes for audit
+  final changes = calculateChanges(
+    transactionType: TransactionType.update,
+    before: before,
+    after: after,
+  );
+  
+  // Log the transaction
+  txLogRepo.log(
+    entityType: EntityType.step,
+    entityId: id,
+    transactionType: TransactionType.update,
+    summary: generateSummary(
+      transactionType: TransactionType.update,
+      entityType: EntityType.step,
+      entityTitle: after['title'] as String,
+      changes: changes,
+    ),
+    changes: changes,
+    projectId: projectId,
   );
   
   // Return updated step
