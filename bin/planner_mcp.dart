@@ -281,6 +281,8 @@ Future<CallToolResult> _handlePlanner(
         return _showTaskMemory(db, args);
       case 'update-task-memory':
         return _updateTaskMemory(db, args);
+      case 'list-tasks':
+        return _listTasks(db, args);
       case 'add-step':
         return _addStep(db, args);
       case 'show-step':
