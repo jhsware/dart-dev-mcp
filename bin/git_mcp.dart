@@ -916,24 +916,7 @@ Future<bool> _branchHasCommits(Directory workingDir) async {
   return result.exitCode == 0;
 }
 
-/// Check if a path is within the allowed paths
-bool _isAllowedPath(List<String> allowedPaths, String path) {
-  final normalizedPath = p.normalize(path);
-  
-  return allowedPaths.any((String allowedRoot) {
-    final normalizedRoot = p.normalize(allowedRoot);
-    
-    if (normalizedPath == normalizedRoot) {
-      return true;
-    }
-    
-    final rootWithSep = normalizedRoot.endsWith(p.separator) 
-        ? normalizedRoot 
-        : normalizedRoot + p.separator;
-    
-    return normalizedPath.startsWith(rootWithSep);
-  });
-}
+
 
 /// Stage files
 Future<CallToolResult> _add(
@@ -971,7 +954,7 @@ Future<CallToolResult> _add(
       
       final absPath = p.normalize(p.join(workingDir.path, fileName));
       
-      if (_isAllowedPath(allowedPaths, absPath)) {
+      if (isAllowedPath(allowedPaths, absPath)) {
         filesToAdd.add(fileName);
       } else {
         deniedFiles.add(fileName);
@@ -1026,7 +1009,7 @@ Future<CallToolResult> _add(
         ? p.normalize(file)
         : p.normalize(p.join(workingDir.path, file));
     
-    if (_isAllowedPath(allowedPaths, absPath)) {
+    if (isAllowedPath(allowedPaths, absPath)) {
       filesToAdd.add(file);
     } else {
       deniedFiles.add(file);
