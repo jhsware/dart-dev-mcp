@@ -181,7 +181,7 @@ Future<CallToolResult> _handleFileSystem(
   final path = args?['path'] as String? ?? '.';
 
   if (operation == null) {
-    return _textResult('Error: operation is required');
+    return textResult('Error: operation is required');
   }
 
   switch (operation) {
@@ -221,14 +221,8 @@ Future<CallToolResult> _handleFileSystem(
         allowedPaths,
       );
     default:
-      return _textResult('Error: Unknown operation: $operation');
+      return textResult('Error: Unknown operation: $operation');
   }
-}
-
-CallToolResult _textResult(String text) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
-  );
 }
 
 // ============================================================================
@@ -242,17 +236,17 @@ Future<CallToolResult> _listContent(
 ) async {
   final error = validateRelativePath(path);
   if (error != null && path != '.') {
-    return _textResult('Error: $error');
+    return textResult('Error: $error');
   }
 
   final dirPath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, dirPath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return textResult('Error: Not allowed for: $path');
   }
 
   final directory = Directory(dirPath);
   if (!await directory.exists()) {
-    return _textResult('Error: Directory not found: $path');
+    return textResult('Error: Directory not found: $path');
   }
 
   final List<FileSystemEntity> allContents = await directory.list().toList();
@@ -278,7 +272,7 @@ Future<CallToolResult> _listContent(
   }
 
   final filtered = outp.where((s) => s.isNotEmpty).toList();
-  return _textResult(
+  return textResult(
       filtered.isEmpty ? 'Directory is empty' : filtered.join('\n'));
 }
 
@@ -289,22 +283,22 @@ Future<CallToolResult> _readFile(
 ) async {
   final error = validateRelativePath(path);
   if (error != null) {
-    return _textResult('Error: $error');
+    return textResult('Error: $error');
   }
 
   final filePath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, filePath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return textResult('Error: Not allowed for: $path');
   }
 
   final file = File(filePath);
   if (!await file.exists()) {
-    return _textResult('Error: File not found: $path');
+    return textResult('Error: File not found: $path');
   }
 
   final content = await file.readAsString();
   final normalized = normalizeLineEndings(content);
-  return _textResult(addLineNumbers(normalized));
+  return textResult(addLineNumbers(normalized));
 }
 
 Future<CallToolResult> _readFiles(
@@ -339,7 +333,7 @@ Future<CallToolResult> _readFiles(
     outp.addAll(['$trimmedPath:', addLineNumbers(normalized), '']);
   }
 
-  return _textResult(outp.join('\n'));
+  return textResult(outp.join('\n'));
 }
 
 Future<CallToolResult> _searchText(
@@ -351,22 +345,22 @@ Future<CallToolResult> _searchText(
   List<String> allowedPaths,
 ) async {
   if (pattern == null || pattern.isEmpty) {
-    return _textResult('Error: pattern is required for search-text');
+    return textResult('Error: pattern is required for search-text');
   }
 
   final error = validateRelativePath(path);
   if (error != null && path != '.') {
-    return _textResult('Error: $error');
+    return textResult('Error: $error');
   }
 
   final dirPath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, dirPath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return textResult('Error: Not allowed for: $path');
   }
 
   final directory = Directory(dirPath);
   if (!await directory.exists()) {
-    return _textResult('Error: Directory not found: $path');
+    return textResult('Error: Directory not found: $path');
   }
 
   // Validate regex
@@ -374,7 +368,7 @@ Future<CallToolResult> _searchText(
   try {
     regex = RegExp(pattern, caseSensitive: caseSensitive);
   } catch (e) {
-    return _textResult('Error: Invalid regex pattern: $e');
+    return textResult('Error: Invalid regex pattern: $e');
   }
 
   // Try grep first, fall back to Dart
@@ -424,7 +418,7 @@ Future<CallToolResult> _searchWithGrep(
 
   final stdout = result.stdout as String;
   if (stdout.isEmpty) {
-    return _textResult('[]');
+    return textResult('[]');
   }
 
   final matches = <Map<String, dynamic>>[];
@@ -461,7 +455,7 @@ Future<CallToolResult> _searchWithGrep(
     });
   }
 
-  return _textResult(jsonEncode(matches));
+  return textResult(jsonEncode(matches));
 }
 
 Future<CallToolResult> _searchWithDart(
@@ -509,7 +503,7 @@ Future<CallToolResult> _searchWithDart(
     }
   }
 
-  return _textResult(jsonEncode(matches));
+  return textResult(jsonEncode(matches));
 }
 
 RegExp _globToRegex(String glob) {
@@ -556,21 +550,21 @@ Future<CallToolResult> _createDirectory(
 ) async {
   final error = validateRelativePath(path);
   if (error != null) {
-    return _textResult('Error: $error');
+    return textResult('Error: $error');
   }
 
   final dirPath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, dirPath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return textResult('Error: Not allowed for: $path');
   }
 
   final directory = Directory(dirPath);
   if (await directory.exists()) {
-    return _textResult('Directory already exists: $path');
+    return textResult('Directory already exists: $path');
   }
 
   await directory.create(recursive: true);
-  return _textResult('Created directory: $path');
+  return textResult('Created directory: $path');
 }
 
 Future<CallToolResult> _createFile(
@@ -581,17 +575,17 @@ Future<CallToolResult> _createFile(
 ) async {
   final error = validateRelativePath(path);
   if (error != null) {
-    return _textResult('Error: $error');
+    return textResult('Error: $error');
   }
 
   final filePath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, filePath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return textResult('Error: Not allowed for: $path');
   }
 
   final file = File(filePath);
   if (await file.exists()) {
-    return _textResult('Error: File already exists: $path');
+    return textResult('Error: File already exists: $path');
   }
 
   await file.create(recursive: true);
@@ -601,7 +595,7 @@ Future<CallToolResult> _createFile(
     await file.writeAsString(cleanContent);
   }
 
-  return _textResult('Created file: $path');
+  return textResult('Created file: $path');
 }
 
 Future<CallToolResult> _editFile(
@@ -614,35 +608,35 @@ Future<CallToolResult> _editFile(
 ) async {
   final error = validateRelativePath(path);
   if (error != null) {
-    return _textResult('Error: $error');
+    return textResult('Error: $error');
   }
 
   final filePath = getAbsolutePath(workingDir, path);
   if (!isAllowedPath(allowedPaths, filePath)) {
-    return _textResult('Error: Not allowed for: $path');
+    return textResult('Error: Not allowed for: $path');
   }
 
   final file = File(filePath);
   if (!await file.exists()) {
-    return _textResult('Error: File not found: $path');
+    return textResult('Error: File not found: $path');
   }
 
   if (content == null) {
-    return _textResult('Error: content is required for edit-file');
+    return textResult('Error: content is required for edit-file');
   }
 
   // Validate line numbers
   if (startLine != null && startLine < 1) {
-    return _textResult('Error: startLine must be >= 1');
+    return textResult('Error: startLine must be >= 1');
   }
   if (endLine != null && endLine < 1) {
-    return _textResult('Error: endLine must be >= 1');
+    return textResult('Error: endLine must be >= 1');
   }
   if (endLine != null && startLine == null) {
-    return _textResult('Error: endLine requires startLine');
+    return textResult('Error: endLine requires startLine');
   }
   if (startLine != null && endLine != null && endLine < startLine) {
-    return _textResult('Error: endLine must be >= startLine');
+    return textResult('Error: endLine must be >= startLine');
   }
 
   // Read existing content and detect line endings
@@ -683,7 +677,7 @@ Future<CallToolResult> _editFile(
     final endIndex = endLine;
 
     if (startIndex >= existingLines.length) {
-      return _textResult(
+      return textResult(
         'Error: startLine ($startLine) exceeds file length (${existingLines.length} lines)',
       );
     }
@@ -703,5 +697,5 @@ Future<CallToolResult> _editFile(
   final finalContent = applyLineEndings(resultContent, lineEndingStyle);
   await file.writeAsString(finalContent);
 
-  return _textResult('Success: $operationDesc in $path');
+  return textResult('Success: $operationDesc in $path');
 }

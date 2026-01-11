@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:mcp_dart/mcp_dart.dart';
+import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart';
 import 'package:http/http.dart' as http;
@@ -74,23 +75,23 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
   final operation = args?['operation'] as String?;
 
   if (operation == null) {
-    return _textResult('Error: operation is required');
+    return textResult('Error: operation is required');
   }
 
   switch (operation) {
     case 'convert':
       final html = args?['html'] as String?;
       if (html == null || html.isEmpty) {
-        return _textResult('Error: html is required for convert operation');
+        return textResult('Error: html is required for convert operation');
       }
       final includeLinks = args?['include-links'] as bool? ?? true;
       final includeImages = args?['include-images'] as bool? ?? true;
-      return _textResult(_convertHtmlToMarkdown(html, includeLinks, includeImages));
+      return textResult(_convertHtmlToMarkdown(html, includeLinks, includeImages));
 
     case 'convert-url':
       final url = args?['url'] as String?;
       if (url == null || url.isEmpty) {
-        return _textResult('Error: url is required for convert-url operation');
+        return textResult('Error: url is required for convert-url operation');
       }
       final includeLinks = args?['include-links'] as bool? ?? true;
       final includeImages = args?['include-images'] as bool? ?? true;
@@ -99,9 +100,9 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
     case 'extract-text':
       final html = args?['html'] as String?;
       if (html == null || html.isEmpty) {
-        return _textResult('Error: html is required for extract-text operation');
+        return textResult('Error: html is required for extract-text operation');
       }
-      return _textResult(_extractText(html));
+      return textResult(_extractText(html));
 
     case 'extract-links':
       final url = args?['url'] as String?;
@@ -109,19 +110,13 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
       if (url != null && url.isNotEmpty) {
         return _extractLinksFromUrl(url);
       } else if (html != null && html.isNotEmpty) {
-        return _textResult(_extractLinks(html, null));
+        return textResult(_extractLinks(html, null));
       }
-      return _textResult('Error: url or html is required for extract-links operation');
+      return textResult('Error: url or html is required for extract-links operation');
 
     default:
-      return _textResult('Error: Unknown operation: $operation');
+      return textResult('Error: Unknown operation: $operation');
   }
-}
-
-CallToolResult _textResult(String text) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
-  );
 }
 
 /// Convert HTML to Markdown
@@ -470,15 +465,15 @@ Future<CallToolResult> _convertUrl(String url, bool includeLinks, bool includeIm
     );
     
     if (response.statusCode != 200) {
-      return _textResult('Error: Failed to fetch URL. Status: ${response.statusCode}');
+      return textResult('Error: Failed to fetch URL. Status: ${response.statusCode}');
     }
     
     final html = response.body;
     final markdown = _convertHtmlToMarkdown(html, includeLinks, includeImages);
     
-    return _textResult('# Content from $url\n\n$markdown');
+    return textResult('# Content from $url\n\n$markdown');
   } catch (e) {
-    return _textResult('Error fetching URL: $e');
+    return textResult('Error fetching URL: $e');
   }
 }
 
@@ -493,12 +488,12 @@ Future<CallToolResult> _extractLinksFromUrl(String url) async {
     );
     
     if (response.statusCode != 200) {
-      return _textResult('Error: Failed to fetch URL. Status: ${response.statusCode}');
+      return textResult('Error: Failed to fetch URL. Status: ${response.statusCode}');
     }
     
     final html = response.body;
-    return _textResult(_extractLinks(html, url));
+    return textResult(_extractLinks(html, url));
   } catch (e) {
-    return _textResult('Error fetching URL: $e');
+    return textResult('Error fetching URL: $e');
   }
 }

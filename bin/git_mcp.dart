@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 import 'package:git/git.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
@@ -209,11 +210,8 @@ void _printUsage() {
   stderr.writeln('  allowed_paths       Paths that can be staged (default: project_path)');
 }
 
-CallToolResult _textResult(String text) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
-  );
-}
+
+
 
 // =============================================================================
 // SSH Agent Support
@@ -554,14 +552,14 @@ Future<CallToolResult> _handleGit(
   final operation = args?['operation'] as String?;
 
   if (operation == null) {
-    return _textResult('Error: operation is required');
+    return textResult('Error: operation is required');
   }
 
   // Verify it's a git directory for most operations
   if (operation != 'status' && operation != 'signing-status') {
     final isGitDir = await GitDir.isGitDir(workingDir.path);
     if (!isGitDir) {
-      return _textResult(
+      return textResult(
           'Error: ${workingDir.path} is not a git repository. Run "git init" first.');
     }
   }
@@ -617,12 +615,13 @@ Future<CallToolResult> _handleGit(
       case 'signing-status':
         return _signingStatus(workingDir, signingInfo);
       default:
-        return _textResult('Error: Unknown operation: $operation');
+        return textResult('Error: Unknown operation: $operation');
     }
   } catch (e) {
-    return _textResult('Error: $e');
+    return textResult('Error: $e');
   }
 }
+
 
 List<String>? _getFilesArg(Map<String, dynamic>? args) {
   final files = args?['files'];
@@ -771,21 +770,21 @@ Future<ProcessResult> _runGit(
 Future<CallToolResult> _gitStatus(Directory workingDir) async {
   final isGitDir = await GitDir.isGitDir(workingDir.path);
   if (!isGitDir) {
-    return _textResult('Not a git repository: ${workingDir.path}');
+    return textResult('Not a git repository: ${workingDir.path}');
   }
 
   final result = await _runGit(workingDir, ['status', '--short', '--branch']);
 
   if (result.exitCode != 0) {
-    return _textResult('Error: ${result.stderr}');
+    return textResult('Error: ${result.stderr}');
   }
 
   final output = result.stdout as String;
   if (output.trim().isEmpty) {
-    return _textResult('Nothing to commit, working tree clean');
+    return textResult('Nothing to commit, working tree clean');
   }
 
-  return _textResult(output);
+  return textResult(output);
 }
 
 /// Create a new branch
@@ -795,7 +794,7 @@ Future<CallToolResult> _branchCreate(
   String? from,
 ) async {
   if (branch == null || branch.isEmpty) {
-    return _textResult('Error: branch name is required');
+    return textResult('Error: branch name is required');
   }
 
   final args = ['branch', branch];
@@ -806,10 +805,10 @@ Future<CallToolResult> _branchCreate(
   final result = await _runGit(workingDir, args);
 
   if (result.exitCode != 0) {
-    return _textResult('Error creating branch: ${result.stderr}');
+    return textResult('Error creating branch: ${result.stderr}');
   }
 
-  return _textResult('Created branch: $branch');
+  return textResult('Created branch: $branch');
 }
 
 /// List all branches
@@ -817,10 +816,10 @@ Future<CallToolResult> _branchList(Directory workingDir) async {
   final result = await _runGit(workingDir, ['branch', '-a', '-v']);
 
   if (result.exitCode != 0) {
-    return _textResult('Error: ${result.stderr}');
+    return textResult('Error: ${result.stderr}');
   }
 
-  return _textResult(result.stdout as String);
+  return textResult(result.stdout as String);
 }
 
 /// Switch to a branch
@@ -829,16 +828,16 @@ Future<CallToolResult> _branchSwitch(
   String? branch,
 ) async {
   if (branch == null || branch.isEmpty) {
-    return _textResult('Error: branch name is required');
+    return textResult('Error: branch name is required');
   }
 
   final result = await _runGit(workingDir, ['checkout', branch]);
 
   if (result.exitCode != 0) {
-    return _textResult('Error switching branch: ${result.stderr}');
+    return textResult('Error switching branch: ${result.stderr}');
   }
 
-  return _textResult('Switched to branch: $branch');
+  return textResult('Switched to branch: $branch');
 }
 
 /// Merge a branch (always creates a merge commit, never fast-forward or rebase)
@@ -850,7 +849,7 @@ Future<CallToolResult> _merge(
   String? branch,
 ) async {
   if (branch == null || branch.isEmpty) {
-    return _textResult('Error: branch name is required');
+    return textResult('Error: branch name is required');
   }
 
   // Check if current branch has any commits
@@ -864,7 +863,7 @@ Future<CallToolResult> _merge(
     ]);
     
     if (initResult.exitCode != 0) {
-      return _textResult(
+      return textResult(
         'Error: Current branch has no commits and failed to create initial commit.\n'
         'Error: ${initResult.stderr}'
       );
@@ -882,7 +881,7 @@ Future<CallToolResult> _merge(
     final stdout = result.stdout as String;
     
     if (stderr.contains('CONFLICT') || stdout.contains('CONFLICT')) {
-      return _textResult(
+      return textResult(
           'Merge conflict detected. Resolve conflicts and commit.\n\n$stdout\n$stderr');
     }
     
@@ -896,19 +895,19 @@ Future<CallToolResult> _merge(
         final retryStderr = retryResult.stderr as String;
         final retryStdout = retryResult.stdout as String;
         if (retryStderr.contains('CONFLICT') || retryStdout.contains('CONFLICT')) {
-          return _textResult(
+          return textResult(
               'Merge conflict detected. Resolve conflicts and commit.\n\n$retryStdout\n$retryStderr');
         }
-        return _textResult('Error merging: $retryStderr');
+        return textResult('Error merging: $retryStderr');
       }
       
-      return _textResult('Merged $branch into current branch (with unrelated histories)\n\n${retryResult.stdout}');
+      return textResult('Merged $branch into current branch (with unrelated histories)\n\n${retryResult.stdout}');
     }
     
-    return _textResult('Error merging: $stderr');
+    return textResult('Error merging: $stderr');
   }
 
-  return _textResult('Merged $branch into current branch\n\n${result.stdout}');
+  return textResult('Merged $branch into current branch\n\n${result.stdout}');
 }
 
 /// Check if the current branch has any commits
@@ -946,12 +945,12 @@ Future<CallToolResult> _add(
   if (all) {
     final statusResult = await _runGit(workingDir, ['status', '--porcelain']);
     if (statusResult.exitCode != 0) {
-      return _textResult('Error getting status: ${statusResult.stderr}');
+      return textResult('Error getting status: ${statusResult.stderr}');
     }
 
     final statusOutput = statusResult.stdout as String;
     if (statusOutput.trim().isEmpty) {
-      return _textResult('Nothing to stage');
+      return textResult('Nothing to stage');
     }
 
     final filesToAdd = <String>[];
@@ -983,13 +982,13 @@ Future<CallToolResult> _add(
       final msg = deniedFiles.isNotEmpty
           ? 'No files to stage. The following files are outside allowed paths:\n  ${deniedFiles.join('\n  ')}'
           : 'Nothing to stage';
-      return _textResult(msg);
+      return textResult(msg);
     }
 
     final result = await _runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
 
     if (result.exitCode != 0) {
-      return _textResult('Error staging files: ${result.stderr}');
+      return textResult('Error staging files: ${result.stderr}');
     }
 
     final output = StringBuffer();
@@ -1007,11 +1006,11 @@ Future<CallToolResult> _add(
       }
     }
 
-    return _textResult(output.toString().trim());
+    return textResult(output.toString().trim());
   }
   
   if (files == null || files.isEmpty) {
-    return _textResult(
+    return textResult(
         'Error: files is required. Use ["."] to stage all allowed files, or set all=true.');
   }
 
@@ -1035,7 +1034,7 @@ Future<CallToolResult> _add(
   }
 
   if (filesToAdd.isEmpty) {
-    return _textResult(
+    return textResult(
         'Error: None of the specified files are within allowed paths.\n'
         'Denied: ${deniedFiles.join(", ")}\n\n'
         'Allowed paths:\n  ${allowedPaths.join('\n  ')}');
@@ -1044,7 +1043,7 @@ Future<CallToolResult> _add(
   final result = await _runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
 
   if (result.exitCode != 0) {
-    return _textResult('Error staging files: ${result.stderr}');
+    return textResult('Error staging files: ${result.stderr}');
   }
 
   final output = StringBuffer();
@@ -1059,7 +1058,7 @@ Future<CallToolResult> _add(
     output.writeln('Skipped (outside allowed paths): ${deniedFiles.join(", ")}');
   }
 
-  return _textResult(output.toString().trim());
+  return textResult(output.toString().trim());
 }
 
 /// Commit changes with optional signing
@@ -1076,7 +1075,7 @@ Future<CallToolResult> _commit(
   required SigningInfo signingInfo,
 }) async {
   if (message == null || message.isEmpty) {
-    return _textResult('Error: commit message is required');
+    return textResult('Error: commit message is required');
   }
 
   // Determine actual signing method
@@ -1090,14 +1089,14 @@ Future<CallToolResult> _commit(
   // Validate requested method is available
   if (actualMethod == 'ssh') {
     if (signingInfo.sshKeyPath == null) {
-      return _textResult(
+      return textResult(
         'Error: SSH signing requested but no SSH key found.\n'
         'Expected key at: ~/.ssh/id_ed25519.pub, ~/.ssh/id_ecdsa.pub, or ~/.ssh/id_rsa.pub\n\n'
         'Use sign="none" to commit without signing, or sign="gpg" for GPG signing.'
       );
     }
     if (!signingInfo.sshAgentHasKey) {
-      return _textResult(
+      return textResult(
         'Error: SSH signing requires your key to be loaded in ssh-agent.\n\n'
         'Your key appears to be passphrase-protected. Before launching Claude, run:\n'
         '  ssh-add ~/.ssh/id_rsa\n\n'
@@ -1108,7 +1107,7 @@ Future<CallToolResult> _commit(
     }
   }
   if (actualMethod == 'gpg' && !signingInfo.gpgAvailable) {
-    return _textResult(
+    return textResult(
       'Error: GPG signing requested but no GPG key found.\n'
       'Run "gpg --list-secret-keys" to check your keys.\n\n'
       'Use sign="none" to commit without signing, or sign="ssh" for SSH signing.'
@@ -1123,7 +1122,7 @@ Future<CallToolResult> _commit(
     case 'ssh':
       final sshKeyPath = signingInfo.sshKeyPath ?? await _getSSHKeyPath();
       if (sshKeyPath == null) {
-        return _textResult('Error: Could not find SSH key for signing');
+        return textResult('Error: Could not find SSH key for signing');
       }
       
       args.insertAll(0, [
@@ -1158,13 +1157,13 @@ Future<CallToolResult> _commit(
   if (result.exitCode != 0) {
     final stderr = result.stderr as String;
     if (stderr.contains('nothing to commit')) {
-      return _textResult('Nothing to commit. Stage changes with "add" first.');
+      return textResult('Nothing to commit. Stage changes with "add" first.');
     }
     
     // Provide helpful error messages for signing failures
     if (actualMethod == 'ssh') {
       if (stderr.contains('Load key') && stderr.contains('passphrase')) {
-        return _textResult(
+        return textResult(
           'Error: SSH key requires passphrase but ssh-agent is not available.\n\n'
           'Before launching Claude, run:\n'
           '  ssh-add ~/.ssh/id_rsa\n\n'
@@ -1175,7 +1174,7 @@ Future<CallToolResult> _commit(
         );
       }
       if (stderr.contains('error: Load key') || stderr.contains('invalid format')) {
-        return _textResult(
+        return textResult(
           'Error: SSH signing failed - could not load key.\n'
           'Make sure your SSH key exists and is valid.\n\n'
           'Original error: ${result.stderr}'
@@ -1186,7 +1185,7 @@ Future<CallToolResult> _commit(
     if (actualMethod == 'gpg') {
       if (stderr.contains('secret key not available') || 
           stderr.contains('No secret key')) {
-        return _textResult(
+        return textResult(
           'Error: GPG signing failed - no secret key available.\n'
           'Make sure you have configured git with a valid signing key:\n'
           '  git config user.signingkey <KEY_ID>\n\n'
@@ -1194,7 +1193,7 @@ Future<CallToolResult> _commit(
         );
       }
       if (stderr.contains('agent') || stderr.contains('socket')) {
-        return _textResult(
+        return textResult(
           'Error: GPG signing failed - cannot connect to gpg-agent.\n'
           'Make sure gpg-agent is running:\n'
           '  gpgconf --launch gpg-agent\n\n'
@@ -1204,7 +1203,7 @@ Future<CallToolResult> _commit(
       }
     }
     
-    return _textResult('Error committing: ${result.stderr}');
+    return textResult('Error committing: ${result.stderr}');
   }
 
   String signedNote;
@@ -1219,7 +1218,7 @@ Future<CallToolResult> _commit(
       signedNote = '';
   }
   
-  return _textResult('Committed$signedNote: $message\n\n${result.stdout}');
+  return textResult('Committed$signedNote: $message\n\n${result.stdout}');
 }
 
 /// Stash changes
@@ -1237,16 +1236,16 @@ Future<CallToolResult> _stash(Directory workingDir, String? message, {bool inclu
   final result = await _runGit(workingDir, args);
 
   if (result.exitCode != 0) {
-    return _textResult('Error stashing: ${result.stderr}');
+    return textResult('Error stashing: ${result.stderr}');
   }
 
   final output = result.stdout as String;
   if (output.contains('No local changes to save')) {
-    return _textResult('No changes to stash');
+    return textResult('No changes to stash');
   }
 
   final untrackedNote = includeUntracked ? ' (including untracked files)' : '';
-  return _textResult('Stashed changes$untrackedNote${message != null ? ": $message" : ""}\n\n$output');
+  return textResult('Stashed changes$untrackedNote${message != null ? ": $message" : ""}\n\n$output');
 }
 
 /// List stashes
@@ -1254,15 +1253,15 @@ Future<CallToolResult> _stashList(Directory workingDir) async {
   final result = await _runGit(workingDir, ['stash', 'list']);
 
   if (result.exitCode != 0) {
-    return _textResult('Error: ${result.stderr}');
+    return textResult('Error: ${result.stderr}');
   }
 
   final output = result.stdout as String;
   if (output.trim().isEmpty) {
-    return _textResult('No stashes');
+    return textResult('No stashes');
   }
 
-  return _textResult(output);
+  return textResult(output);
 }
 
 /// Apply or pop a stash
@@ -1275,11 +1274,11 @@ Future<CallToolResult> _stashApply(
   final result = await _runGit(workingDir, ['stash', command, 'stash@{$index}']);
 
   if (result.exitCode != 0) {
-    return _textResult('Error applying stash: ${result.stderr}');
+    return textResult('Error applying stash: ${result.stderr}');
   }
 
   final action = pop ? 'Popped' : 'Applied';
-  return _textResult('$action stash@{$index}\n\n${result.stdout}');
+  return textResult('$action stash@{$index}\n\n${result.stdout}');
 }
 
 /// Create a tag
@@ -1290,7 +1289,7 @@ Future<CallToolResult> _tagCreate(
   bool annotated,
 ) async {
   if (tag == null || tag.isEmpty) {
-    return _textResult('Error: tag name is required');
+    return textResult('Error: tag name is required');
   }
 
   final args = ['tag'];
@@ -1306,11 +1305,11 @@ Future<CallToolResult> _tagCreate(
   final result = await _runGit(workingDir, args);
 
   if (result.exitCode != 0) {
-    return _textResult('Error creating tag: ${result.stderr}');
+    return textResult('Error creating tag: ${result.stderr}');
   }
 
   final tagType = annotated ? 'annotated tag' : 'tag';
-  return _textResult('Created $tagType: $tag');
+  return textResult('Created $tagType: $tag');
 }
 
 /// List tags
@@ -1318,15 +1317,15 @@ Future<CallToolResult> _tagList(Directory workingDir) async {
   final result = await _runGit(workingDir, ['tag', '-l', '-n1']);
 
   if (result.exitCode != 0) {
-    return _textResult('Error: ${result.stderr}');
+    return textResult('Error: ${result.stderr}');
   }
 
   final output = result.stdout as String;
   if (output.trim().isEmpty) {
-    return _textResult('No tags');
+    return textResult('No tags');
   }
 
-  return _textResult(output);
+  return textResult(output);
 }
 
 /// Show commit log
@@ -1341,10 +1340,10 @@ Future<CallToolResult> _log(Directory workingDir, int maxCount) async {
   ]);
 
   if (result.exitCode != 0) {
-    return _textResult('Error: ${result.stderr}');
+    return textResult('Error: ${result.stderr}');
   }
 
-  return _textResult(result.stdout as String);
+  return textResult(result.stdout as String);
 }
 
 /// Show diff
@@ -1367,11 +1366,12 @@ Future<CallToolResult> _diff(Directory workingDir) async {
   }
 
   if (output.isEmpty) {
-    return _textResult('No changes');
+    return textResult('No changes');
   }
 
-  return _textResult(output.toString());
+  return textResult(output.toString());
 }
+
 
 // =============================================================================
 // Signing Status Report
@@ -1533,5 +1533,5 @@ Future<CallToolResult> _signingStatus(Directory workingDir, SigningInfo signingI
   
   output.writeln('=== End of Signing Status Report ===');
   
-  return _textResult(output.toString());
+  return textResult(output.toString());
 }

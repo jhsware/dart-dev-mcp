@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dart_dev_mcp/dart_dev_mcp.dart' show SessionManager, runCommand, streamCommand, textResult;
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
-import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 
 /// Flutter Runner MCP Server
 ///
@@ -152,12 +152,6 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-CallToolResult _textResult(String text) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
-  );
-}
-
 Future<CallToolResult> _handleFlutterRunner(
   Map<String, dynamic>? args,
   Directory workingDir,
@@ -167,7 +161,7 @@ Future<CallToolResult> _handleFlutterRunner(
   final operation = args?['operation'] as String?;
 
   if (operation == null) {
-    return _textResult('Error: operation is required');
+    return textResult('Error: operation is required');
   }
 
   switch (operation) {
@@ -262,7 +256,7 @@ Future<CallToolResult> _handleFlutterRunner(
       return _cancelSession(sessionManager, sessionId);
 
     default:
-      return _textResult('Error: Unknown operation: $operation');
+      return textResult('Error: Unknown operation: $operation');
   }
 }
 
@@ -317,7 +311,7 @@ CallToolResult _startFlutterCommand(
         'Operation started. Use get_output with session_id to retrieve output chunks.',
   };
 
-  return _textResult(jsonEncode(response));
+  return textResult(jsonEncode(response));
 }
 
 /// Run a short Flutter command synchronously
@@ -347,9 +341,9 @@ Future<CallToolResult> _runFlutterCommandSync(
       output.writeln(result.stderr);
     }
 
-    return _textResult(output.toString());
+    return textResult(output.toString());
   } catch (e) {
-    return _textResult('Error running command: $e');
+    return textResult('Error running command: $e');
   }
 }
 
@@ -361,7 +355,7 @@ CallToolResult _getOutput(
   int maxChunks,
 ) {
   if (sessionId == null || sessionId.isEmpty) {
-    return _textResult('Error: session_id is required');
+    return textResult('Error: session_id is required');
   }
 
   final session = sessionManager.getSession(sessionId);
@@ -370,7 +364,7 @@ CallToolResult _getOutput(
       'error': 'Session not found',
       'session_id': sessionId,
     };
-    return _textResult(jsonEncode(response));
+    return textResult(jsonEncode(response));
   }
 
   // Get the requested chunk range
@@ -408,7 +402,7 @@ CallToolResult _getOutput(
     response['message'] = 'All output has been retrieved. Operation complete.';
   }
 
-  return _textResult(jsonEncode(response));
+  return textResult(jsonEncode(response));
 }
 
 /// List all sessions
@@ -432,7 +426,7 @@ CallToolResult _listSessions(SessionManager sessionManager) {
     'total': sessions.length,
   };
 
-  return _textResult(jsonEncode(response));
+  return textResult(jsonEncode(response));
 }
 
 /// Cancel a running session
@@ -441,7 +435,7 @@ Future<CallToolResult> _cancelSession(
   String? sessionId,
 ) async {
   if (sessionId == null || sessionId.isEmpty) {
-    return _textResult('Error: session_id is required');
+    return textResult('Error: session_id is required');
   }
 
   final session = sessionManager.getSession(sessionId);
@@ -450,7 +444,7 @@ Future<CallToolResult> _cancelSession(
       'error': 'Session not found',
       'session_id': sessionId,
     };
-    return _textResult(jsonEncode(response));
+    return textResult(jsonEncode(response));
   }
 
   await sessionManager.removeSession(sessionId);
@@ -461,5 +455,5 @@ Future<CallToolResult> _cancelSession(
     'message': 'Session has been cancelled and removed.',
   };
 
-  return _textResult(jsonEncode(response));
+  return textResult(jsonEncode(response));
 }

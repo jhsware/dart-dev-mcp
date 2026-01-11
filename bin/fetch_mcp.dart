@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dart_dev_mcp/dart_dev_mcp.dart' show textResult;
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
@@ -98,12 +99,6 @@ Synonyms: get links, find links, fetch links''',
   stderr.writeln('Fetch MCP Server running on stdio');
 }
 
-CallToolResult _textResult(String text) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
-  );
-}
-
 /// Handle fetch request
 Future<CallToolResult> _handleFetch(
   Map<String, dynamic>? args,
@@ -116,7 +111,7 @@ Future<CallToolResult> _handleFetch(
   final raw = args?['raw'] as bool? ?? false;
 
   if (url == null || url.isEmpty) {
-    return _textResult('Error: url is required');
+    return textResult('Error: url is required');
   }
 
   // Validate URL
@@ -124,17 +119,17 @@ Future<CallToolResult> _handleFetch(
   try {
     uri = Uri.parse(url);
     if (!uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
-      return _textResult('Error: Invalid URL scheme. Must be http or https.');
+      return textResult('Error: Invalid URL scheme. Must be http or https.');
     }
   } catch (e) {
-    return _textResult('Error: Invalid URL: $e');
+    return textResult('Error: Invalid URL: $e');
   }
 
   // Check robots.txt
   if (!ignoreRobotsTxt) {
     final robotsResult = await _checkRobotsTxt(url, userAgent);
     if (robotsResult != null) {
-      return _textResult(robotsResult);
+      return textResult(robotsResult);
     }
   }
 
@@ -146,7 +141,7 @@ Future<CallToolResult> _handleFetch(
     );
 
     if (response.statusCode != 200) {
-      return _textResult(
+      return textResult(
           'Error: Failed to fetch $url - status code ${response.statusCode}');
     }
 
@@ -172,14 +167,14 @@ Future<CallToolResult> _handleFetch(
     final originalLength = content.length;
 
     if (startIndex >= originalLength) {
-      return _textResult('<e>No more content available.</e>');
+      return textResult('<e>No more content available.</e>');
     }
 
     final endIndex = (startIndex + maxLength).clamp(0, originalLength);
     final truncatedContent = content.substring(startIndex, endIndex);
 
     if (truncatedContent.isEmpty) {
-      return _textResult('<e>No more content available.</e>');
+      return textResult('<e>No more content available.</e>');
     }
 
     final actualContentLength = truncatedContent.length;
@@ -193,9 +188,9 @@ Future<CallToolResult> _handleFetch(
           '\n\n<e>Content truncated. Call the fetch tool with a start_index of $nextStart to get more content.</e>';
     }
 
-    return _textResult(finalContent);
+    return textResult(finalContent);
   } catch (e) {
-    return _textResult('Error fetching URL: $e');
+    return textResult('Error fetching URL: $e');
   }
 }
 
@@ -208,7 +203,7 @@ Future<CallToolResult> _handleFetchLinks(
   final url = args?['url'] as String?;
 
   if (url == null || url.isEmpty) {
-    return _textResult('Error: url is required');
+    return textResult('Error: url is required');
   }
 
   // Validate URL
@@ -216,17 +211,17 @@ Future<CallToolResult> _handleFetchLinks(
   try {
     uri = Uri.parse(url);
     if (!uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
-      return _textResult('Error: Invalid URL scheme. Must be http or https.');
+      return textResult('Error: Invalid URL scheme. Must be http or https.');
     }
   } catch (e) {
-    return _textResult('Error: Invalid URL: $e');
+    return textResult('Error: Invalid URL: $e');
   }
 
   // Check robots.txt
   if (!ignoreRobotsTxt) {
     final robotsResult = await _checkRobotsTxt(url, userAgent);
     if (robotsResult != null) {
-      return _textResult(robotsResult);
+      return textResult(robotsResult);
     }
   }
 
@@ -238,7 +233,7 @@ Future<CallToolResult> _handleFetchLinks(
     );
 
     if (response.statusCode != 200) {
-      return _textResult(
+      return textResult(
           'Error: Failed to fetch $url - status code ${response.statusCode}');
     }
 
@@ -248,7 +243,7 @@ Future<CallToolResult> _handleFetchLinks(
         contentType.contains('text/html');
 
     if (!isHtml) {
-      return _textResult(
+      return textResult(
           "Content type $contentType isn't HTML, we can't extract links.");
     }
 
@@ -258,9 +253,9 @@ Future<CallToolResult> _handleFetchLinks(
             '${link['label']}: ${link['url']}${link['navParent'] == true ? ' (navbar)' : ''}')
         .toList();
 
-    return _textResult('Links of $url:\n${prettyLinks.join('\n')}');
+    return textResult('Links of $url:\n${prettyLinks.join('\n')}');
   } catch (e) {
-    return _textResult('Error fetching URL: $e');
+    return textResult('Error fetching URL: $e');
   }
 }
 

@@ -1,12 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
 
+import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:dart_dev_mcp/planner/planner.dart';
+
 
 
 
@@ -213,18 +214,6 @@ void _closeDatabase(Database db) {
   }
 }
 
-CallToolResult _textResult(String text) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
-  );
-}
-
-CallToolResult _jsonResult(Map<String, dynamic> data) {
-  return CallToolResult.fromContent(
-    content: [TextContent(text: JsonEncoder.withIndent('  ').convert(data))],
-  );
-}
-
 // =============================================================================
 // Database Initialization
 // =============================================================================
@@ -296,7 +285,7 @@ Future<CallToolResult> _handlePlanner(
   final operation = args?['operation'] as String?;
 
   if (operation == null) {
-    return _textResult('Error: operation is required');
+    return textResult('Error: operation is required');
   }
 
   try {
@@ -326,15 +315,15 @@ Future<CallToolResult> _handlePlanner(
       case 'get-audit-trail':
         return _getAuditTrail(args, txLogRepo);
       default:
-        return _textResult('Error: Unknown operation: $operation');
+        return textResult('Error: Unknown operation: $operation');
     }
   } on SqliteException catch (e) {
     // Handle SQLite-specific errors with more detail
     stderr.writeln('SQLite error: $e');
-    return _textResult('Database error: ${e.message}');
+    return textResult('Database error: ${e.message}');
   } catch (e) {
     stderr.writeln('Error in planner operation: $e');
-    return _textResult('Error: $e');
+    return textResult('Error: $e');
   }
 }
 
@@ -347,14 +336,14 @@ Future<CallToolResult> _getProjectInstructions(Directory workingDir) async {
   final file = File(instructionsPath);
   
   if (!await file.exists()) {
-    return _textResult(
+    return textResult(
       'No project instructions found.\n'
       'Create a file at: .ai_coding_tool/INSTRUCTIONS.md'
     );
   }
   
   final content = await file.readAsString();
-  return _textResult(content);
+  return textResult(content);
 }
 
 // =============================================================================
@@ -388,15 +377,15 @@ CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogR
   final memory = args?['memory'] as String?;
   
   if (projectId == null || projectId.isEmpty) {
-    return _textResult('Error: project_id is required');
+    return textResult('Error: project_id is required');
   }
   
   if (title == null || title.isEmpty) {
-    return _textResult('Error: title is required');
+    return textResult('Error: title is required');
   }
   
   if (!_validTaskStatuses.contains(status)) {
-    return _textResult('Error: Invalid status. Must be one of: ${_validTaskStatuses.join(", ")}');
+    return textResult('Error: Invalid status. Must be one of: ${_validTaskStatuses.join(", ")}');
   }
   
   final id = _uuid.v4();
@@ -436,7 +425,7 @@ CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogR
     projectId: projectId,
   );
   
-  return _jsonResult({
+  return jsonResult({
     'success': true,
     'message': 'Task created',
     'task': taskData,
@@ -447,13 +436,13 @@ CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
-    return _textResult('Error: id is required');
+    return textResult('Error: id is required');
   }
   
   final taskResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
   
   if (taskResult.isEmpty) {
-    return _textResult('Error: Task not found: $id');
+    return textResult('Error: Task not found: $id');
   }
   
   final task = taskResult.first;
@@ -470,7 +459,7 @@ CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
     'status': _normalizeStepStatus(row['status'] as String),
   }).toList();
   
-  return _jsonResult({
+  return jsonResult({
     'id': task['id'],
     'project_id': task['project_id'],
     'title': task['title'],
@@ -486,13 +475,13 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionL
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
-    return _textResult('Error: id is required');
+    return textResult('Error: id is required');
   }
   
   // Get task before update for diff calculation
   final existingResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
   if (existingResult.isEmpty) {
-    return _textResult('Error: Task not found: $id');
+    return textResult('Error: Task not found: $id');
   }
   
   final before = taskToLoggable(Map<String, dynamic>.from(existingResult.first));
@@ -518,14 +507,14 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionL
   if (args?.containsKey('status') == true) {
     final status = args!['status'] as String;
     if (!_validTaskStatuses.contains(status)) {
-      return _textResult('Error: Invalid status. Must be one of: ${_validTaskStatuses.join(", ")}');
+      return textResult('Error: Invalid status. Must be one of: ${_validTaskStatuses.join(", ")}');
     }
     updates.add('status = ?');
     values.add(status);
   }
   
   if (updates.isEmpty) {
-    return _textResult('Error: No fields to update');
+    return textResult('Error: No fields to update');
   }
   
   final now = DateTime.now().toUtc().toIso8601String();
@@ -573,19 +562,19 @@ CallToolResult _showTaskMemory(Database db, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
-    return _textResult('Error: id is required');
+    return textResult('Error: id is required');
   }
   
   final result = db.select('SELECT id, title, memory FROM tasks WHERE id = ?', [id]);
   
   if (result.isEmpty) {
-    return _textResult('Error: Task not found: $id');
+    return textResult('Error: Task not found: $id');
   }
   
   final task = result.first;
   final memory = task['memory'] as String?;
   
-  return _jsonResult({
+  return jsonResult({
     'id': task['id'],
     'title': task['title'],
     'memory': memory ?? '',
@@ -597,13 +586,13 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, Transa
   final memory = args?['memory'] as String?;
   
   if (id == null || id.isEmpty) {
-    return _textResult('Error: id is required');
+    return textResult('Error: id is required');
   }
   
   // Get task before update for diff calculation
   final existingResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
   if (existingResult.isEmpty) {
-    return _textResult('Error: Task not found: $id');
+    return textResult('Error: Task not found: $id');
   }
   
   final before = taskToLoggable(Map<String, dynamic>.from(existingResult.first));
@@ -642,7 +631,7 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, Transa
     projectId: after['project_id'] as String?,
   );
   
-  return _jsonResult({
+  return jsonResult({
     'success': true,
     'message': 'Task memory updated',
     'id': id,
@@ -655,7 +644,7 @@ CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
   
   // Validate status if provided
   if (status != null && !_validTaskStatuses.contains(status)) {
-    return _textResult('Error: Invalid status filter. Must be one of: ${_validTaskStatuses.join(", ")}');
+    return textResult('Error: Invalid status filter. Must be one of: ${_validTaskStatuses.join(", ")}');
   }
   
   // Build query with optional filters
@@ -701,7 +690,7 @@ CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
     'updated_at': row['updated_at'],
   }).toList();
   
-  return _jsonResult({
+  return jsonResult({
     'tasks': tasks,
     'count': tasks.length,
     'filters': {
@@ -725,21 +714,21 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogR
   final status = _normalizeStepStatus(args?['status'] as String? ?? 'todo');
   
   if (taskId == null || taskId.isEmpty) {
-    return _textResult('Error: task_id is required');
+    return textResult('Error: task_id is required');
   }
   
   if (title == null || title.isEmpty) {
-    return _textResult('Error: title is required');
+    return textResult('Error: title is required');
   }
   
   if (!_validStepStatuses.contains(status)) {
-    return _textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
+    return textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
   }
   
   // Check task exists and get task info for logging
   final taskResult = db.select('SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
   if (taskResult.isEmpty) {
-    return _textResult('Error: Task not found: $taskId');
+    return textResult('Error: Task not found: $taskId');
   }
   final taskInfo = taskResult.first;
   
@@ -779,7 +768,7 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogR
     projectId: taskInfo['project_id'] as String?,
   );
   
-  return _jsonResult({
+  return jsonResult({
     'success': true,
     'message': 'Step created',
     'step': stepData,
@@ -790,18 +779,18 @@ CallToolResult _showStep(Database db, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
-    return _textResult('Error: id is required');
+    return textResult('Error: id is required');
   }
   
   final result = db.select('SELECT * FROM steps WHERE id = ?', [id]);
   
   if (result.isEmpty) {
-    return _textResult('Error: Step not found: $id');
+    return textResult('Error: Step not found: $id');
   }
   
   final step = result.first;
   
-  return _jsonResult({
+  return jsonResult({
     'id': step['id'],
     'task_id': step['task_id'],
     'title': step['title'],
@@ -816,7 +805,7 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
-    return _textResult('Error: id is required');
+    return textResult('Error: id is required');
   }
   
   // Get step before update for diff calculation
@@ -827,7 +816,7 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
     WHERE s.id = ?
   ''', [id]);
   if (existingResult.isEmpty) {
-    return _textResult('Error: Step not found: $id');
+    return textResult('Error: Step not found: $id');
   }
   
   final existingRow = existingResult.first;
@@ -851,14 +840,14 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
     // Normalize legacy statuses for backward compatibility
     final status = _normalizeStepStatus(args!['status'] as String);
     if (!_validStepStatuses.contains(status)) {
-      return _textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
+      return textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
     }
     updates.add('status = ?');
     values.add(status);
   }
   
   if (updates.isEmpty) {
-    return _textResult('Error: No fields to update');
+    return textResult('Error: No fields to update');
   }
   
   final now = DateTime.now().toUtc().toIso8601String();
@@ -918,7 +907,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
     try {
       entityType = EntityType.fromDbValue(entityTypeStr);
     } catch (e) {
-      return _textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
+      return textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
     }
   }
   
@@ -930,7 +919,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
     try {
       before = DateTime.parse(beforeStr);
     } catch (e) {
-      return _textResult('Error: Invalid before datetime format. Use ISO 8601 format.');
+      return textResult('Error: Invalid before datetime format. Use ISO 8601 format.');
     }
   }
   
@@ -938,7 +927,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
     try {
       after = DateTime.parse(afterStr);
     } catch (e) {
-      return _textResult('Error: Invalid after datetime format. Use ISO 8601 format.');
+      return textResult('Error: Invalid after datetime format. Use ISO 8601 format.');
     }
   }
   
@@ -958,7 +947,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
   // Format for output (timeline view - no detailed changes)
   final timeline = entries.map((e) => e.toTimelineJson()).toList();
   
-  return _jsonResult({
+  return jsonResult({
     'timeline': timeline,
     'count': timeline.length,
     'filters': {
@@ -978,11 +967,11 @@ CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogReposito
   
   // Validate required parameters
   if (entityTypeStr == null || entityTypeStr.isEmpty) {
-    return _textResult("Error: entity_type is required. Must be 'task' or 'step'");
+    return textResult("Error: entity_type is required. Must be 'task' or 'step'");
   }
   
   if (entityId == null || entityId.isEmpty) {
-    return _textResult('Error: id is required for audit trail');
+    return textResult('Error: id is required for audit trail');
   }
   
   // Parse entity type
@@ -990,7 +979,7 @@ CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogReposito
   try {
     entityType = EntityType.fromDbValue(entityTypeStr);
   } catch (e) {
-    return _textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
+    return textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
   }
   
   // Get audit trail entries
@@ -1004,11 +993,10 @@ CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogReposito
   // Format for output (full details including changes)
   final auditTrail = entries.map((e) => e.toJson()).toList();
   
-  return _jsonResult({
+  return jsonResult({
     'entity_type': entityTypeStr,
     'entity_id': entityId,
     'audit_trail': auditTrail,
     'count': auditTrail.length,
   });
 }
-

@@ -10,4 +10,5 @@ library;
 
 export 'mcp_server/utils/line_endings.dart';
 export 'mcp_server/utils/path_helpers.dart';
+export 'mcp_server/utils/result_helpers.dart';
 export 'mcp_server/utils/session_manager.dart';
