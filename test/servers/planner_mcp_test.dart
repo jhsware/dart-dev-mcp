@@ -210,8 +210,8 @@ void main() {
         expect(doneTasks.first['title'], 'Done Task');
       });
 
-      test('validates task statuses', () {
-        final validStatuses = ['todo', 'started', 'canceled', 'done'];
+      test('validates task statuses including draft and merged', () {
+        final validStatuses = ['todo', 'draft', 'started', 'canceled', 'done', 'merged'];
         final now = DateTime.now().toUtc().toIso8601String();
         
         for (final status in validStatuses) {
@@ -225,6 +225,7 @@ void main() {
           expect(result.first['status'], status);
         }
       });
+
     });
 
     group('Step Operations', () {
@@ -294,9 +295,10 @@ void main() {
         final result = db.select('SELECT status FROM steps WHERE id = ?', [stepId]);
         expect(result.first['status'], 'done');
       });
-
-      test('validates step statuses including merged', () {
-        final validStatuses = ['todo', 'started', 'canceled', 'done', 'merged'];
+      test('validates step statuses', () {
+        // Steps only support: todo, started, canceled, done
+        // (draft and merged are task-only statuses)
+        final validStatuses = ['todo', 'started', 'canceled', 'done'];
         final now = DateTime.now().toUtc().toIso8601String();
         
         for (final status in validStatuses) {
@@ -311,7 +313,36 @@ void main() {
         }
       });
 
+      test('backward compatibility: legacy step statuses can be stored and read', () {
+        // For backward compatibility, legacy statuses (merged, draft) can still exist
+        // in the database from older data. The application layer normalizes them
+        // when reading: merged → done, draft → todo
+        final now = DateTime.now().toUtc().toIso8601String();
+        
+        // Insert with legacy 'merged' status
+        final mergedStepId = uuid.v4();
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [mergedStepId, taskId, 'Legacy merged step', 'merged', now, now]);
+        
+        // Insert with legacy 'draft' status
+        final draftStepId = uuid.v4();
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [draftStepId, taskId, 'Legacy draft step', 'draft', now, now]);
+        
+        // Verify raw DB values are preserved
+        final mergedResult = db.select('SELECT status FROM steps WHERE id = ?', [mergedStepId]);
+        expect(mergedResult.first['status'], 'merged');
+        
+        final draftResult = db.select('SELECT status FROM steps WHERE id = ?', [draftStepId]);
+        expect(draftResult.first['status'], 'draft');
+      });
+
       test('can get task with its steps', () {
+
         final now = DateTime.now().toUtc().toIso8601String();
         
         // Add some steps
