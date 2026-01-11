@@ -92,6 +92,8 @@ Operations:
 - add-step: Add a step to a task
 - show-step: Show step details
 - update-step: Update step properties
+- get-timeline: Get recent activity timeline (optional: limit, project_id, entity_type, before, after)
+- get-audit-trail: Get detailed change history for an entity (requires: entity_type, id)
 
 Task statuses: todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done''',
@@ -111,11 +113,13 @@ Step statuses: todo, started, canceled, done''',
             'add-step',
             'show-step',
             'update-step',
+            'get-timeline',
+            'get-audit-trail',
           ],
         },
         'id': {
           'type': 'string',
-          'description': 'Task or step ID (for show/update operations)',
+          'description': 'Task or step ID (for show/update/audit-trail operations)',
         },
         'task_id': {
           'type': 'string',
@@ -123,7 +127,7 @@ Step statuses: todo, started, canceled, done''',
         },
         'project_id': {
           'type': 'string',
-          'description': 'Project identifier (for add-task, list-tasks filter)',
+          'description': 'Project identifier (for add-task, list-tasks filter, timeline filter)',
         },
         'title': {
           'type': 'string',
@@ -139,10 +143,26 @@ Step statuses: todo, started, canceled, done''',
               'Status for tasks: todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
           'enum': ['todo', 'draft', 'started', 'canceled', 'done', 'merged'],
         },
-
         'memory': {
           'type': 'string',
           'description': 'Memory/notes content for task',
+        },
+        'entity_type': {
+          'type': 'string',
+          'description': "Entity type filter: 'task' or 'step' (for timeline/audit-trail)",
+          'enum': ['task', 'step'],
+        },
+        'limit': {
+          'type': 'integer',
+          'description': 'Maximum entries to return (for get-timeline, default 20)',
+        },
+        'before': {
+          'type': 'string',
+          'description': 'Return entries before this ISO datetime (for get-timeline)',
+        },
+        'after': {
+          'type': 'string',
+          'description': 'Return entries after this ISO datetime (for get-timeline)',
         },
       },
     ),
@@ -302,6 +322,10 @@ Future<CallToolResult> _handlePlanner(
         return _showStep(db, args);
       case 'update-step':
         return _updateStep(db, args, txLogRepo);
+      case 'get-timeline':
+        return _getTimeline(args, txLogRepo);
+      case 'get-audit-trail':
+        return _getAuditTrail(args, txLogRepo);
       default:
         return _textResult('Error: Unknown operation: $operation');
     }
@@ -877,3 +901,115 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
   // Return updated step
   return _showStep(db, args);
 }
+
+// =============================================================================
+// Timeline and Audit Operations
+// =============================================================================
+
+CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+  final limit = (args?['limit'] as int?) ?? 20;
+  final projectId = args?['project_id'] as String?;
+  final entityTypeStr = args?['entity_type'] as String?;
+  final beforeStr = args?['before'] as String?;
+  final afterStr = args?['after'] as String?;
+  
+  // Parse entity type if provided
+  EntityType? entityType;
+  if (entityTypeStr != null) {
+    try {
+      entityType = EntityType.fromDbValue(entityTypeStr);
+    } catch (e) {
+      return _textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
+    }
+  }
+  
+  // Parse datetime filters
+  DateTime? before;
+  DateTime? after;
+  
+  if (beforeStr != null) {
+    try {
+      before = DateTime.parse(beforeStr);
+    } catch (e) {
+      return _textResult('Error: Invalid before datetime format. Use ISO 8601 format.');
+    }
+  }
+  
+  if (afterStr != null) {
+    try {
+      after = DateTime.parse(afterStr);
+    } catch (e) {
+      return _textResult('Error: Invalid after datetime format. Use ISO 8601 format.');
+    }
+  }
+  
+  // Build query
+  final query = TransactionLogQuery(
+    entityType: entityType,
+    projectId: projectId,
+    before: before,
+    after: after,
+    limit: limit,
+    newestFirst: true,
+  );
+  
+  // Get timeline entries
+  final entries = txLogRepo.getTimeline(query);
+  
+  // Format for output (timeline view - no detailed changes)
+  final timeline = entries.map((e) => e.toTimelineJson()).toList();
+  
+  return _jsonResult({
+    'timeline': timeline,
+    'count': timeline.length,
+    'filters': {
+      if (projectId != null) 'project_id': projectId,
+      if (entityTypeStr != null) 'entity_type': entityTypeStr,
+      if (beforeStr != null) 'before': beforeStr,
+      if (afterStr != null) 'after': afterStr,
+      'limit': limit,
+    },
+  });
+}
+
+CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+  final entityTypeStr = args?['entity_type'] as String?;
+  final entityId = args?['id'] as String?;
+  final limit = (args?['limit'] as int?) ?? 100;
+  
+  // Validate required parameters
+  if (entityTypeStr == null || entityTypeStr.isEmpty) {
+    return _textResult("Error: entity_type is required. Must be 'task' or 'step'");
+  }
+  
+  if (entityId == null || entityId.isEmpty) {
+    return _textResult('Error: id is required for audit trail');
+  }
+  
+  // Parse entity type
+  EntityType entityType;
+  try {
+    entityType = EntityType.fromDbValue(entityTypeStr);
+  } catch (e) {
+    return _textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
+  }
+  
+  // Get audit trail entries
+  final entries = txLogRepo.getAuditTrail(
+    entityType: entityType,
+    entityId: entityId,
+    limit: limit,
+    newestFirst: true,
+  );
+  
+  // Format for output (full details including changes)
+  final auditTrail = entries.map((e) => e.toJson()).toList();
+  
+  return _jsonResult({
+    'entity_type': entityTypeStr,
+    'entity_id': entityId,
+    'audit_trail': auditTrail,
+    'count': auditTrail.length,
+  });
+}
+
