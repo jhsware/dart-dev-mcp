@@ -519,6 +519,70 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args) {
   });
 }
 
+CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
+  final projectId = args?['project_id'] as String?;
+  final status = args?['status'] as String?;
+  
+  // Validate status if provided
+  if (status != null && !_validTaskStatuses.contains(status)) {
+    return _textResult('Error: Invalid status filter. Must be one of: ${_validTaskStatuses.join(", ")}');
+  }
+  
+  // Build query with optional filters
+  final conditions = <String>[];
+  final values = <Object?>[];
+  
+  if (projectId != null && projectId.isNotEmpty) {
+    conditions.add('t.project_id = ?');
+    values.add(projectId);
+  }
+  
+  if (status != null && status.isNotEmpty) {
+    conditions.add('t.status = ?');
+    values.add(status);
+  }
+  
+  final whereClause = conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
+  
+  // Query with step count subquery
+  final query = '''
+    SELECT 
+      t.id,
+      t.project_id,
+      t.title,
+      t.status,
+      t.created_at,
+      t.updated_at,
+      (SELECT COUNT(*) FROM steps s WHERE s.task_id = t.id) as step_count
+    FROM tasks t
+    $whereClause
+    ORDER BY t.updated_at DESC
+  ''';
+  
+  final result = db.select(query, values);
+  
+  final tasks = result.map((row) => {
+    'id': row['id'],
+    'project_id': row['project_id'],
+    'title': row['title'],
+    'status': row['status'],
+    'step_count': row['step_count'],
+    'created_at': row['created_at'],
+    'updated_at': row['updated_at'],
+  }).toList();
+  
+  return _jsonResult({
+    'tasks': tasks,
+    'count': tasks.length,
+    'filters': {
+      if (projectId != null) 'project_id': projectId,
+      if (status != null) 'status': status,
+    },
+  });
+}
+
+
+
 // =============================================================================
 // Step Operations
 // =============================================================================
