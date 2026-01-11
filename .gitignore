@@ -4,3 +4,6 @@
 
 # Compiled kernel files for faster tests
 *.dill
+.ai_coding_tool/db.sqlite
+.ai_coding_tool/db.sqlite-shm
+.ai_coding_tool/db.sqlite-wal
