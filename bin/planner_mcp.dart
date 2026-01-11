@@ -69,7 +69,7 @@ void main(List<String> arguments) async {
   // Register the planner tool
   server.tool(
     'planner',
-    description: '''Task and step management for AI-assisted development.
+description: '''Task and step management for AI-assisted development.
 
 Operations:
 - get-project-instructions: Read project instructions from .ai_coding_tool/INSTRUCTIONS.md
@@ -78,6 +78,7 @@ Operations:
 - update-task: Update task properties
 - show-task-memory: Show task memory/notes
 - update-task-memory: Update task memory/notes
+- list-tasks: List all tasks (optional filters: project_id, status)
 - add-step: Add a step to a task
 - show-step: Show step details
 - update-step: Update step properties
@@ -96,6 +97,7 @@ Step statuses: todo, started, canceled, done, merged''',
             'update-task',
             'show-task-memory',
             'update-task-memory',
+            'list-tasks',
             'add-step',
             'show-step',
             'update-step',
@@ -111,7 +113,7 @@ Step statuses: todo, started, canceled, done, merged''',
         },
         'project_id': {
           'type': 'string',
-          'description': 'Project identifier (for add-task)',
+          'description': 'Project identifier (for add-task, list-tasks filter)',
         },
         'title': {
           'type': 'string',
@@ -123,7 +125,7 @@ Step statuses: todo, started, canceled, done, merged''',
         },
         'status': {
           'type': 'string',
-          'description': 'Status: todo, started, canceled, done (or merged for steps)',
+          'description': 'Status: todo, started, canceled, done (or merged for steps). Also used for list-tasks filter.',
           'enum': ['todo', 'started', 'canceled', 'done', 'merged'],
         },
         'memory': {
