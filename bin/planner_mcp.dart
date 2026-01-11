@@ -83,8 +83,8 @@ Operations:
 - show-step: Show step details
 - update-step: Update step properties
 
-Task statuses: todo, started, canceled, done
-Step statuses: todo, started, canceled, done, merged''',
+Task statuses: todo, draft, started, canceled, done, merged
+Step statuses: todo, started, canceled, done''',
     toolInputSchema: ToolInputSchema(
       properties: {
         'operation': {
@@ -125,9 +125,11 @@ Step statuses: todo, started, canceled, done, merged''',
         },
         'status': {
           'type': 'string',
-          'description': 'Status: todo, started, canceled, done (or merged for steps). Also used for list-tasks filter.',
-          'enum': ['todo', 'started', 'canceled', 'done', 'merged'],
+          'description':
+              'Status for tasks: todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
+          'enum': ['todo', 'draft', 'started', 'canceled', 'done', 'merged'],
         },
+
         'memory': {
           'type': 'string',
           'description': 'Memory/notes content for task',
@@ -327,8 +329,22 @@ Future<CallToolResult> _getProjectInstructions(Directory workingDir) async {
 
 final _uuid = Uuid();
 
-const _validTaskStatuses = ['todo', 'started', 'canceled', 'done'];
-const _validStepStatuses = ['todo', 'started', 'canceled', 'done', 'merged'];
+const _validTaskStatuses = ['todo', 'draft', 'started', 'canceled', 'done', 'merged'];
+const _validStepStatuses = ['todo', 'started', 'canceled', 'done'];
+
+/// Normalizes legacy step statuses for backward compatibility.
+/// - 'merged' → 'done'
+/// - 'draft' → 'todo'
+String _normalizeStepStatus(String status) {
+  switch (status) {
+    case 'merged':
+      return 'done';
+    case 'draft':
+      return 'todo';
+    default:
+      return status;
+  }
+}
 
 CallToolResult _addTask(Database db, Map<String, dynamic>? args) {
   final projectId = args?['project_id'] as String?;
@@ -397,7 +413,7 @@ CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
   final steps = stepsResult.map((row) => {
     'id': row['id'],
     'title': row['title'],
-    'status': row['status'],
+    'status': _normalizeStepStatus(row['status'] as String),
   }).toList();
   
   return _jsonResult({
@@ -593,7 +609,8 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args) {
   final taskId = args?['task_id'] as String?;
   final title = args?['title'] as String?;
   final details = args?['details'] as String?;
-  final status = args?['status'] as String? ?? 'todo';
+  // Normalize legacy statuses for backward compatibility
+  final status = _normalizeStepStatus(args?['status'] as String? ?? 'todo');
   
   if (taskId == null || taskId.isEmpty) {
     return _textResult('Error: task_id is required');
@@ -656,7 +673,7 @@ CallToolResult _showStep(Database db, Map<String, dynamic>? args) {
     'task_id': step['task_id'],
     'title': step['title'],
     'details': step['details'],
-    'status': step['status'],
+    'status': _normalizeStepStatus(step['status'] as String),
     'created_at': step['created_at'],
     'updated_at': step['updated_at'],
   });
@@ -689,7 +706,8 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args) {
   }
   
   if (args?.containsKey('status') == true) {
-    final status = args!['status'] as String;
+    // Normalize legacy statuses for backward compatibility
+    final status = _normalizeStepStatus(args!['status'] as String);
     if (!_validStepStatuses.contains(status)) {
       return _textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
     }
