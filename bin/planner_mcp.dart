@@ -393,9 +393,19 @@ Future<CallToolResult> _handlePlanner(
         return textResult('Error: Unknown operation: $operation');
     }
   } on SqliteException catch (e) {
-    // Handle SQLite-specific errors with more detail
-    stderr.writeln('SQLite error: $e');
-    return textResult('Database error: ${e.message}');
+    // Classify the error for appropriate handling
+    final category = classifyError(e);
+    final userMessage = userFriendlyMessage(category, e.message);
+    
+    // Log with category for debugging
+    stderr.writeln('SQLite error [$category]: ${e.message} (code: ${e.resultCode}, extended: ${e.extendedResultCode})');
+    
+    // For corruption errors, log a more urgent warning
+    if (category == SqliteErrorCategory.corruption) {
+      stderr.writeln('CRITICAL: Database corruption detected. Database may need repair.');
+    }
+    
+    return textResult('Error: $userMessage');
   } catch (e) {
     stderr.writeln('Error in planner operation: $e');
     return textResult('Error: $e');
