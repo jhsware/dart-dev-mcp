@@ -60,9 +60,9 @@ void main(List<String> arguments) async {
   final transactionLogRepository = TransactionLogRepository(database);
   transactionLogRepository.initializeTable();
 
-  stderr.writeln('Planner MCP Server starting...');
-  stderr.writeln('Project path: ${workingDir.path}');
-  stderr.writeln('Database: $dbPath');
+  logInfo('planner', 'Planner MCP Server starting...');
+  logInfo('planner', 'Project path: ${workingDir.path}');
+  logInfo('planner', 'Database: $dbPath');
 
 
   // Set up graceful shutdown to close database
@@ -172,7 +172,7 @@ Step statuses: todo, started, canceled, done''',
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  stderr.writeln('Planner MCP Server running on stdio');
+  logInfo('planner', 'Planner MCP Server running on stdio');
 }
 
 void _printUsage() {
@@ -190,14 +190,14 @@ void _printUsage() {
 void _setupShutdownHandlers(Database database) {
   // Handle SIGINT (Ctrl+C)
   ProcessSignal.sigint.watch().listen((_) {
-    stderr.writeln('Received SIGINT, closing database...');
+    logInfo('planner', 'Received SIGINT, closing database...');
     _closeDatabase(database);
     exit(0);
   });
 
   // Handle SIGTERM
   ProcessSignal.sigterm.watch().listen((_) {
-    stderr.writeln('Received SIGTERM, closing database...');
+    logInfo('planner', 'Received SIGTERM, closing database...');
     _closeDatabase(database);
     exit(0);
   });
@@ -209,9 +209,9 @@ void _closeDatabase(Database database) {
     // Checkpoint WAL to main database before closing
     database.execute('PRAGMA wal_checkpoint(TRUNCATE)');
     database.dispose();
-    stderr.writeln('Database closed successfully');
-  } catch (e) {
-    stderr.writeln('Error closing database: $e');
+    logInfo('planner', 'Database closed successfully');
+  } catch (e, stackTrace) {
+    logError('planner:close-database', e, stackTrace);
   }
 }
 
@@ -316,21 +316,21 @@ void _runMigrations(Database database) {
   // Migration from version 0 (fresh) to version 1
   // This sets the initial version for existing databases
   if (currentVersion < 1) {
-    stderr.writeln('Running migration to schema version 1...');
+    logInfo('planner', 'Running migration to schema version 1...');
     // No schema changes needed - just establishing version tracking
     _setSchemaVersion(database, 1);
-    stderr.writeln('Migration to schema version 1 complete.');
+    logInfo('planner', 'Migration to schema version 1 complete.');
   }
   
   // Migration from version 1 to version 2
   // Add sort_order column for explicit step ordering
   if (currentVersion < 2) {
-    stderr.writeln('Running migration to schema version 2...');
+    logInfo('planner', 'Running migration to schema version 2...');
     // Add nullable sort_order column to steps table
     // Existing rows will have NULL, which will fall back to created_at ordering
     database.execute('ALTER TABLE steps ADD COLUMN sort_order INTEGER');
     _setSchemaVersion(database, 2);
-    stderr.writeln('Migration to schema version 2 complete.');
+    logInfo('planner', 'Migration to schema version 2 complete.');
   }
   
   // Future migrations will be added here:
@@ -342,7 +342,7 @@ void _runMigrations(Database database) {
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);
   if (finalVersion != _currentSchemaVersion) {
-    stderr.writeln('Warning: Schema version mismatch. Expected $_currentSchemaVersion, got $finalVersion');
+    logWarning('planner', 'Schema version mismatch. Expected $_currentSchemaVersion, got $finalVersion');
   }
 }
 
@@ -350,6 +350,21 @@ void _runMigrations(Database database) {
 // =============================================================================
 // Main Handler
 // =============================================================================
+
+const _validOperations = [
+  'get-project-instructions',
+  'add-task',
+  'show-task',
+  'update-task',
+  'show-task-memory',
+  'update-task-memory',
+  'list-tasks',
+  'add-step',
+  'show-step',
+  'update-step',
+  'get-timeline',
+  'get-audit-trail',
+];
 
 Future<CallToolResult> _handlePlanner(
   Map<String, dynamic>? args,
@@ -359,8 +374,8 @@ Future<CallToolResult> _handlePlanner(
 ) async {
   final operation = args?['operation'] as String?;
 
-  if (operation == null) {
-    return textResult('Error: operation is required');
+  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+    return error;
   }
 
   try {
@@ -390,7 +405,7 @@ Future<CallToolResult> _handlePlanner(
       case 'get-audit-trail':
         return _getAuditTrail(args, transactionLogRepository);
       default:
-        return textResult('Error: Unknown operation: $operation');
+        return validationError('operation', 'Unknown operation: $operation');
     }
   } on SqliteException catch (e) {
     // Classify the error for appropriate handling
@@ -398,17 +413,22 @@ Future<CallToolResult> _handlePlanner(
     final userMessage = userFriendlyMessage(category, e.message);
     
     // Log with category for debugging
-    stderr.writeln('SQLite error [$category]: ${e.message} (code: ${e.resultCode}, extended: ${e.extendedResultCode})');
+    logError('planner:$operation', e, null, {
+      'category': category.toString(),
+      'resultCode': e.resultCode,
+      'extendedResultCode': e.extendedResultCode,
+    });
     
     // For corruption errors, log a more urgent warning
     if (category == SqliteErrorCategory.corruption) {
-      stderr.writeln('CRITICAL: Database corruption detected. Database may need repair.');
+      logWarning('planner', 'CRITICAL: Database corruption detected. Database may need repair.');
     }
     
     return textResult('Error: $userMessage');
-  } catch (e) {
-    stderr.writeln('Error in planner operation: $e');
-    return textResult('Error: $e');
+  } catch (e, stackTrace) {
+    return errorResult('planner:$operation', e, stackTrace, {
+      'operation': operation,
+    });
   }
 }
 
@@ -461,16 +481,16 @@ CallToolResult _addTask(Database database, Map<String, dynamic>? args, Transacti
   final status = args?['status'] as String? ?? 'todo';
   final memory = args?['memory'] as String?;
   
-  if (projectId == null || projectId.isEmpty) {
-    return textResult('Error: project_id is required');
+  if (requireString(projectId, 'project_id') case final error?) {
+    return error;
   }
   
-  if (title == null || title.isEmpty) {
-    return textResult('Error: title is required');
+  if (requireString(title, 'title') case final error?) {
+    return error;
   }
   
-  if (!_validTaskStatuses.contains(status)) {
-    return textResult('Error: Invalid status. Must be one of: ${_validTaskStatuses.join(", ")}');
+  if (requireOneOf(status, 'status', _validTaskStatuses) case final error?) {
+    return error;
   }
   
   final id = _uuid.v4();
@@ -501,7 +521,7 @@ CallToolResult _addTask(Database database, Map<String, dynamic>? args, Transacti
       summary: generateSummary(
         transactionType: TransactionType.create,
         entityType: EntityType.task,
-        entityTitle: title,
+        entityTitle: title!,
         projectId: projectId,
       ),
       changes: calculateChanges(
@@ -522,14 +542,14 @@ CallToolResult _addTask(Database database, Map<String, dynamic>? args, Transacti
 CallToolResult _showTask(Database database, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
-  if (id == null || id.isEmpty) {
-    return textResult('Error: id is required');
+  if (requireString(id, 'id') case final error?) {
+    return error;
   }
   
   final taskResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   
   if (taskResult.isEmpty) {
-    return textResult('Error: Task not found: $id');
+    return notFoundError('Task', id!);
   }
   
   final task = taskResult.first;
@@ -562,14 +582,14 @@ CallToolResult _showTask(Database database, Map<String, dynamic>? args) {
 CallToolResult _updateTask(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final id = args?['id'] as String?;
   
-  if (id == null || id.isEmpty) {
-    return textResult('Error: id is required');
+  if (requireString(id, 'id') case final error?) {
+    return error;
   }
   
   // Get task before update for diff calculation
   final existingResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   if (existingResult.isEmpty) {
-    return textResult('Error: Task not found: $id');
+    return notFoundError('Task', id!);
   }
   
   final before = taskToLoggable(Map<String, dynamic>.from(existingResult.first));
@@ -594,15 +614,15 @@ CallToolResult _updateTask(Database database, Map<String, dynamic>? args, Transa
   
   if (args?.containsKey('status') == true) {
     final status = args!['status'] as String;
-    if (!_validTaskStatuses.contains(status)) {
-      return textResult('Error: Invalid status. Must be one of: ${_validTaskStatuses.join(", ")}');
+    if (requireOneOf(status, 'status', _validTaskStatuses) case final error?) {
+      return error;
     }
     updates.add('status = ?');
     values.add(status);
   }
   
   if (updates.isEmpty) {
-    return textResult('Error: No fields to update');
+    return validationError('fields', 'No fields to update');
   }
   
   final now = DateTime.now().toUtc().toIso8601String();
@@ -631,7 +651,7 @@ CallToolResult _updateTask(Database database, Map<String, dynamic>? args, Transa
     // Log the transaction
     transactionLogRepository.log(
       entityType: EntityType.task,
-      entityId: id,
+      entityId: id!,
       transactionType: TransactionType.update,
       summary: generateSummary(
         transactionType: TransactionType.update,
@@ -652,14 +672,14 @@ CallToolResult _updateTask(Database database, Map<String, dynamic>? args, Transa
 CallToolResult _showTaskMemory(Database database, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
-  if (id == null || id.isEmpty) {
-    return textResult('Error: id is required');
+  if (requireString(id, 'id') case final error?) {
+    return error;
   }
   
   final result = database.select('SELECT id, title, memory FROM tasks WHERE id = ?', [id]);
   
   if (result.isEmpty) {
-    return textResult('Error: Task not found: $id');
+    return notFoundError('Task', id!);
   }
   
   final task = result.first;
@@ -676,14 +696,14 @@ CallToolResult _updateTaskMemory(Database database, Map<String, dynamic>? args, 
   final id = args?['id'] as String?;
   final memory = args?['memory'] as String?;
   
-  if (id == null || id.isEmpty) {
-    return textResult('Error: id is required');
+  if (requireString(id, 'id') case final error?) {
+    return error;
   }
   
   // Get task before update for diff calculation
   final existingResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   if (existingResult.isEmpty) {
-    return textResult('Error: Task not found: $id');
+    return notFoundError('Task', id!);
   }
   
   final before = taskToLoggable(Map<String, dynamic>.from(existingResult.first));
@@ -711,7 +731,7 @@ CallToolResult _updateTaskMemory(Database database, Map<String, dynamic>? args, 
     // Log the transaction
     transactionLogRepository.log(
       entityType: EntityType.task,
-      entityId: id,
+      entityId: id!,
       transactionType: TransactionType.update,
       summary: generateSummary(
         transactionType: TransactionType.update,
@@ -737,8 +757,8 @@ CallToolResult _listTasks(Database database, Map<String, dynamic>? args) {
   final status = args?['status'] as String?;
   
   // Validate status if provided
-  if (status != null && !_validTaskStatuses.contains(status)) {
-    return textResult('Error: Invalid status filter. Must be one of: ${_validTaskStatuses.join(", ")}');
+  if (requireOneOf(status, 'status', _validTaskStatuses) case final error?) {
+    return error;
   }
   
   // Build query with optional filters
@@ -807,22 +827,22 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
   // Normalize legacy statuses for backward compatibility
   final status = _normalizeStepStatus(args?['status'] as String? ?? 'todo');
   
-  if (taskId == null || taskId.isEmpty) {
-    return textResult('Error: task_id is required');
+  if (requireString(taskId, 'task_id') case final error?) {
+    return error;
   }
   
-  if (title == null || title.isEmpty) {
-    return textResult('Error: title is required');
+  if (requireString(title, 'title') case final error?) {
+    return error;
   }
   
-  if (!_validStepStatuses.contains(status)) {
-    return textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
+  if (requireOneOf(status, 'status', _validStepStatuses) case final error?) {
+    return error;
   }
   
   // Check task exists and get task info for logging
   final taskResult = database.select('SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
   if (taskResult.isEmpty) {
-    return textResult('Error: Task not found: $taskId');
+    return notFoundError('Task', taskId!);
   }
   final taskInfo = taskResult.first;
   
@@ -861,7 +881,7 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
       summary: generateSummary(
         transactionType: TransactionType.create,
         entityType: EntityType.step,
-        entityTitle: title,
+        entityTitle: title!,
         taskTitle: taskInfo['title'] as String?,
       ),
       changes: calculateChanges(
@@ -882,14 +902,14 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
 CallToolResult _showStep(Database database, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
-  if (id == null || id.isEmpty) {
-    return textResult('Error: id is required');
+  if (requireString(id, 'id') case final error?) {
+    return error;
   }
   
   final result = database.select('SELECT * FROM steps WHERE id = ?', [id]);
   
   if (result.isEmpty) {
-    return textResult('Error: Step not found: $id');
+    return notFoundError('Step', id!);
   }
   
   final step = result.first;
@@ -908,8 +928,8 @@ CallToolResult _showStep(Database database, Map<String, dynamic>? args) {
 CallToolResult _updateStep(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final id = args?['id'] as String?;
   
-  if (id == null || id.isEmpty) {
-    return textResult('Error: id is required');
+  if (requireString(id, 'id') case final error?) {
+    return error;
   }
   
   // Get step before update for diff calculation
@@ -920,7 +940,7 @@ CallToolResult _updateStep(Database database, Map<String, dynamic>? args, Transa
     WHERE s.id = ?
   ''', [id]);
   if (existingResult.isEmpty) {
-    return textResult('Error: Step not found: $id');
+    return notFoundError('Step', id!);
   }
   
   final existingRow = existingResult.first;
@@ -943,15 +963,15 @@ CallToolResult _updateStep(Database database, Map<String, dynamic>? args, Transa
   if (args?.containsKey('status') == true) {
     // Normalize legacy statuses for backward compatibility
     final status = _normalizeStepStatus(args!['status'] as String);
-    if (!_validStepStatuses.contains(status)) {
-      return textResult('Error: Invalid status. Must be one of: ${_validStepStatuses.join(", ")}');
+    if (requireOneOf(status, 'status', _validStepStatuses) case final error?) {
+      return error;
     }
     updates.add('status = ?');
     values.add(status);
   }
   
   if (updates.isEmpty) {
-    return textResult('Error: No fields to update');
+    return validationError('fields', 'No fields to update');
   }
   
   final now = DateTime.now().toUtc().toIso8601String();
@@ -980,7 +1000,7 @@ CallToolResult _updateStep(Database database, Map<String, dynamic>? args, Transa
     // Log the transaction
     transactionLogRepository.log(
       entityType: EntityType.step,
-      entityId: id,
+      entityId: id!,
       transactionType: TransactionType.update,
       summary: generateSummary(
         transactionType: TransactionType.update,
@@ -1014,7 +1034,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
     try {
       entityType = EntityType.fromDbValue(entityTypeStr);
     } catch (e) {
-      return textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
+      return validationError('entity_type', "Invalid entity_type. Must be 'task' or 'step'");
     }
   }
   
@@ -1026,7 +1046,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
     try {
       before = DateTime.parse(beforeStr);
     } catch (e) {
-      return textResult('Error: Invalid before datetime format. Use ISO 8601 format.');
+      return validationError('before', 'Invalid before datetime format. Use ISO 8601 format.');
     }
   }
   
@@ -1034,7 +1054,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
     try {
       after = DateTime.parse(afterStr);
     } catch (e) {
-      return textResult('Error: Invalid after datetime format. Use ISO 8601 format.');
+      return validationError('after', 'Invalid after datetime format. Use ISO 8601 format.');
     }
   }
   
@@ -1073,26 +1093,26 @@ CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogReposito
   final limit = (args?['limit'] as int?) ?? 100;
   
   // Validate required parameters
-  if (entityTypeStr == null || entityTypeStr.isEmpty) {
-    return textResult("Error: entity_type is required. Must be 'task' or 'step'");
+  if (requireString(entityTypeStr, 'entity_type') case final error?) {
+    return error;
   }
   
-  if (entityId == null || entityId.isEmpty) {
-    return textResult('Error: id is required for audit trail');
+  if (requireString(entityId, 'id') case final error?) {
+    return error;
   }
   
   // Parse entity type
   EntityType entityType;
   try {
-    entityType = EntityType.fromDbValue(entityTypeStr);
+    entityType = EntityType.fromDbValue(entityTypeStr!);
   } catch (e) {
-    return textResult("Error: Invalid entity_type. Must be 'task' or 'step'");
+    return validationError('entity_type', "Invalid entity_type. Must be 'task' or 'step'");
   }
   
   // Get audit trail entries
   final entries = transactionLogRepository.getAuditTrail(
     entityType: entityType,
-    entityId: entityId,
+    entityId: entityId!,
     limit: limit,
     newestFirst: true,
   );
