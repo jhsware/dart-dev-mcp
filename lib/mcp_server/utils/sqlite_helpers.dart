@@ -138,7 +138,87 @@ class RetryConfig {
   );
 }
 
-/// Executes a database operation with retry logic for transient errors.
+/// Synchronous retry helper for database operations.
+///
+/// Uses blocking sleep() for delays. Suitable for synchronous code paths
+/// where introducing async would require significant refactoring.
+///
+/// ```dart
+/// final result = withRetrySync(db, () {
+///   return db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+/// });
+/// ```
+T withRetrySync<T>(
+  Database db,
+  T Function() operation, {
+  RetryConfig config = RetryConfig.defaultConfig,
+}) {
+  var attempt = 0;
+  var delay = config.initialDelay;
+  final random = math.Random();
+
+  while (true) {
+    try {
+      return operation();
+    } on SqliteException catch (e) {
+      if (!isTransientError(e) || attempt >= config.maxRetries) {
+        rethrow;
+      }
+
+      attempt++;
+      stderr.writeln(
+        'SQLite transient error (attempt $attempt/${config.maxRetries}): '
+        '${e.message}. Retrying in ${delay.inMilliseconds}ms...',
+      );
+
+      // Apply jitter: ±25% of delay
+      var actualDelay = delay;
+      if (config.addJitter) {
+        final jitter = delay.inMilliseconds * 0.25;
+        final offset = (random.nextDouble() - 0.5) * 2 * jitter;
+        actualDelay = Duration(
+          milliseconds: delay.inMilliseconds + offset.round(),
+        );
+      }
+
+      sleep(actualDelay);
+
+      // Calculate next delay with exponential backoff
+      delay = Duration(
+        milliseconds: (delay.inMilliseconds * config.backoffMultiplier).round(),
+      );
+      if (delay > config.maxDelay) {
+        delay = config.maxDelay;
+      }
+    }
+  }
+}
+
+/// Synchronous version combining transaction and retry logic.
+///
+/// Wraps an atomic operation in a transaction and retries the entire
+/// transaction if transient errors occur. Uses blocking sleep() for delays.
+///
+/// ```dart
+/// final result = withRetryTransactionSync(db, () {
+///   db.execute('INSERT INTO tasks ...', [...]);
+///   db.execute('INSERT INTO transaction_logs ...', [...]);
+///   return taskData;
+/// });
+/// ```
+T withRetryTransactionSync<T>(
+  Database db,
+  T Function() operation, {
+  RetryConfig config = RetryConfig.defaultConfig,
+}) {
+  return withRetrySync(
+    db,
+    () => withTransaction(db, operation),
+    config: config,
+  );
+}
+
+/// Async retry helper for database operations.
 ///
 /// Uses exponential backoff with optional jitter to avoid thundering herd
 /// problems when multiple processes are retrying simultaneously.
@@ -197,7 +277,7 @@ Future<T> withRetry<T>(
   }
 }
 
-/// Combines transaction and retry logic.
+/// Async version combining transaction and retry logic.
 ///
 /// Wraps an atomic operation in a transaction and retries the entire
 /// transaction if transient errors occur.
