@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dart_dev_mcp/dart_dev_mcp.dart' show SessionManager, runCommand, streamCommand, textResult;
+import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 
@@ -36,8 +36,7 @@ void main(List<String> arguments) async {
   // Check if it's a Flutter project
   final pubspecFile = File(p.join(workingDir.path, 'pubspec.yaml'));
   if (!await pubspecFile.exists()) {
-    stderr.writeln('Warning: No pubspec.yaml found in $projectDir');
-    stderr.writeln('This may not be a Flutter project.');
+    logWarning('flutter-runner', 'No pubspec.yaml found in $projectDir - may not be a Flutter project');
   }
 
   // Check if FVM is available
@@ -45,12 +44,12 @@ void main(List<String> arguments) async {
   final useFvm = fvmCheck.exitCode == 0;
   
   if (!useFvm) {
-    stderr.writeln('Warning: FVM not found. Using flutter directly.');
+    logWarning('flutter-runner', 'FVM not found. Using flutter directly.');
   }
 
-  stderr.writeln('Flutter Runner MCP Server starting...');
-  stderr.writeln('Project path: ${workingDir.path}');
-  stderr.writeln('Using FVM: $useFvm');
+  logInfo('flutter-runner', 'Flutter Runner MCP Server starting...');
+  logInfo('flutter-runner', 'Project path: ${workingDir.path}');
+  logInfo('flutter-runner', 'Using FVM: $useFvm');
 
   final sessionManager = SessionManager();
 
@@ -141,7 +140,7 @@ Use get_output with the session_id to poll for output.''',
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  stderr.writeln('Flutter Runner MCP Server running on stdio');
+  logInfo('flutter-runner', 'Flutter Runner MCP Server running on stdio');
 }
 
 void _printUsage() {
@@ -152,6 +151,19 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
+const _validOperations = [
+  'analyze',
+  'test',
+  'run',
+  'build',
+  'pub-get',
+  'clean',
+  'doctor',
+  'get_output',
+  'list_sessions',
+  'cancel',
+];
+
 Future<CallToolResult> _handleFlutterRunner(
   Map<String, dynamic>? args,
   Directory workingDir,
@@ -160,103 +172,109 @@ Future<CallToolResult> _handleFlutterRunner(
 ) async {
   final operation = args?['operation'] as String?;
 
-  if (operation == null) {
-    return textResult('Error: operation is required');
+  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+    return error;
   }
 
-  switch (operation) {
-    case 'analyze':
-      return _startFlutterCommand(
-        workingDir,
-        sessionManager,
-        useFvm,
-        'analyze',
-        ['analyze', ...?_getExtraArgs(args)],
-      );
+  try {
+    switch (operation) {
+      case 'analyze':
+        return _startFlutterCommand(
+          workingDir,
+          sessionManager,
+          useFvm,
+          'analyze',
+          ['analyze', ...?_getExtraArgs(args)],
+        );
 
-    case 'test':
-      final target = args?['target'] as String?;
-      return _startFlutterCommand(
-        workingDir,
-        sessionManager,
-        useFvm,
-        'test',
-        [
+      case 'test':
+        final target = args?['target'] as String?;
+        return _startFlutterCommand(
+          workingDir,
+          sessionManager,
+          useFvm,
           'test',
-          if (target != null) target,
-          ...?_getExtraArgs(args),
-        ],
-      );
+          [
+            'test',
+            if (target != null) target,
+            ...?_getExtraArgs(args),
+          ],
+        );
 
-    case 'run':
-      final device = args?['device'] as String?;
-      final flavor = args?['flavor'] as String?;
-      return _startFlutterCommand(
-        workingDir,
-        sessionManager,
-        useFvm,
-        'run',
-        [
+      case 'run':
+        final device = args?['device'] as String?;
+        final flavor = args?['flavor'] as String?;
+        return _startFlutterCommand(
+          workingDir,
+          sessionManager,
+          useFvm,
           'run',
-          if (device != null) ...['-d', device],
-          if (flavor != null) ...['--flavor', flavor],
-          ...?_getExtraArgs(args),
-        ],
-      );
+          [
+            'run',
+            if (device != null) ...['-d', device],
+            if (flavor != null) ...['--flavor', flavor],
+            ...?_getExtraArgs(args),
+          ],
+        );
 
-    case 'build':
-      final target = args?['target'] as String? ?? 'apk';
-      final flavor = args?['flavor'] as String?;
-      return _startFlutterCommand(
-        workingDir,
-        sessionManager,
-        useFvm,
-        'build',
-        [
+      case 'build':
+        final target = args?['target'] as String? ?? 'apk';
+        final flavor = args?['flavor'] as String?;
+        return _startFlutterCommand(
+          workingDir,
+          sessionManager,
+          useFvm,
           'build',
-          target,
-          if (flavor != null) ...['--flavor', flavor],
-          ...?_getExtraArgs(args),
-        ],
-      );
+          [
+            'build',
+            target,
+            if (flavor != null) ...['--flavor', flavor],
+            ...?_getExtraArgs(args),
+          ],
+        );
 
-    case 'pub-get':
-      return _runFlutterCommandSync(
-        workingDir,
-        useFvm,
-        ['pub', 'get', ...?_getExtraArgs(args)],
-      );
+      case 'pub-get':
+        return await _runFlutterCommandSync(
+          workingDir,
+          useFvm,
+          ['pub', 'get', ...?_getExtraArgs(args)],
+        );
 
-    case 'clean':
-      return _runFlutterCommandSync(
-        workingDir,
-        useFvm,
-        ['clean', ...?_getExtraArgs(args)],
-      );
+      case 'clean':
+        return await _runFlutterCommandSync(
+          workingDir,
+          useFvm,
+          ['clean', ...?_getExtraArgs(args)],
+        );
 
-    case 'doctor':
-      return _runFlutterCommandSync(
-        workingDir,
-        useFvm,
-        ['doctor', ...?_getExtraArgs(args)],
-      );
+      case 'doctor':
+        return await _runFlutterCommandSync(
+          workingDir,
+          useFvm,
+          ['doctor', ...?_getExtraArgs(args)],
+        );
 
-    case 'get_output':
-      final sessionId = args?['session_id'] as String?;
-      final chunkIndex = (args?['chunk_index'] as num?)?.toInt() ?? 0;
-      final maxChunks =
-          ((args?['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
-      return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
+      case 'get_output':
+        final sessionId = args?['session_id'] as String?;
+        final chunkIndex = (args?['chunk_index'] as num?)?.toInt() ?? 0;
+        final maxChunks =
+            ((args?['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
+        return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
 
-    case 'list_sessions':
-      return _listSessions(sessionManager);
+      case 'list_sessions':
+        return _listSessions(sessionManager);
 
-    case 'cancel':
-      final sessionId = args?['session_id'] as String?;
-      return _cancelSession(sessionManager, sessionId);
+      case 'cancel':
+        final sessionId = args?['session_id'] as String?;
+        return await _cancelSession(sessionManager, sessionId);
 
-    default:
-      return textResult('Error: Unknown operation: $operation');
+      default:
+        return validationError('operation', 'Unknown operation: $operation');
+    }
+  } catch (e, stackTrace) {
+    return errorResult('flutter-runner:$operation', e, stackTrace, {
+      'operation': operation,
+    });
   }
 }
 
@@ -342,8 +360,10 @@ Future<CallToolResult> _runFlutterCommandSync(
     }
 
     return textResult(output.toString());
-  } catch (e) {
-    return textResult('Error running command: $e');
+  } catch (e, stackTrace) {
+    return errorResult('flutter-runner:command', e, stackTrace, {
+      'command': 'flutter ${flutterArgs.join(' ')}',
+    });
   }
 }
 
@@ -354,17 +374,13 @@ CallToolResult _getOutput(
   int chunkIndex,
   int maxChunks,
 ) {
-  if (sessionId == null || sessionId.isEmpty) {
-    return textResult('Error: session_id is required');
+  if (requireString(sessionId, 'session_id') case final error?) {
+    return error;
   }
 
-  final session = sessionManager.getSession(sessionId);
+  final session = sessionManager.getSession(sessionId!);
   if (session == null) {
-    final response = {
-      'error': 'Session not found',
-      'session_id': sessionId,
-    };
-    return textResult(jsonEncode(response));
+    return notFoundError('Session', sessionId);
   }
 
   // Get the requested chunk range
@@ -434,17 +450,13 @@ Future<CallToolResult> _cancelSession(
   SessionManager sessionManager,
   String? sessionId,
 ) async {
-  if (sessionId == null || sessionId.isEmpty) {
-    return textResult('Error: session_id is required');
+  if (requireString(sessionId, 'session_id') case final error?) {
+    return error;
   }
 
-  final session = sessionManager.getSession(sessionId);
+  final session = sessionManager.getSession(sessionId!);
   if (session == null) {
-    final response = {
-      'error': 'Session not found',
-      'session_id': sessionId,
-    };
-    return textResult(jsonEncode(response));
+    return notFoundError('Session', sessionId);
   }
 
   await sessionManager.removeSession(sessionId);
