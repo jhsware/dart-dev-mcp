@@ -218,6 +218,9 @@ void _closeDatabase(Database database) {
 // Database Initialization
 // =============================================================================
 
+/// Current schema version. Increment when making schema changes.
+const int _currentSchemaVersion = 1;
+
 Database _initializeDatabase(String dbPath) {
   final database = sqlite3.open(dbPath);
   
@@ -234,6 +237,15 @@ Database _initializeDatabase(String dbPath) {
   
   // Enable foreign key enforcement
   database.execute('PRAGMA foreign_keys=ON');
+  
+  // Create schema metadata table for version tracking
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS schema_metadata (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
   
   // Create tasks table
   database.execute('''
@@ -269,8 +281,59 @@ Database _initializeDatabase(String dbPath) {
   database.execute('CREATE INDEX IF NOT EXISTS idx_steps_task_id ON steps(task_id)');
   database.execute('CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(status)');
   
+  // Run migrations to ensure schema is up to date
+  _runMigrations(database);
+  
   return database;
 }
+
+/// Get the current schema version from the database.
+/// Returns 0 if no version has been set (fresh database).
+int _getSchemaVersion(Database database) {
+  final result = database.select(
+    "SELECT value FROM schema_metadata WHERE key = 'schema_version'"
+  );
+  if (result.isEmpty) {
+    return 0;
+  }
+  return int.tryParse(result.first['value'] as String) ?? 0;
+}
+
+/// Set the schema version in the database.
+void _setSchemaVersion(Database database, int version) {
+  final now = DateTime.now().toUtc().toIso8601String();
+  database.execute('''
+    INSERT OR REPLACE INTO schema_metadata (key, value, updated_at)
+    VALUES ('schema_version', ?, ?)
+  ''', [version.toString(), now]);
+}
+
+/// Run all pending migrations to bring the schema up to date.
+void _runMigrations(Database database) {
+  final currentVersion = _getSchemaVersion(database);
+  
+  // Migration from version 0 (fresh) to version 1
+  // This sets the initial version for existing databases
+  if (currentVersion < 1) {
+    stderr.writeln('Running migration to schema version 1...');
+    // No schema changes needed - just establishing version tracking
+    _setSchemaVersion(database, 1);
+    stderr.writeln('Migration to schema version 1 complete.');
+  }
+  
+  // Future migrations will be added here:
+  // if (currentVersion < 2) {
+  //   // Run migration to v2
+  //   _setSchemaVersion(database, 2);
+  // }
+  
+  // Verify we're at the expected version
+  final finalVersion = _getSchemaVersion(database);
+  if (finalVersion != _currentSchemaVersion) {
+    stderr.writeln('Warning: Schema version mismatch. Expected $_currentSchemaVersion, got $finalVersion');
+  }
+}
+
 
 // =============================================================================
 // Main Handler
