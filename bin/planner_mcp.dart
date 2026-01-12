@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dart_dev_mcp/dart_dev_mcp.dart';
+import 'package:dart_dev_mcp/mcp_server/utils/sqlite_helpers.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
@@ -465,12 +466,6 @@ CallToolResult _addTask(Database database, Map<String, dynamic>? args, Transacti
   final id = _uuid.v4();
   final now = DateTime.now().toUtc().toIso8601String();
   
-  database.execute('''
-    INSERT INTO tasks (id, project_id, title, details, status, memory, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ''', [id, projectId, title, details, status, memory, now, now]);
-  
-  // Log the transaction
   final taskData = {
     'id': id,
     'project_id': projectId,
@@ -482,22 +477,30 @@ CallToolResult _addTask(Database database, Map<String, dynamic>? args, Transacti
     'updated_at': now,
   };
   
-  transactionLogRepository.log(
-    entityType: EntityType.task,
-    entityId: id,
-    transactionType: TransactionType.create,
-    summary: generateSummary(
-      transactionType: TransactionType.create,
+  // Wrap INSERT and transaction log in atomic transaction
+  withTransaction(database, () {
+    database.execute('''
+      INSERT INTO tasks (id, project_id, title, details, status, memory, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', [id, projectId, title, details, status, memory, now, now]);
+    
+    transactionLogRepository.log(
       entityType: EntityType.task,
-      entityTitle: title,
-      projectId: projectId,
-    ),
-    changes: calculateChanges(
+      entityId: id,
       transactionType: TransactionType.create,
-      after: taskData,
-    ),
-    projectId: projectId,
-  );
+      summary: generateSummary(
+        transactionType: TransactionType.create,
+        entityType: EntityType.task,
+        entityTitle: title,
+        projectId: projectId,
+      ),
+      changes: calculateChanges(
+        transactionType: TransactionType.create,
+        after: taskData,
+      ),
+      projectId: projectId,
+    );
+  });
   
   return jsonResult({
     'success': true,
@@ -597,37 +600,40 @@ CallToolResult _updateTask(Database database, Map<String, dynamic>? args, Transa
   values.add(now);
   values.add(id);
   
-  database.execute(
-    'UPDATE tasks SET ${updates.join(", ")} WHERE id = ?',
-    values
-  );
-  
-  // Get task after update
-  final afterResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
-  final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
-  
-  // Calculate changes for audit
-  final changes = calculateChanges(
-    transactionType: TransactionType.update,
-    before: before,
-    after: after,
-  );
-  
-  // Log the transaction
-  transactionLogRepository.log(
-    entityType: EntityType.task,
-    entityId: id,
-    transactionType: TransactionType.update,
-    summary: generateSummary(
+  // Wrap UPDATE and transaction log in atomic transaction
+  withTransaction(database, () {
+    database.execute(
+      'UPDATE tasks SET ${updates.join(", ")} WHERE id = ?',
+      values
+    );
+    
+    // Get task after update
+    final afterResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
+    final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
+    
+    // Calculate changes for audit
+    final changes = calculateChanges(
       transactionType: TransactionType.update,
+      before: before,
+      after: after,
+    );
+    
+    // Log the transaction
+    transactionLogRepository.log(
       entityType: EntityType.task,
-      entityTitle: after['title'] as String,
-      projectId: after['project_id'] as String?,
+      entityId: id,
+      transactionType: TransactionType.update,
+      summary: generateSummary(
+        transactionType: TransactionType.update,
+        entityType: EntityType.task,
+        entityTitle: after['title'] as String,
+        projectId: after['project_id'] as String?,
+        changes: changes,
+      ),
       changes: changes,
-    ),
-    changes: changes,
-    projectId: after['project_id'] as String?,
-  );
+      projectId: after['project_id'] as String?,
+    );
+  });
   
   // Return updated task
   return _showTask(database, args);
@@ -674,37 +680,40 @@ CallToolResult _updateTaskMemory(Database database, Map<String, dynamic>? args, 
   
   final now = DateTime.now().toUtc().toIso8601String();
   
-  database.execute(
-    'UPDATE tasks SET memory = ?, updated_at = ? WHERE id = ?',
-    [memory, now, id]
-  );
-  
-  // Get task after update
-  final afterResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
-  final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
-  
-  // Calculate changes for audit
-  final changes = calculateChanges(
-    transactionType: TransactionType.update,
-    before: before,
-    after: after,
-  );
-  
-  // Log the transaction
-  transactionLogRepository.log(
-    entityType: EntityType.task,
-    entityId: id,
-    transactionType: TransactionType.update,
-    summary: generateSummary(
+  // Wrap UPDATE and transaction log in atomic transaction
+  withTransaction(database, () {
+    database.execute(
+      'UPDATE tasks SET memory = ?, updated_at = ? WHERE id = ?',
+      [memory, now, id]
+    );
+    
+    // Get task after update
+    final afterResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
+    final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
+    
+    // Calculate changes for audit
+    final changes = calculateChanges(
       transactionType: TransactionType.update,
+      before: before,
+      after: after,
+    );
+    
+    // Log the transaction
+    transactionLogRepository.log(
       entityType: EntityType.task,
-      entityTitle: after['title'] as String,
-      projectId: after['project_id'] as String?,
+      entityId: id,
+      transactionType: TransactionType.update,
+      summary: generateSummary(
+        transactionType: TransactionType.update,
+        entityType: EntityType.task,
+        entityTitle: after['title'] as String,
+        projectId: after['project_id'] as String?,
+        changes: changes,
+      ),
       changes: changes,
-    ),
-    changes: changes,
-    projectId: after['project_id'] as String?,
-  );
+      projectId: after['project_id'] as String?,
+    );
+  });
   
   return jsonResult({
     'success': true,
@@ -817,12 +826,6 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
   final id = _uuid.v4();
   final now = DateTime.now().toUtc().toIso8601String();
   
-  database.execute('''
-    INSERT INTO steps (id, task_id, title, details, status, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ''', [id, taskId, title, details, status, sortOrder, now, now]);
-  
-  // Log the transaction
   final stepData = {
     'id': id,
     'task_id': taskId,
@@ -834,22 +837,30 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
     'updated_at': now,
   };
   
-  transactionLogRepository.log(
-    entityType: EntityType.step,
-    entityId: id,
-    transactionType: TransactionType.create,
-    summary: generateSummary(
-      transactionType: TransactionType.create,
+  // Wrap INSERT and transaction log in atomic transaction
+  withTransaction(database, () {
+    database.execute('''
+      INSERT INTO steps (id, task_id, title, details, status, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', [id, taskId, title, details, status, sortOrder, now, now]);
+    
+    transactionLogRepository.log(
       entityType: EntityType.step,
-      entityTitle: title,
-      taskTitle: taskInfo['title'] as String?,
-    ),
-    changes: calculateChanges(
+      entityId: id,
       transactionType: TransactionType.create,
-      after: stepData,
-    ),
-    projectId: taskInfo['project_id'] as String?,
-  );
+      summary: generateSummary(
+        transactionType: TransactionType.create,
+        entityType: EntityType.step,
+        entityTitle: title,
+        taskTitle: taskInfo['title'] as String?,
+      ),
+      changes: calculateChanges(
+        transactionType: TransactionType.create,
+        after: stepData,
+      ),
+      projectId: taskInfo['project_id'] as String?,
+    );
+  });
   
   return jsonResult({
     'success': true,
@@ -938,36 +949,39 @@ CallToolResult _updateStep(Database database, Map<String, dynamic>? args, Transa
   values.add(now);
   values.add(id);
   
-  database.execute(
-    'UPDATE steps SET ${updates.join(", ")} WHERE id = ?',
-    values
-  );
-  
-  // Get step after update
-  final afterResult = database.select('SELECT * FROM steps WHERE id = ?', [id]);
-  final after = stepToLoggable(Map<String, dynamic>.from(afterResult.first));
-  
-  // Calculate changes for audit
-  final changes = calculateChanges(
-    transactionType: TransactionType.update,
-    before: before,
-    after: after,
-  );
-  
-  // Log the transaction
-  transactionLogRepository.log(
-    entityType: EntityType.step,
-    entityId: id,
-    transactionType: TransactionType.update,
-    summary: generateSummary(
+  // Wrap UPDATE and transaction log in atomic transaction
+  withTransaction(database, () {
+    database.execute(
+      'UPDATE steps SET ${updates.join(", ")} WHERE id = ?',
+      values
+    );
+    
+    // Get step after update
+    final afterResult = database.select('SELECT * FROM steps WHERE id = ?', [id]);
+    final after = stepToLoggable(Map<String, dynamic>.from(afterResult.first));
+    
+    // Calculate changes for audit
+    final changes = calculateChanges(
       transactionType: TransactionType.update,
+      before: before,
+      after: after,
+    );
+    
+    // Log the transaction
+    transactionLogRepository.log(
       entityType: EntityType.step,
-      entityTitle: after['title'] as String,
+      entityId: id,
+      transactionType: TransactionType.update,
+      summary: generateSummary(
+        transactionType: TransactionType.update,
+        entityType: EntityType.step,
+        entityTitle: after['title'] as String,
+        changes: changes,
+      ),
       changes: changes,
-    ),
-    changes: changes,
-    projectId: projectId,
-  );
+      projectId: projectId,
+    );
+  });
   
   // Return updated step
   return _showStep(database, args);
