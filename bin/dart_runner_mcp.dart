@@ -36,12 +36,11 @@ void main(List<String> arguments) async {
   // Check if it's a Dart project
   final pubspecFile = File(p.join(workingDir.path, 'pubspec.yaml'));
   if (!await pubspecFile.exists()) {
-    stderr.writeln('Warning: No pubspec.yaml found in $projectDir');
-    stderr.writeln('This may not be a Dart project.');
+    logWarning('dart-runner', 'No pubspec.yaml found in $projectDir - may not be a Dart project');
   }
 
-  stderr.writeln('Dart Runner MCP Server starting...');
-  stderr.writeln('Project path: ${workingDir.path}');
+  logInfo('dart-runner', 'Dart Runner MCP Server starting...');
+  logInfo('dart-runner', 'Project path: ${workingDir.path}');
 
   final sessionManager = SessionManager();
 
@@ -120,7 +119,7 @@ Use get_output with the session_id to poll for output.''',
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  stderr.writeln('Dart Runner MCP Server running on stdio');
+  logInfo('dart-runner', 'Dart Runner MCP Server running on stdio');
 }
 
 void _printUsage() {
@@ -131,7 +130,16 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-
+const _validOperations = [
+  'analyze',
+  'test',
+  'run',
+  'format',
+  'pub-get',
+  'get_output',
+  'list_sessions',
+  'cancel',
+];
 
 Future<CallToolResult> _handleDartRunner(
   Map<String, dynamic>? args,
@@ -140,74 +148,80 @@ Future<CallToolResult> _handleDartRunner(
 ) async {
   final operation = args?['operation'] as String?;
 
-  if (operation == null) {
-    return textResult('Error: operation is required');
+  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+    return error;
   }
 
-  switch (operation) {
-    case 'analyze':
-      return _startDartCommand(
-        workingDir,
-        sessionManager,
-        'analyze',
-        ['analyze', ...?_getExtraArgs(args)],
-      );
+  try {
+    switch (operation) {
+      case 'analyze':
+        return _startDartCommand(
+          workingDir,
+          sessionManager,
+          'analyze',
+          ['analyze', ...?_getExtraArgs(args)],
+        );
 
-    case 'test':
-      final target = args?['target'] as String?;
-      return _startDartCommand(
-        workingDir,
-        sessionManager,
-        'test',
-        [
+      case 'test':
+        final target = args?['target'] as String?;
+        return _startDartCommand(
+          workingDir,
+          sessionManager,
           'test',
-          if (target != null) target,
-          ...?_getExtraArgs(args),
-        ],
-      );
+          [
+            'test',
+            if (target != null) target,
+            ...?_getExtraArgs(args),
+          ],
+        );
 
-    case 'run':
-      final target = args?['target'] as String?;
-      return _startDartCommand(
-        workingDir,
-        sessionManager,
-        'run',
-        [
+      case 'run':
+        final target = args?['target'] as String?;
+        return _startDartCommand(
+          workingDir,
+          sessionManager,
           'run',
-          if (target != null) target,
-          ...?_getExtraArgs(args),
-        ],
-      );
+          [
+            'run',
+            if (target != null) target,
+            ...?_getExtraArgs(args),
+          ],
+        );
 
-    case 'format':
-      final target = args?['target'] as String? ?? '.';
-      return _runDartCommandSync(
-        workingDir,
-        ['format', target, ...?_getExtraArgs(args)],
-      );
+      case 'format':
+        final target = args?['target'] as String? ?? '.';
+        return await _runDartCommandSync(
+          workingDir,
+          ['format', target, ...?_getExtraArgs(args)],
+        );
 
-    case 'pub-get':
-      return _runDartCommandSync(
-        workingDir,
-        ['pub', 'get', ...?_getExtraArgs(args)],
-      );
+      case 'pub-get':
+        return await _runDartCommandSync(
+          workingDir,
+          ['pub', 'get', ...?_getExtraArgs(args)],
+        );
 
-    case 'get_output':
-      final sessionId = args?['session_id'] as String?;
-      final chunkIndex = (args?['chunk_index'] as num?)?.toInt() ?? 0;
-      final maxChunks =
-          ((args?['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
-      return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
+      case 'get_output':
+        final sessionId = args?['session_id'] as String?;
+        final chunkIndex = (args?['chunk_index'] as num?)?.toInt() ?? 0;
+        final maxChunks =
+            ((args?['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
+        return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
 
-    case 'list_sessions':
-      return _listSessions(sessionManager);
+      case 'list_sessions':
+        return _listSessions(sessionManager);
 
-    case 'cancel':
-      final sessionId = args?['session_id'] as String?;
-      return _cancelSession(sessionManager, sessionId);
+      case 'cancel':
+        final sessionId = args?['session_id'] as String?;
+        return await _cancelSession(sessionManager, sessionId);
 
-    default:
-      return textResult('Error: Unknown operation: $operation');
+      default:
+        return validationError('operation', 'Unknown operation: $operation');
+    }
+  } catch (e, stackTrace) {
+    return errorResult('dart-runner:$operation', e, stackTrace, {
+      'operation': operation,
+    });
   }
 }
 
@@ -276,8 +290,10 @@ Future<CallToolResult> _runDartCommandSync(
     }
 
     return textResult(output.toString());
-  } catch (e) {
-    return textResult('Error running command: $e');
+  } catch (e, stackTrace) {
+    return errorResult('dart-runner:command', e, stackTrace, {
+      'command': 'dart ${dartArgs.join(' ')}',
+    });
   }
 }
 
@@ -288,17 +304,13 @@ CallToolResult _getOutput(
   int chunkIndex,
   int maxChunks,
 ) {
-  if (sessionId == null || sessionId.isEmpty) {
-    return textResult('Error: session_id is required');
+  if (requireString(sessionId, 'session_id') case final error?) {
+    return error;
   }
 
-  final session = sessionManager.getSession(sessionId);
+  final session = sessionManager.getSession(sessionId!);
   if (session == null) {
-    final response = {
-      'error': 'Session not found',
-      'session_id': sessionId,
-    };
-    return textResult(jsonEncode(response));
+    return notFoundError('Session', sessionId);
   }
 
   // Get the requested chunk range
@@ -368,17 +380,13 @@ Future<CallToolResult> _cancelSession(
   SessionManager sessionManager,
   String? sessionId,
 ) async {
-  if (sessionId == null || sessionId.isEmpty) {
-    return textResult('Error: session_id is required');
+  if (requireString(sessionId, 'session_id') case final error?) {
+    return error;
   }
 
-  final session = sessionManager.getSession(sessionId);
+  final session = sessionManager.getSession(sessionId!);
   if (session == null) {
-    final response = {
-      'error': 'Session not found',
-      'session_id': sessionId,
-    };
-    return textResult(jsonEncode(response));
+    return notFoundError('Session', sessionId);
   }
 
   await sessionManager.removeSession(sessionId);
