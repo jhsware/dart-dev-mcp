@@ -53,11 +53,11 @@ void main(List<String> arguments) async {
 
   // Initialize database
   final dbPath = p.join(aiToolDir.path, 'db.sqlite');
-  final db = _initializeDatabase(dbPath);
+  final database = _initializeDatabase(dbPath);
   
   // Initialize transaction log repository
-  final txLogRepo = TransactionLogRepository(db);
-  txLogRepo.initializeTable();
+  final transactionLogRepository = TransactionLogRepository(database);
+  transactionLogRepository.initializeTable();
 
   stderr.writeln('Planner MCP Server starting...');
   stderr.writeln('Project path: ${workingDir.path}');
@@ -65,7 +65,7 @@ void main(List<String> arguments) async {
 
 
   // Set up graceful shutdown to close database
-  _setupShutdownHandlers(db);
+  _setupShutdownHandlers(database);
 
   final server = McpServer(
     Implementation(name: 'planner-mcp', version: '1.0.0'),
@@ -166,7 +166,7 @@ Step statuses: todo, started, canceled, done''',
         },
       },
     ),
-    callback: ({args, extra}) => _handlePlanner(args, workingDir, db, txLogRepo),
+    callback: ({args, extra}) => _handlePlanner(args, workingDir, database, transactionLogRepository),
   );
 
   final transport = StdioServerTransport();
@@ -186,28 +186,28 @@ void _printUsage() {
 }
 
 /// Set up signal handlers for graceful shutdown
-void _setupShutdownHandlers(Database db) {
+void _setupShutdownHandlers(Database database) {
   // Handle SIGINT (Ctrl+C)
   ProcessSignal.sigint.watch().listen((_) {
     stderr.writeln('Received SIGINT, closing database...');
-    _closeDatabase(db);
+    _closeDatabase(database);
     exit(0);
   });
 
   // Handle SIGTERM
   ProcessSignal.sigterm.watch().listen((_) {
     stderr.writeln('Received SIGTERM, closing database...');
-    _closeDatabase(db);
+    _closeDatabase(database);
     exit(0);
   });
 }
 
 /// Safely close the database
-void _closeDatabase(Database db) {
+void _closeDatabase(Database database) {
   try {
     // Checkpoint WAL to main database before closing
-    db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
-    db.dispose();
+    database.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+    database.dispose();
     stderr.writeln('Database closed successfully');
   } catch (e) {
     stderr.writeln('Error closing database: $e');
@@ -219,24 +219,24 @@ void _closeDatabase(Database db) {
 // =============================================================================
 
 Database _initializeDatabase(String dbPath) {
-  final db = sqlite3.open(dbPath);
+  final database = sqlite3.open(dbPath);
   
   // Enable WAL mode for better concurrent access and crash recovery
   // WAL mode is more resilient to corruption from unexpected shutdowns
-  db.execute('PRAGMA journal_mode=WAL');
+  database.execute('PRAGMA journal_mode=WAL');
   
   // Set busy timeout to wait up to 5 seconds if database is locked
-  db.execute('PRAGMA busy_timeout=5000');
+  database.execute('PRAGMA busy_timeout=5000');
   
   // Use NORMAL synchronous mode (good balance of safety and performance)
   // FULL is safer but slower, NORMAL is safe for WAL mode
-  db.execute('PRAGMA synchronous=NORMAL');
+  database.execute('PRAGMA synchronous=NORMAL');
   
   // Enable foreign key enforcement
-  db.execute('PRAGMA foreign_keys=ON');
+  database.execute('PRAGMA foreign_keys=ON');
   
   // Create tasks table
-  db.execute('''
+  database.execute('''
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -250,7 +250,7 @@ Database _initializeDatabase(String dbPath) {
   ''');
   
   // Create steps table
-  db.execute('''
+  database.execute('''
     CREATE TABLE IF NOT EXISTS steps (
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL,
@@ -264,12 +264,12 @@ Database _initializeDatabase(String dbPath) {
   ''');
   
   // Create indexes
-  db.execute('CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)');
-  db.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
-  db.execute('CREATE INDEX IF NOT EXISTS idx_steps_task_id ON steps(task_id)');
-  db.execute('CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(status)');
+  database.execute('CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)');
+  database.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+  database.execute('CREATE INDEX IF NOT EXISTS idx_steps_task_id ON steps(task_id)');
+  database.execute('CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(status)');
   
-  return db;
+  return database;
 }
 
 // =============================================================================
@@ -279,8 +279,8 @@ Database _initializeDatabase(String dbPath) {
 Future<CallToolResult> _handlePlanner(
   Map<String, dynamic>? args,
   Directory workingDir,
-  Database db,
-  TransactionLogRepository txLogRepo,
+  Database database,
+  TransactionLogRepository transactionLogRepository,
 ) async {
   final operation = args?['operation'] as String?;
 
@@ -293,27 +293,27 @@ Future<CallToolResult> _handlePlanner(
       case 'get-project-instructions':
         return _getProjectInstructions(workingDir);
       case 'add-task':
-        return _addTask(db, args, txLogRepo);
+        return _addTask(database, args, transactionLogRepository);
       case 'show-task':
-        return _showTask(db, args);
+        return _showTask(database, args);
       case 'update-task':
-        return _updateTask(db, args, txLogRepo);
+        return _updateTask(database, args, transactionLogRepository);
       case 'show-task-memory':
-        return _showTaskMemory(db, args);
+        return _showTaskMemory(database, args);
       case 'update-task-memory':
-        return _updateTaskMemory(db, args, txLogRepo);
+        return _updateTaskMemory(database, args, transactionLogRepository);
       case 'list-tasks':
-        return _listTasks(db, args);
+        return _listTasks(database, args);
       case 'add-step':
-        return _addStep(db, args, txLogRepo);
+        return _addStep(database, args, transactionLogRepository);
       case 'show-step':
-        return _showStep(db, args);
+        return _showStep(database, args);
       case 'update-step':
-        return _updateStep(db, args, txLogRepo);
+        return _updateStep(database, args, transactionLogRepository);
       case 'get-timeline':
-        return _getTimeline(args, txLogRepo);
+        return _getTimeline(args, transactionLogRepository);
       case 'get-audit-trail':
-        return _getAuditTrail(args, txLogRepo);
+        return _getAuditTrail(args, transactionLogRepository);
       default:
         return textResult('Error: Unknown operation: $operation');
     }
@@ -369,7 +369,7 @@ String _normalizeStepStatus(String status) {
   }
 }
 
-CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _addTask(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final projectId = args?['project_id'] as String?;
   final title = args?['title'] as String?;
   final details = args?['details'] as String?;
@@ -391,7 +391,7 @@ CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogR
   final id = _uuid.v4();
   final now = DateTime.now().toUtc().toIso8601String();
   
-  db.execute('''
+  database.execute('''
     INSERT INTO tasks (id, project_id, title, details, status, memory, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   ''', [id, projectId, title, details, status, memory, now, now]);
@@ -408,7 +408,7 @@ CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogR
     'updated_at': now,
   };
   
-  txLogRepo.log(
+  transactionLogRepository.log(
     entityType: EntityType.task,
     entityId: id,
     transactionType: TransactionType.create,
@@ -432,14 +432,14 @@ CallToolResult _addTask(Database db, Map<String, dynamic>? args, TransactionLogR
   });
 }
 
-CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
+CallToolResult _showTask(Database database, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
     return textResult('Error: id is required');
   }
   
-  final taskResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final taskResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   
   if (taskResult.isEmpty) {
     return textResult('Error: Task not found: $id');
@@ -448,7 +448,7 @@ CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
   final task = taskResult.first;
   
   // Get steps for this task
-  final stepsResult = db.select(
+  final stepsResult = database.select(
     'SELECT id, title, status FROM steps WHERE task_id = ? ORDER BY created_at',
     [id]
   );
@@ -471,7 +471,7 @@ CallToolResult _showTask(Database db, Map<String, dynamic>? args) {
   });
 }
 
-CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _updateTask(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
@@ -479,7 +479,7 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionL
   }
   
   // Get task before update for diff calculation
-  final existingResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final existingResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   if (existingResult.isEmpty) {
     return textResult('Error: Task not found: $id');
   }
@@ -522,13 +522,13 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionL
   values.add(now);
   values.add(id);
   
-  db.execute(
+  database.execute(
     'UPDATE tasks SET ${updates.join(", ")} WHERE id = ?',
     values
   );
   
   // Get task after update
-  final afterResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final afterResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
   
   // Calculate changes for audit
@@ -539,7 +539,7 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionL
   );
   
   // Log the transaction
-  txLogRepo.log(
+  transactionLogRepository.log(
     entityType: EntityType.task,
     entityId: id,
     transactionType: TransactionType.update,
@@ -555,17 +555,17 @@ CallToolResult _updateTask(Database db, Map<String, dynamic>? args, TransactionL
   );
   
   // Return updated task
-  return _showTask(db, args);
+  return _showTask(database, args);
 }
 
-CallToolResult _showTaskMemory(Database db, Map<String, dynamic>? args) {
+CallToolResult _showTaskMemory(Database database, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
     return textResult('Error: id is required');
   }
   
-  final result = db.select('SELECT id, title, memory FROM tasks WHERE id = ?', [id]);
+  final result = database.select('SELECT id, title, memory FROM tasks WHERE id = ?', [id]);
   
   if (result.isEmpty) {
     return textResult('Error: Task not found: $id');
@@ -581,7 +581,7 @@ CallToolResult _showTaskMemory(Database db, Map<String, dynamic>? args) {
   });
 }
 
-CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _updateTaskMemory(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final id = args?['id'] as String?;
   final memory = args?['memory'] as String?;
   
@@ -590,7 +590,7 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, Transa
   }
   
   // Get task before update for diff calculation
-  final existingResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final existingResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   if (existingResult.isEmpty) {
     return textResult('Error: Task not found: $id');
   }
@@ -599,13 +599,13 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, Transa
   
   final now = DateTime.now().toUtc().toIso8601String();
   
-  db.execute(
+  database.execute(
     'UPDATE tasks SET memory = ?, updated_at = ? WHERE id = ?',
     [memory, now, id]
   );
   
   // Get task after update
-  final afterResult = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+  final afterResult = database.select('SELECT * FROM tasks WHERE id = ?', [id]);
   final after = taskToLoggable(Map<String, dynamic>.from(afterResult.first));
   
   // Calculate changes for audit
@@ -616,7 +616,7 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, Transa
   );
   
   // Log the transaction
-  txLogRepo.log(
+  transactionLogRepository.log(
     entityType: EntityType.task,
     entityId: id,
     transactionType: TransactionType.update,
@@ -638,7 +638,7 @@ CallToolResult _updateTaskMemory(Database db, Map<String, dynamic>? args, Transa
   });
 }
 
-CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
+CallToolResult _listTasks(Database database, Map<String, dynamic>? args) {
   final projectId = args?['project_id'] as String?;
   final status = args?['status'] as String?;
   
@@ -678,7 +678,7 @@ CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
     ORDER BY t.updated_at DESC
   ''';
   
-  final result = db.select(query, values);
+  final result = database.select(query, values);
   
   final tasks = result.map((row) => {
     'id': row['id'],
@@ -706,7 +706,7 @@ CallToolResult _listTasks(Database db, Map<String, dynamic>? args) {
 // Step Operations
 // =============================================================================
 
-CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _addStep(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final taskId = args?['task_id'] as String?;
   final title = args?['title'] as String?;
   final details = args?['details'] as String?;
@@ -726,7 +726,7 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogR
   }
   
   // Check task exists and get task info for logging
-  final taskResult = db.select('SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
+  final taskResult = database.select('SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
   if (taskResult.isEmpty) {
     return textResult('Error: Task not found: $taskId');
   }
@@ -735,7 +735,7 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogR
   final id = _uuid.v4();
   final now = DateTime.now().toUtc().toIso8601String();
   
-  db.execute('''
+  database.execute('''
     INSERT INTO steps (id, task_id, title, details, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   ''', [id, taskId, title, details, status, now, now]);
@@ -751,7 +751,7 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogR
     'updated_at': now,
   };
   
-  txLogRepo.log(
+  transactionLogRepository.log(
     entityType: EntityType.step,
     entityId: id,
     transactionType: TransactionType.create,
@@ -775,14 +775,14 @@ CallToolResult _addStep(Database db, Map<String, dynamic>? args, TransactionLogR
   });
 }
 
-CallToolResult _showStep(Database db, Map<String, dynamic>? args) {
+CallToolResult _showStep(Database database, Map<String, dynamic>? args) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
     return textResult('Error: id is required');
   }
   
-  final result = db.select('SELECT * FROM steps WHERE id = ?', [id]);
+  final result = database.select('SELECT * FROM steps WHERE id = ?', [id]);
   
   if (result.isEmpty) {
     return textResult('Error: Step not found: $id');
@@ -801,7 +801,7 @@ CallToolResult _showStep(Database db, Map<String, dynamic>? args) {
   });
 }
 
-CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _updateStep(Database database, Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final id = args?['id'] as String?;
   
   if (id == null || id.isEmpty) {
@@ -809,7 +809,7 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
   }
   
   // Get step before update for diff calculation
-  final existingResult = db.select('''
+  final existingResult = database.select('''
     SELECT s.*, t.title as task_title, t.project_id
     FROM steps s
     JOIN tasks t ON s.task_id = t.id
@@ -855,13 +855,13 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
   values.add(now);
   values.add(id);
   
-  db.execute(
+  database.execute(
     'UPDATE steps SET ${updates.join(", ")} WHERE id = ?',
     values
   );
   
   // Get step after update
-  final afterResult = db.select('SELECT * FROM steps WHERE id = ?', [id]);
+  final afterResult = database.select('SELECT * FROM steps WHERE id = ?', [id]);
   final after = stepToLoggable(Map<String, dynamic>.from(afterResult.first));
   
   // Calculate changes for audit
@@ -872,7 +872,7 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
   );
   
   // Log the transaction
-  txLogRepo.log(
+  transactionLogRepository.log(
     entityType: EntityType.step,
     entityId: id,
     transactionType: TransactionType.update,
@@ -887,14 +887,14 @@ CallToolResult _updateStep(Database db, Map<String, dynamic>? args, TransactionL
   );
   
   // Return updated step
-  return _showStep(db, args);
+  return _showStep(database, args);
 }
 
 // =============================================================================
 // Timeline and Audit Operations
 // =============================================================================
 
-CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final limit = (args?['limit'] as int?) ?? 20;
   final projectId = args?['project_id'] as String?;
   final entityTypeStr = args?['entity_type'] as String?;
@@ -942,10 +942,10 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
   );
   
   // Get timeline entries
-  final entries = txLogRepo.getTimeline(query);
+  final entries = transactionLogRepository.getTimeline(query);
   
   // Format for output (timeline view - no detailed changes)
-  final timeline = entries.map((e) => e.toTimelineJson()).toList();
+  final timeline = entries.map((entry) => entry.toTimelineJson()).toList();
   
   return jsonResult({
     'timeline': timeline,
@@ -960,7 +960,7 @@ CallToolResult _getTimeline(Map<String, dynamic>? args, TransactionLogRepository
   });
 }
 
-CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogRepository txLogRepo) {
+CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogRepository transactionLogRepository) {
   final entityTypeStr = args?['entity_type'] as String?;
   final entityId = args?['id'] as String?;
   final limit = (args?['limit'] as int?) ?? 100;
@@ -983,7 +983,7 @@ CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogReposito
   }
   
   // Get audit trail entries
-  final entries = txLogRepo.getAuditTrail(
+  final entries = transactionLogRepository.getAuditTrail(
     entityType: entityType,
     entityId: entityId,
     limit: limit,
@@ -991,7 +991,7 @@ CallToolResult _getAuditTrail(Map<String, dynamic>? args, TransactionLogReposito
   );
   
   // Format for output (full details including changes)
-  final auditTrail = entries.map((e) => e.toJson()).toList();
+  final auditTrail = entries.map((entry) => entry.toJson()).toList();
   
   return jsonResult({
     'entity_type': entityTypeStr,
