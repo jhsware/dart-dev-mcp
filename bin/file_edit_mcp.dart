@@ -250,13 +250,13 @@ Future<CallToolResult> _listContent(
   }
 
   final List<FileSystemEntity> allContents = await directory.list().toList();
-  final outp = <String>[];
+  final output = <String>[];
 
   while (allContents.isNotEmpty) {
-    final List<FileSystemEntity> tmp = List.from(allContents);
+    final List<FileSystemEntity> currentBatch = List.from(allContents);
     allContents.clear();
 
-    final futures = tmp.map((item) async {
+    final futures = currentBatch.map((item) async {
       final relPath = item.path.substring(workingDir.path.length + 1);
 
       // Omit hidden files
@@ -268,10 +268,10 @@ Future<CallToolResult> _listContent(
       }
       return '$relPath -- size: ${stat.size}; type: ${stat.type}';
     });
-    outp.addAll(await Future.wait(futures));
+    output.addAll(await Future.wait(futures));
   }
 
-  final filtered = outp.where((s) => s.isNotEmpty).toList();
+  final filtered = output.where((s) => s.isNotEmpty).toList();
   return textResult(
       filtered.isEmpty ? 'Directory is empty' : filtered.join('\n'));
 }
@@ -306,34 +306,34 @@ Future<CallToolResult> _readFiles(
   List<String> paths,
   List<String> allowedPaths,
 ) async {
-  final outp = <String>[];
+  final output = <String>[];
 
   for (final path in paths) {
     final trimmedPath = path.trim();
     final error = validateRelativePath(trimmedPath);
     if (error != null) {
-      outp.add('$trimmedPath: Error: $error');
+      output.add('$trimmedPath: Error: $error');
       continue;
     }
 
     final filePath = getAbsolutePath(workingDir, trimmedPath);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      outp.add('$trimmedPath: Error: Not allowed');
+      output.add('$trimmedPath: Error: Not allowed');
       continue;
     }
 
     final file = File(filePath);
     if (!await file.exists()) {
-      outp.add('$trimmedPath: Error: File not found');
+      output.add('$trimmedPath: Error: File not found');
       continue;
     }
 
     final content = await file.readAsString();
     final normalized = normalizeLineEndings(content);
-    outp.addAll(['$trimmedPath:', addLineNumbers(normalized), '']);
+    output.addAll(['$trimmedPath:', addLineNumbers(normalized), '']);
   }
 
-  return textResult(outp.join('\n'));
+  return textResult(output.join('\n'));
 }
 
 Future<CallToolResult> _searchText(
