@@ -1,4 +1,4 @@
-import 'dart:io';
+
 
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:dart_dev_mcp/dart_dev_mcp.dart';
@@ -17,14 +17,14 @@ import 'package:html/dom.dart';
 ///
 /// Usage: dart run bin/convert_to_md_mcp.dart
 void main(List<String> arguments) async {
-  stderr.writeln('Convert-to-MD MCP Server starting...');
+  logInfo('convert', 'Convert-to-MD MCP Server starting...');
 
   // Create HTTP client config from environment
   final httpConfig = HttpClientConfig.fromEnvironment(
     userAgent: 'Mozilla/5.0 (compatible; ConvertToMD/1.0)',
   );
-  stderr.writeln('Request timeout: ${httpConfig.timeout.inSeconds}s');
-  stderr.writeln('Max retries: ${httpConfig.maxRetries}');
+  logInfo('convert', 'Request timeout: ${httpConfig.timeout.inSeconds}s');
+  logInfo('convert', 'Max retries: ${httpConfig.maxRetries}');
 
   final server = McpServer(
     Implementation(name: 'convert-to-md-mcp', version: '1.0.0'),
@@ -82,15 +82,22 @@ Operations:
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  stderr.writeln('Convert-to-MD MCP Server running on stdio');
+  logInfo('convert', 'Convert-to-MD MCP Server running on stdio');
 }
 
 /// Logger for retry attempts
 void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
     Duration nextDelay) {
-  stderr.writeln(
+  logWarning('convert', 
       'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms');
 }
+
+const _validOperations = [
+  'convert',
+  'convert-url',
+  'extract-text',
+  'extract-links',
+];
 
 Future<CallToolResult> _handleConvert(
   Map<String, dynamic>? args,
@@ -98,50 +105,55 @@ Future<CallToolResult> _handleConvert(
 ) async {
   final operation = args?['operation'] as String?;
 
-  if (operation == null) {
-    return textResult('Error: operation is required');
+  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+    return error;
   }
 
-  switch (operation) {
-    case 'convert':
-      final html = args?['html'] as String?;
-      if (html == null || html.isEmpty) {
-        return textResult('Error: html is required for convert operation');
-      }
-      final includeLinks = args?['include-links'] as bool? ?? true;
-      final includeImages = args?['include-images'] as bool? ?? true;
-      return textResult(
-          _convertHtmlToMarkdown(html, includeLinks, includeImages));
+  try {
+    switch (operation) {
+      case 'convert':
+        final html = args?['html'] as String?;
+        if (requireString(html, 'html') case final error?) {
+          return error;
+        }
+        final includeLinks = args?['include-links'] as bool? ?? true;
+        final includeImages = args?['include-images'] as bool? ?? true;
+        return textResult(
+            _convertHtmlToMarkdown(html!, includeLinks, includeImages));
 
-    case 'convert-url':
-      final url = args?['url'] as String?;
-      if (url == null || url.isEmpty) {
-        return textResult('Error: url is required for convert-url operation');
-      }
-      final includeLinks = args?['include-links'] as bool? ?? true;
-      final includeImages = args?['include-images'] as bool? ?? true;
-      return _convertUrl(url, includeLinks, includeImages, httpConfig);
+      case 'convert-url':
+        final url = args?['url'] as String?;
+        if (requireString(url, 'url') case final error?) {
+          return error;
+        }
+        final includeLinks = args?['include-links'] as bool? ?? true;
+        final includeImages = args?['include-images'] as bool? ?? true;
+        return await _convertUrl(url!, includeLinks, includeImages, httpConfig);
 
-    case 'extract-text':
-      final html = args?['html'] as String?;
-      if (html == null || html.isEmpty) {
-        return textResult('Error: html is required for extract-text operation');
-      }
-      return textResult(_extractText(html));
+      case 'extract-text':
+        final html = args?['html'] as String?;
+        if (requireString(html, 'html') case final error?) {
+          return error;
+        }
+        return textResult(_extractText(html!));
 
-    case 'extract-links':
-      final url = args?['url'] as String?;
-      final html = args?['html'] as String?;
-      if (url != null && url.isNotEmpty) {
-        return _extractLinksFromUrl(url, httpConfig);
-      } else if (html != null && html.isNotEmpty) {
-        return textResult(_extractLinks(html, null));
-      }
-      return textResult(
-          'Error: url or html is required for extract-links operation');
+      case 'extract-links':
+        final url = args?['url'] as String?;
+        final html = args?['html'] as String?;
+        if (url != null && url.isNotEmpty) {
+          return await _extractLinksFromUrl(url, httpConfig);
+        } else if (html != null && html.isNotEmpty) {
+          return textResult(_extractLinks(html, null));
+        }
+        return validationError('url', 'url or html is required for extract-links operation');
 
-    default:
-      return textResult('Error: Unknown operation: $operation');
+      default:
+        return validationError('operation', 'Unknown operation: $operation');
+    }
+  } catch (e, stackTrace) {
+    return errorResult('convert:$operation', e, stackTrace, {
+      'operation': operation,
+    });
   }
 }
 
@@ -533,8 +545,10 @@ Future<CallToolResult> _convertUrl(
     return textResult('# Content from $url\n\n$markdown');
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
-  } catch (e) {
-    return textResult('Error fetching URL: $e');
+  } catch (e, stackTrace) {
+    return errorResult('convert:convert-url', e, stackTrace, {
+      'url': url,
+    });
   }
 }
 
@@ -559,7 +573,9 @@ Future<CallToolResult> _extractLinksFromUrl(
     return textResult(_extractLinks(html, url));
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
-  } catch (e) {
-    return textResult('Error fetching URL: $e');
+  } catch (e, stackTrace) {
+    return errorResult('convert:extract-links', e, stackTrace, {
+      'url': url,
+    });
   }
 }
