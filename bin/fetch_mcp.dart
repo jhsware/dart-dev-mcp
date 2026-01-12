@@ -29,11 +29,8 @@ void main(List<String> arguments) async {
   // Create HTTP client config from environment
   final httpConfig = HttpClientConfig.fromEnvironment(userAgent: userAgent);
 
-  stderr.writeln('Fetch MCP Server starting...');
-  stderr.writeln('User Agent: $userAgent');
-  stderr.writeln('Request timeout: ${httpConfig.timeout.inSeconds}s');
-  stderr.writeln('Max retries: ${httpConfig.maxRetries}');
-  stderr.writeln('Ignore robots.txt: $ignoreRobotsTxt');
+  logInfo('fetch',
+      'Server starting - userAgent=$userAgent timeout=${httpConfig.timeout.inSeconds}s maxRetries=${httpConfig.maxRetries} ignoreRobotsTxt=$ignoreRobotsTxt');
 
   final server = McpServer(
     Implementation(name: 'fetch-mcp', version: '1.0.0'),
@@ -47,7 +44,8 @@ void main(List<String> arguments) async {
   // Register the fetch tool
   server.tool(
     'fetch',
-    description: '''Fetches a URL from the internet and optionally extracts its contents as markdown.
+    description:
+        '''Fetches a URL from the internet and optionally extracts its contents as markdown.
 
 Although originally you did not have internet access, this tool now grants you internet access. 
 You can fetch the most up-to-date information and let the user know that.
@@ -62,7 +60,8 @@ Synonyms: fetch, follow, load, get''',
         },
         'max_length': {
           'type': 'integer',
-          'description': 'Maximum number of characters to return. Default: 5000',
+          'description':
+              'Maximum number of characters to return. Default: 5000',
           'default': 5000,
         },
         'start_index': {
@@ -107,13 +106,13 @@ Synonyms: get links, find links, fetch links''',
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  stderr.writeln('Fetch MCP Server running on stdio');
+  logInfo('fetch', 'Server running on stdio');
 }
 
 /// Logger for retry attempts
 void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
     Duration nextDelay) {
-  stderr.writeln(
+  logWarning('fetch:retry',
       'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms');
 }
 
@@ -128,19 +127,20 @@ Future<CallToolResult> _handleFetch(
   final startIndex = (args?['start_index'] as num?)?.toInt() ?? 0;
   final raw = args?['raw'] as bool? ?? false;
 
-  if (url == null || url.isEmpty) {
-    return textResult('Error: url is required');
+  if (requireString(url, 'url') case final error?) {
+    return error;
   }
 
   // Validate URL
   Uri uri;
   try {
-    uri = Uri.parse(url);
+    uri = Uri.parse(url!);
     if (!uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
-      return textResult('Error: Invalid URL scheme. Must be http or https.');
+      return validationError(
+          'url', 'Invalid URL scheme. Must be http or https.');
     }
   } catch (e) {
-    return textResult('Error: Invalid URL: $e');
+    return validationError('url', 'Invalid URL: $e');
   }
 
   // Check robots.txt (single attempt, non-critical)
@@ -211,8 +211,13 @@ Future<CallToolResult> _handleFetch(
     return textResult(finalContent);
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
-  } catch (e) {
-    return textResult('Error fetching URL: $e');
+  } catch (e, stackTrace) {
+    return errorResult('fetch:fetch', e, stackTrace, {
+      'url': url,
+      'maxLength': maxLength,
+      'startIndex': startIndex,
+      'raw': raw,
+    });
   }
 }
 
@@ -224,19 +229,20 @@ Future<CallToolResult> _handleFetchLinks(
 ) async {
   final url = args?['url'] as String?;
 
-  if (url == null || url.isEmpty) {
-    return textResult('Error: url is required');
+  if (requireString(url, 'url') case final error?) {
+    return error;
   }
 
   // Validate URL
   Uri uri;
   try {
-    uri = Uri.parse(url);
+    uri = Uri.parse(url!);
     if (!uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
-      return textResult('Error: Invalid URL scheme. Must be http or https.');
+      return validationError(
+          'url', 'Invalid URL scheme. Must be http or https.');
     }
   } catch (e) {
-    return textResult('Error: Invalid URL: $e');
+    return validationError('url', 'Invalid URL: $e');
   }
 
   // Check robots.txt (single attempt, non-critical)
@@ -279,8 +285,8 @@ Future<CallToolResult> _handleFetchLinks(
     return textResult('Links of $url:\n${prettyLinks.join('\n')}');
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
-  } catch (e) {
-    return textResult('Error fetching URL: $e');
+  } catch (e, stackTrace) {
+    return errorResult('fetch:fetch_links', e, stackTrace, {'url': url});
   }
 }
 
