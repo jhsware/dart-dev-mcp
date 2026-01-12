@@ -477,8 +477,8 @@ CallToolResult _addTask(Database database, Map<String, dynamic>? args, Transacti
     'updated_at': now,
   };
   
-  // Wrap INSERT and transaction log in atomic transaction
-  withTransaction(database, () {
+  // Wrap INSERT and transaction log in atomic transaction with retry
+  withRetryTransactionSync(database, () {
     database.execute('''
       INSERT INTO tasks (id, project_id, title, details, status, memory, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -600,8 +600,8 @@ CallToolResult _updateTask(Database database, Map<String, dynamic>? args, Transa
   values.add(now);
   values.add(id);
   
-  // Wrap UPDATE and transaction log in atomic transaction
-  withTransaction(database, () {
+  // Wrap UPDATE and transaction log in atomic transaction with retry
+  withRetryTransactionSync(database, () {
     database.execute(
       'UPDATE tasks SET ${updates.join(", ")} WHERE id = ?',
       values
@@ -680,8 +680,8 @@ CallToolResult _updateTaskMemory(Database database, Map<String, dynamic>? args, 
   
   final now = DateTime.now().toUtc().toIso8601String();
   
-  // Wrap UPDATE and transaction log in atomic transaction
-  withTransaction(database, () {
+  // Wrap UPDATE and transaction log in atomic transaction with retry
+  withRetryTransactionSync(database, () {
     database.execute(
       'UPDATE tasks SET memory = ?, updated_at = ? WHERE id = ?',
       [memory, now, id]
@@ -837,8 +837,8 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
     'updated_at': now,
   };
   
-  // Wrap INSERT and transaction log in atomic transaction
-  withTransaction(database, () {
+  // Wrap INSERT and transaction log in atomic transaction with retry
+  withRetryTransactionSync(database, () {
     database.execute('''
       INSERT INTO steps (id, task_id, title, details, status, sort_order, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -949,8 +949,8 @@ CallToolResult _updateStep(Database database, Map<String, dynamic>? args, Transa
   values.add(now);
   values.add(id);
   
-  // Wrap UPDATE and transaction log in atomic transaction
-  withTransaction(database, () {
+  // Wrap UPDATE and transaction log in atomic transaction with retry
+  withRetryTransactionSync(database, () {
     database.execute(
       'UPDATE steps SET ${updates.join(", ")} WHERE id = ?',
       values
