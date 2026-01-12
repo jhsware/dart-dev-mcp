@@ -60,24 +60,20 @@ void main(List<String> arguments) async {
   // Check if it's a git repository
   final isGitDir = await GitDir.isGitDir(workingDir.path);
   if (!isGitDir) {
-    stderr.writeln('Warning: Not a git repository: $projectDir');
-    stderr.writeln('Some operations may fail.');
+    logWarning('git', 'Not a git repository: $projectDir. Some operations may fail.');
   }
 
   // Detect available signing methods
   final signingInfo = await _detectSigningCapabilities();
   
-  stderr.writeln('Git MCP Server starting...');
-  stderr.writeln('Project path: ${workingDir.path}');
-  stderr.writeln('Is git repository: $isGitDir');
-  stderr.writeln('Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
+  logInfo('git', 'Git MCP Server starting...');
+  logInfo('git', 'Project path: ${workingDir.path}');
+  logInfo('git', 'Is git repository: $isGitDir');
+  logInfo('git', 'Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
   if (signingInfo.sshAgentSocket != null) {
-    stderr.writeln('SSH Agent: ${signingInfo.sshAgentSocket}');
+    logInfo('git', 'SSH Agent: ${signingInfo.sshAgentSocket}');
   }
-  stderr.writeln('Allowed paths:');
-  for (final path in allowedPaths) {
-    stderr.writeln('  - $path');
-  }
+  logInfo('git', 'Allowed paths: ${allowedPaths.join(", ")}');
 
   final server = McpServer(
     Implementation(name: 'git-mcp', version: '1.0.0'),
@@ -196,7 +192,7 @@ Operations:
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  stderr.writeln('Git MCP Server running on stdio');
+  logInfo('git', 'Git MCP Server running on stdio');
 }
 
 void _printUsage() {
@@ -543,6 +539,25 @@ Future<String?> _getSSHKeyPath() async {
 // Main Handler
 // =============================================================================
 
+const _validOperations = [
+  'status',
+  'branch-create',
+  'branch-list',
+  'branch-switch',
+  'merge',
+  'add',
+  'commit',
+  'stash',
+  'stash-list',
+  'stash-apply',
+  'stash-pop',
+  'tag-create',
+  'tag-list',
+  'log',
+  'diff',
+  'signing-status',
+];
+
 Future<CallToolResult> _handleGit(
   Map<String, dynamic>? args,
   Directory workingDir,
@@ -551,16 +566,18 @@ Future<CallToolResult> _handleGit(
 ) async {
   final operation = args?['operation'] as String?;
 
-  if (operation == null) {
-    return textResult('Error: operation is required');
+  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+    return error;
   }
 
   // Verify it's a git directory for most operations
   if (operation != 'status' && operation != 'signing-status') {
     final isGitDir = await GitDir.isGitDir(workingDir.path);
     if (!isGitDir) {
-      return textResult(
-          'Error: ${workingDir.path} is not a git repository. Run "git init" first.');
+      return validationError(
+        'path',
+        '${workingDir.path} is not a git repository. Run "git init" first.',
+      );
     }
   }
 
@@ -615,10 +632,12 @@ Future<CallToolResult> _handleGit(
       case 'signing-status':
         return _signingStatus(workingDir, signingInfo);
       default:
-        return textResult('Error: Unknown operation: $operation');
+        return validationError('operation', 'Unknown operation: $operation');
     }
-  } catch (e) {
-    return textResult('Error: $e');
+  } catch (e, stackTrace) {
+    return errorResult('git:$operation', e, stackTrace, {
+      'operation': operation,
+    });
   }
 }
 
@@ -793,11 +812,11 @@ Future<CallToolResult> _branchCreate(
   String? branch,
   String? from,
 ) async {
-  if (branch == null || branch.isEmpty) {
-    return textResult('Error: branch name is required');
+  if (requireString(branch, 'branch') case final error?) {
+    return error;
   }
 
-  final args = ['branch', branch];
+  final args = ['branch', branch!];
   if (from != null && from.isNotEmpty) {
     args.add(from);
   }
@@ -827,11 +846,11 @@ Future<CallToolResult> _branchSwitch(
   Directory workingDir,
   String? branch,
 ) async {
-  if (branch == null || branch.isEmpty) {
-    return textResult('Error: branch name is required');
+  if (requireString(branch, 'branch') case final error?) {
+    return error;
   }
 
-  final result = await _runGit(workingDir, ['checkout', branch]);
+  final result = await _runGit(workingDir, ['checkout', branch!]);
 
   if (result.exitCode != 0) {
     return textResult('Error switching branch: ${result.stderr}');
@@ -848,8 +867,8 @@ Future<CallToolResult> _merge(
   Directory workingDir,
   String? branch,
 ) async {
-  if (branch == null || branch.isEmpty) {
-    return textResult('Error: branch name is required');
+  if (requireString(branch, 'branch') case final error?) {
+    return error;
   }
 
   // Check if current branch has any commits
@@ -872,7 +891,7 @@ Future<CallToolResult> _merge(
 
   // Always use --no-ff to ensure a merge commit is created
   // This prevents fast-forward merges which would just move the branch pointer
-  final args = ['merge', '--no-ff', branch];
+  final args = ['merge', '--no-ff', branch!];
 
   final result = await _runGit(workingDir, args);
 
@@ -993,8 +1012,10 @@ Future<CallToolResult> _add(
   }
   
   if (files == null || files.isEmpty) {
-    return textResult(
-        'Error: files is required. Use ["."] to stage all allowed files, or set all=true.');
+    return validationError(
+      'files',
+      'files is required. Use ["."] to stage all allowed files, or set all=true.',
+    );
   }
 
   final filesToAdd = <String>[];
@@ -1017,10 +1038,12 @@ Future<CallToolResult> _add(
   }
 
   if (filesToAdd.isEmpty) {
-    return textResult(
-        'Error: None of the specified files are within allowed paths.\n'
-        'Denied: ${deniedFiles.join(", ")}\n\n'
-        'Allowed paths:\n  ${allowedPaths.join('\n  ')}');
+    return validationError(
+      'files',
+      'None of the specified files are within allowed paths.\n'
+      'Denied: ${deniedFiles.join(", ")}\n\n'
+      'Allowed paths:\n  ${allowedPaths.join('\n  ')}',
+    );
   }
 
   final result = await _runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
@@ -1057,8 +1080,8 @@ Future<CallToolResult> _commit(
   required String sign,
   required SigningInfo signingInfo,
 }) async {
-  if (message == null || message.isEmpty) {
-    return textResult('Error: commit message is required');
+  if (requireString(message, 'message') case final error?) {
+    return error;
   }
 
   // Determine actual signing method
@@ -1072,28 +1095,31 @@ Future<CallToolResult> _commit(
   // Validate requested method is available
   if (actualMethod == 'ssh') {
     if (signingInfo.sshKeyPath == null) {
-      return textResult(
-        'Error: SSH signing requested but no SSH key found.\n'
+      return validationError(
+        'sign',
+        'SSH signing requested but no SSH key found.\n'
         'Expected key at: ~/.ssh/id_ed25519.pub, ~/.ssh/id_ecdsa.pub, or ~/.ssh/id_rsa.pub\n\n'
-        'Use sign="none" to commit without signing, or sign="gpg" for GPG signing.'
+        'Use sign="none" to commit without signing, or sign="gpg" for GPG signing.',
       );
     }
     if (!signingInfo.sshAgentHasKey) {
-      return textResult(
-        'Error: SSH signing requires your key to be loaded in ssh-agent.\n\n'
+      return validationError(
+        'sign',
+        'SSH signing requires your key to be loaded in ssh-agent.\n\n'
         'Your key appears to be passphrase-protected. Before launching Claude, run:\n'
         '  ssh-add ~/.ssh/id_rsa\n\n'
         'Or use sign="none" to commit without signing.\n\n'
         'SSH Agent Socket: ${signingInfo.sshAgentSocket ?? "not found"}\n'
-        'Keys in agent: ${signingInfo.sshAgentHasKey ? "yes" : "no"}'
+        'Keys in agent: ${signingInfo.sshAgentHasKey ? "yes" : "no"}',
       );
     }
   }
   if (actualMethod == 'gpg' && !signingInfo.gpgAvailable) {
-    return textResult(
-      'Error: GPG signing requested but no GPG key found.\n'
+    return validationError(
+      'sign',
+      'GPG signing requested but no GPG key found.\n'
       'Run "gpg --list-secret-keys" to check your keys.\n\n'
-      'Use sign="none" to commit without signing, or sign="ssh" for SSH signing.'
+      'Use sign="none" to commit without signing, or sign="ssh" for SSH signing.',
     );
   }
 
@@ -1105,7 +1131,7 @@ Future<CallToolResult> _commit(
     case 'ssh':
       final sshKeyPath = signingInfo.sshKeyPath ?? await _getSSHKeyPath();
       if (sshKeyPath == null) {
-        return textResult('Error: Could not find SSH key for signing');
+        return validationError('sign', 'Could not find SSH key for signing');
       }
       
       args.insertAll(0, [
@@ -1127,7 +1153,7 @@ Future<CallToolResult> _commit(
       break;
   }
   
-  args.addAll(['-m', message]);
+  args.addAll(['-m', message!]);
 
   final result = await _runGit(
     workingDir, 
@@ -1271,18 +1297,18 @@ Future<CallToolResult> _tagCreate(
   String? message,
   bool annotated,
 ) async {
-  if (tag == null || tag.isEmpty) {
-    return textResult('Error: tag name is required');
+  if (requireString(tag, 'tag') case final error?) {
+    return error;
   }
 
   final args = ['tag'];
   
   if (annotated || (message != null && message.isNotEmpty)) {
     args.add('-a');
-    args.add(tag);
+    args.add(tag!);
     args.addAll(['-m', message ?? tag]);
   } else {
-    args.add(tag);
+    args.add(tag!);
   }
 
   final result = await _runGit(workingDir, args);
