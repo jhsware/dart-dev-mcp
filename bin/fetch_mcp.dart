@@ -17,6 +17,8 @@ const defaultUserAgent =
 /// - `MCP_USER_AGENT`: Custom user agent string
 /// - `MCP_HTTP_TIMEOUT`: Request timeout in seconds (default: 30)
 /// - `MCP_HTTP_CONNECTION_TIMEOUT`: Connection timeout in seconds (default: 10)
+/// - `MCP_HTTP_MAX_RETRIES`: Maximum retry attempts (default: 3)
+/// - `MCP_HTTP_RETRY_DELAY`: Initial retry delay in milliseconds (default: 1000)
 ///
 /// Usage: dart run bin/fetch_mcp.dart [--ignore-robots-txt]
 void main(List<String> arguments) async {
@@ -30,6 +32,7 @@ void main(List<String> arguments) async {
   stderr.writeln('Fetch MCP Server starting...');
   stderr.writeln('User Agent: $userAgent');
   stderr.writeln('Request timeout: ${httpConfig.timeout.inSeconds}s');
+  stderr.writeln('Max retries: ${httpConfig.maxRetries}');
   stderr.writeln('Ignore robots.txt: $ignoreRobotsTxt');
 
   final server = McpServer(
@@ -107,6 +110,13 @@ Synonyms: get links, find links, fetch links''',
   stderr.writeln('Fetch MCP Server running on stdio');
 }
 
+/// Logger for retry attempts
+void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
+    Duration nextDelay) {
+  stderr.writeln(
+      'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms');
+}
+
 /// Handle fetch request
 Future<CallToolResult> _handleFetch(
   Map<String, dynamic>? args,
@@ -133,7 +143,7 @@ Future<CallToolResult> _handleFetch(
     return textResult('Error: Invalid URL: $e');
   }
 
-  // Check robots.txt
+  // Check robots.txt (single attempt, non-critical)
   if (!ignoreRobotsTxt) {
     final robotsResult = await _checkRobotsTxt(url, httpConfig);
     if (robotsResult != null) {
@@ -141,9 +151,13 @@ Future<CallToolResult> _handleFetch(
     }
   }
 
-  // Fetch the URL
+  // Fetch the URL with retry
   try {
-    final result = await fetchUrl(uri, config: httpConfig);
+    final result = await fetchUrlWithRetry(
+      uri,
+      config: httpConfig,
+      onRetry: _logRetry,
+    );
 
     if (!result.isSuccess) {
       return textResult(
@@ -183,7 +197,8 @@ Future<CallToolResult> _handleFetch(
     }
 
     final actualContentLength = truncatedContent.length;
-    final remainingContent = originalLength - (startIndex + actualContentLength);
+    final remainingContent =
+        originalLength - (startIndex + actualContentLength);
 
     var finalContent = '${resultPrefix}Contents of $url:\n$truncatedContent';
 
@@ -224,7 +239,7 @@ Future<CallToolResult> _handleFetchLinks(
     return textResult('Error: Invalid URL: $e');
   }
 
-  // Check robots.txt
+  // Check robots.txt (single attempt, non-critical)
   if (!ignoreRobotsTxt) {
     final robotsResult = await _checkRobotsTxt(url, httpConfig);
     if (robotsResult != null) {
@@ -232,9 +247,13 @@ Future<CallToolResult> _handleFetchLinks(
     }
   }
 
-  // Fetch the URL
+  // Fetch the URL with retry
   try {
-    final result = await fetchUrl(uri, config: httpConfig);
+    final result = await fetchUrlWithRetry(
+      uri,
+      config: httpConfig,
+      onRetry: _logRetry,
+    );
 
     if (!result.isSuccess) {
       return textResult(
@@ -273,6 +292,7 @@ Future<String?> _checkRobotsTxt(String url, HttpClientConfig httpConfig) async {
     final robotsTxtUrl = '${uri.scheme}://${uri.host}/robots.txt';
     final robotsTxtUri = Uri.parse(robotsTxtUrl);
 
+    // Use single fetch for robots.txt (not critical enough to retry)
     final result = await fetchUrl(robotsTxtUri, config: httpConfig);
 
     if (result.statusCode == 401 || result.statusCode == 403) {

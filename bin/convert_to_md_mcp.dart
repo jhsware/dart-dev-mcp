@@ -12,6 +12,8 @@ import 'package:html/dom.dart';
 /// Environment variables:
 /// - `MCP_HTTP_TIMEOUT`: Request timeout in seconds (default: 30)
 /// - `MCP_HTTP_CONNECTION_TIMEOUT`: Connection timeout in seconds (default: 10)
+/// - `MCP_HTTP_MAX_RETRIES`: Maximum retry attempts (default: 3)
+/// - `MCP_HTTP_RETRY_DELAY`: Initial retry delay in milliseconds (default: 1000)
 ///
 /// Usage: dart run bin/convert_to_md_mcp.dart
 void main(List<String> arguments) async {
@@ -22,6 +24,7 @@ void main(List<String> arguments) async {
     userAgent: 'Mozilla/5.0 (compatible; ConvertToMD/1.0)',
   );
   stderr.writeln('Request timeout: ${httpConfig.timeout.inSeconds}s');
+  stderr.writeln('Max retries: ${httpConfig.maxRetries}');
 
   final server = McpServer(
     Implementation(name: 'convert-to-md-mcp', version: '1.0.0'),
@@ -56,11 +59,13 @@ Operations:
         },
         'html': {
           'type': 'string',
-          'description': 'HTML content to convert (for convert and extract-text)',
+          'description':
+              'HTML content to convert (for convert and extract-text)',
         },
         'url': {
           'type': 'string',
-          'description': 'URL to fetch and convert (for convert-url and extract-links)',
+          'description':
+              'URL to fetch and convert (for convert-url and extract-links)',
         },
         'include-links': {
           'type': 'boolean',
@@ -78,6 +83,13 @@ Operations:
   final transport = StdioServerTransport();
   await server.connect(transport);
   stderr.writeln('Convert-to-MD MCP Server running on stdio');
+}
+
+/// Logger for retry attempts
+void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
+    Duration nextDelay) {
+  stderr.writeln(
+      'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms');
 }
 
 Future<CallToolResult> _handleConvert(
@@ -504,7 +516,11 @@ Future<CallToolResult> _convertUrl(
   HttpClientConfig httpConfig,
 ) async {
   try {
-    final result = await fetchUrl(Uri.parse(url), config: httpConfig);
+    final result = await fetchUrlWithRetry(
+      Uri.parse(url),
+      config: httpConfig,
+      onRetry: _logRetry,
+    );
 
     if (!result.isSuccess) {
       return textResult(
@@ -528,7 +544,11 @@ Future<CallToolResult> _extractLinksFromUrl(
   HttpClientConfig httpConfig,
 ) async {
   try {
-    final result = await fetchUrl(Uri.parse(url), config: httpConfig);
+    final result = await fetchUrlWithRetry(
+      Uri.parse(url),
+      config: httpConfig,
+      onRetry: _logRetry,
+    );
 
     if (!result.isSuccess) {
       return textResult(
