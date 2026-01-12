@@ -219,7 +219,7 @@ void _closeDatabase(Database database) {
 // =============================================================================
 
 /// Current schema version. Increment when making schema changes.
-const int _currentSchemaVersion = 1;
+const int _currentSchemaVersion = 2;
 
 Database _initializeDatabase(String dbPath) {
   final database = sqlite3.open(dbPath);
@@ -321,10 +321,21 @@ void _runMigrations(Database database) {
     stderr.writeln('Migration to schema version 1 complete.');
   }
   
+  // Migration from version 1 to version 2
+  // Add sort_order column for explicit step ordering
+  if (currentVersion < 2) {
+    stderr.writeln('Running migration to schema version 2...');
+    // Add nullable sort_order column to steps table
+    // Existing rows will have NULL, which will fall back to created_at ordering
+    database.execute('ALTER TABLE steps ADD COLUMN sort_order INTEGER');
+    _setSchemaVersion(database, 2);
+    stderr.writeln('Migration to schema version 2 complete.');
+  }
+  
   // Future migrations will be added here:
-  // if (currentVersion < 2) {
-  //   // Run migration to v2
-  //   _setSchemaVersion(database, 2);
+  // if (currentVersion < 3) {
+  //   // Run migration to v3
+  //   _setSchemaVersion(database, 3);
   // }
   
   // Verify we're at the expected version
@@ -510,9 +521,10 @@ CallToolResult _showTask(Database database, Map<String, dynamic>? args) {
   
   final task = taskResult.first;
   
-  // Get steps for this task
+  // Get steps for this task, ordered by sort_order with fallback to created_at
+  // NULL sort_order values are placed at the end (9999999) to maintain backward compatibility
   final stepsResult = database.select(
-    'SELECT id, title, status FROM steps WHERE task_id = ? ORDER BY created_at',
+    'SELECT id, title, status FROM steps WHERE task_id = ? ORDER BY COALESCE(sort_order, 9999999), created_at',
     [id]
   );
   
@@ -795,13 +807,20 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
   }
   final taskInfo = taskResult.first;
   
+  // Calculate sort_order for the new step (append to end)
+  final countResult = database.select(
+    'SELECT COUNT(*) as count FROM steps WHERE task_id = ?',
+    [taskId]
+  );
+  final sortOrder = (countResult.first['count'] as int) + 1;
+  
   final id = _uuid.v4();
   final now = DateTime.now().toUtc().toIso8601String();
   
   database.execute('''
-    INSERT INTO steps (id, task_id, title, details, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  ''', [id, taskId, title, details, status, now, now]);
+    INSERT INTO steps (id, task_id, title, details, status, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ''', [id, taskId, title, details, status, sortOrder, now, now]);
   
   // Log the transaction
   final stepData = {
@@ -810,6 +829,7 @@ CallToolResult _addStep(Database database, Map<String, dynamic>? args, Transacti
     'title': title,
     'details': details,
     'status': status,
+    'sort_order': sortOrder,
     'created_at': now,
     'updated_at': now,
   };
