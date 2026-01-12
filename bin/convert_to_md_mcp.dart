@@ -4,15 +4,24 @@ import 'package:mcp_dart/mcp_dart.dart';
 import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart';
-import 'package:http/http.dart' as http;
 
 /// Convert-to-MD MCP Server
 ///
 /// Provides HTML to Markdown conversion capabilities.
 ///
+/// Environment variables:
+/// - `MCP_HTTP_TIMEOUT`: Request timeout in seconds (default: 30)
+/// - `MCP_HTTP_CONNECTION_TIMEOUT`: Connection timeout in seconds (default: 10)
+///
 /// Usage: dart run bin/convert_to_md_mcp.dart
 void main(List<String> arguments) async {
   stderr.writeln('Convert-to-MD MCP Server starting...');
+
+  // Create HTTP client config from environment
+  final httpConfig = HttpClientConfig.fromEnvironment(
+    userAgent: 'Mozilla/5.0 (compatible; ConvertToMD/1.0)',
+  );
+  stderr.writeln('Request timeout: ${httpConfig.timeout.inSeconds}s');
 
   final server = McpServer(
     Implementation(name: 'convert-to-md-mcp', version: '1.0.0'),
@@ -63,7 +72,7 @@ Operations:
         },
       },
     ),
-    callback: ({args, extra}) => _handleConvert(args),
+    callback: ({args, extra}) => _handleConvert(args, httpConfig),
   );
 
   final transport = StdioServerTransport();
@@ -71,7 +80,10 @@ Operations:
   stderr.writeln('Convert-to-MD MCP Server running on stdio');
 }
 
-Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
+Future<CallToolResult> _handleConvert(
+  Map<String, dynamic>? args,
+  HttpClientConfig httpConfig,
+) async {
   final operation = args?['operation'] as String?;
 
   if (operation == null) {
@@ -86,7 +98,8 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
       }
       final includeLinks = args?['include-links'] as bool? ?? true;
       final includeImages = args?['include-images'] as bool? ?? true;
-      return textResult(_convertHtmlToMarkdown(html, includeLinks, includeImages));
+      return textResult(
+          _convertHtmlToMarkdown(html, includeLinks, includeImages));
 
     case 'convert-url':
       final url = args?['url'] as String?;
@@ -95,7 +108,7 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
       }
       final includeLinks = args?['include-links'] as bool? ?? true;
       final includeImages = args?['include-images'] as bool? ?? true;
-      return _convertUrl(url, includeLinks, includeImages);
+      return _convertUrl(url, includeLinks, includeImages, httpConfig);
 
     case 'extract-text':
       final html = args?['html'] as String?;
@@ -108,11 +121,12 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
       final url = args?['url'] as String?;
       final html = args?['html'] as String?;
       if (url != null && url.isNotEmpty) {
-        return _extractLinksFromUrl(url);
+        return _extractLinksFromUrl(url, httpConfig);
       } else if (html != null && html.isNotEmpty) {
         return textResult(_extractLinks(html, null));
       }
-      return textResult('Error: url or html is required for extract-links operation');
+      return textResult(
+          'Error: url or html is required for extract-links operation');
 
     default:
       return textResult('Error: Unknown operation: $operation');
@@ -120,21 +134,23 @@ Future<CallToolResult> _handleConvert(Map<String, dynamic>? args) async {
 }
 
 /// Convert HTML to Markdown
-String _convertHtmlToMarkdown(String html, bool includeLinks, bool includeImages) {
+String _convertHtmlToMarkdown(
+    String html, bool includeLinks, bool includeImages) {
   final document = html_parser.parse(html);
-  
+
   // Remove unwanted elements
-  _removeElements(document, ['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'head']);
-  
+  _removeElements(document,
+      ['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'head']);
+
   // Find main content
   final body = document.querySelector('body') ?? document.documentElement;
   if (body == null) {
     return '';
   }
-  
+
   final buffer = StringBuffer();
   _convertNode(body, buffer, includeLinks, includeImages);
-  
+
   return _cleanMarkdown(buffer.toString());
 }
 
@@ -148,55 +164,64 @@ void _removeElements(Document document, List<String> selectors) {
 }
 
 /// Convert a DOM node to Markdown
-void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includeImages, {int listDepth = 0}) {
+void _convertNode(
+    Node node, StringBuffer buffer, bool includeLinks, bool includeImages,
+    {int listDepth = 0}) {
   if (node is Text) {
     final text = node.text.replaceAll(RegExp(r'\s+'), ' ');
     buffer.write(text);
     return;
   }
-  
+
   if (node is! Element) return;
-  
+
   final element = node;
   final tag = element.localName?.toLowerCase() ?? '';
-  
+
   switch (tag) {
     // Headings
     case 'h1':
       buffer.write('\n\n# ');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
     case 'h2':
       buffer.write('\n\n## ');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
     case 'h3':
       buffer.write('\n\n### ');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
     case 'h4':
       buffer.write('\n\n#### ');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
     case 'h5':
       buffer.write('\n\n##### ');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
     case 'h6':
       buffer.write('\n\n###### ');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
-      
+
     // Paragraphs and blocks
     case 'p':
       buffer.write('\n\n');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('\n\n');
       break;
     case 'div':
@@ -205,7 +230,8 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
     case 'main':
     case 'header':
     case 'footer':
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       break;
     case 'br':
       buffer.write('\n');
@@ -213,23 +239,26 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
     case 'hr':
       buffer.write('\n\n---\n\n');
       break;
-      
+
     // Formatting
     case 'strong':
     case 'b':
       buffer.write('**');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('**');
       break;
     case 'em':
     case 'i':
       buffer.write('*');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('*');
       break;
     case 'code':
       buffer.write('`');
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
       buffer.write('`');
       break;
     case 'pre':
@@ -243,7 +272,7 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
       buffer.write(quoteText.replaceAll('\n', '\n> '));
       buffer.write('\n\n');
       break;
-      
+
     // Links and images
     case 'a':
       if (includeLinks) {
@@ -255,7 +284,8 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
           buffer.write(text);
         }
       } else {
-        _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+        _convertChildren(element, buffer, includeLinks, includeImages,
+            listDepth: listDepth);
       }
       break;
     case 'img':
@@ -267,14 +297,15 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
         }
       }
       break;
-      
+
     // Lists
     case 'ul':
       buffer.write('\n');
       for (final child in element.children) {
         if (child.localName == 'li') {
           buffer.write('${'  ' * listDepth}- ');
-          _convertChildren(child, buffer, includeLinks, includeImages, listDepth: listDepth + 1);
+          _convertChildren(child, buffer, includeLinks, includeImages,
+              listDepth: listDepth + 1);
           buffer.write('\n');
         }
       }
@@ -286,21 +317,22 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
       for (final child in element.children) {
         if (child.localName == 'li') {
           buffer.write('${'  ' * listDepth}$index. ');
-          _convertChildren(child, buffer, includeLinks, includeImages, listDepth: listDepth + 1);
+          _convertChildren(child, buffer, includeLinks, includeImages,
+              listDepth: listDepth + 1);
           buffer.write('\n');
           index++;
         }
       }
       buffer.write('\n');
       break;
-      
+
     // Tables
     case 'table':
       buffer.write('\n\n');
       _convertTable(element, buffer);
       buffer.write('\n\n');
       break;
-      
+
     // Skip these
     case 'nav':
     case 'aside':
@@ -310,22 +342,26 @@ void _convertNode(Node node, StringBuffer buffer, bool includeLinks, bool includ
     case 'select':
     case 'textarea':
       break;
-      
+
     default:
-      _convertChildren(element, buffer, includeLinks, includeImages, listDepth: listDepth);
+      _convertChildren(element, buffer, includeLinks, includeImages,
+          listDepth: listDepth);
   }
 }
 
-void _convertChildren(Element element, StringBuffer buffer, bool includeLinks, bool includeImages, {int listDepth = 0}) {
+void _convertChildren(
+    Element element, StringBuffer buffer, bool includeLinks, bool includeImages,
+    {int listDepth = 0}) {
   for (final child in element.nodes) {
-    _convertNode(child, buffer, includeLinks, includeImages, listDepth: listDepth);
+    _convertNode(child, buffer, includeLinks, includeImages,
+        listDepth: listDepth);
   }
 }
 
 void _convertTable(Element table, StringBuffer buffer) {
   final rows = table.querySelectorAll('tr');
   if (rows.isEmpty) return;
-  
+
   // Process header row
   final headerCells = rows.first.querySelectorAll('th, td');
   if (headerCells.isNotEmpty) {
@@ -336,7 +372,7 @@ void _convertTable(Element table, StringBuffer buffer) {
     buffer.write(headerCells.map((_) => '---').join(' | '));
     buffer.write(' |\n');
   }
-  
+
   // Process data rows
   for (var i = 1; i < rows.length; i++) {
     final cells = rows[i].querySelectorAll('td, th');
@@ -355,39 +391,41 @@ String _getTextContent(Element element) {
 /// Clean up the markdown output
 String _cleanMarkdown(String markdown) {
   var cleaned = markdown;
-  
+
   // Remove excessive blank lines (more than 2 consecutive)
   cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
-  
+
   // Remove any lingering HTML comments
   cleaned = cleaned.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
-  
+
   // Normalize heading spacing
-  cleaned = cleaned.replaceAll(RegExp(r'^(#{1,6} .+)(?!\n)', multiLine: true), r'$1\n');
-  
+  cleaned = cleaned.replaceAll(
+      RegExp(r'^(#{1,6} .+)(?!\n)', multiLine: true), r'$1\n');
+
   // Trim whitespace
   cleaned = cleaned.trim();
-  
+
   return cleaned;
 }
 
 /// Extract plain text from HTML
 String _extractText(String html) {
   final document = html_parser.parse(html);
-  
+
   // Remove script, style, etc.
-  _removeElements(document, ['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'head']);
-  
+  _removeElements(document,
+      ['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'head']);
+
   final body = document.querySelector('body') ?? document.documentElement;
   if (body == null) {
     return '';
   }
-  
+
   final text = body.text;
-  
+
   // Clean up whitespace
   var cleaned = text.replaceAll(RegExp(r'\s+'), ' ');
-  
+
   // Decode common HTML entities
   cleaned = cleaned
       .replaceAll('&nbsp;', ' ')
@@ -396,7 +434,7 @@ String _extractText(String html) {
       .replaceAll('&gt;', '>')
       .replaceAll('&quot;', '"')
       .replaceAll('&#39;', "'");
-  
+
   return cleaned.trim();
 }
 
@@ -404,29 +442,33 @@ String _extractText(String html) {
 String _extractLinks(String html, String? baseUrl) {
   final document = html_parser.parse(html);
   final links = document.querySelectorAll('a[href]');
-  
+
   final result = <Map<String, String>>[];
-  
+
   for (final link in links) {
     final href = link.attributes['href'] ?? '';
     if (href.isEmpty) continue;
-    
+
     // Check if it's in a nav element
     var isNav = false;
     Element? parent = link.parent;
     while (parent != null) {
-      if (parent.localName == 'nav' || parent.localName == 'header' || parent.localName == 'footer') {
+      if (parent.localName == 'nav' ||
+          parent.localName == 'header' ||
+          parent.localName == 'footer') {
         isNav = true;
         break;
       }
       parent = parent.parent;
     }
-    
+
     final text = link.text.trim();
-    
+
     // Resolve relative URLs if baseUrl provided
     String resolvedHref = href;
-    if (baseUrl != null && !href.startsWith('http://') && !href.startsWith('https://')) {
+    if (baseUrl != null &&
+        !href.startsWith('http://') &&
+        !href.startsWith('https://')) {
       try {
         final base = Uri.parse(baseUrl);
         resolvedHref = base.resolve(href).toString();
@@ -434,65 +476,69 @@ String _extractLinks(String html, String? baseUrl) {
         // Keep original href if resolution fails
       }
     }
-    
+
     result.add({
       'text': text,
       'url': resolvedHref,
       'type': isNav ? 'nav' : 'content',
     });
   }
-  
+
   // Format as readable output
   final buffer = StringBuffer();
   buffer.writeln('Found ${result.length} links:\n');
-  
+
   for (final link in result) {
     final navIndicator = link['type'] == 'nav' ? ' [nav]' : '';
     buffer.writeln('- ${link['text']}: ${link['url']}$navIndicator');
   }
-  
+
   return buffer.toString();
 }
 
 /// Fetch URL and convert to Markdown
-Future<CallToolResult> _convertUrl(String url, bool includeLinks, bool includeImages) async {
+Future<CallToolResult> _convertUrl(
+  String url,
+  bool includeLinks,
+  bool includeImages,
+  HttpClientConfig httpConfig,
+) async {
   try {
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ConvertToMD/1.0)',
-      },
-    );
-    
-    if (response.statusCode != 200) {
-      return textResult('Error: Failed to fetch URL. Status: ${response.statusCode}');
+    final result = await fetchUrl(Uri.parse(url), config: httpConfig);
+
+    if (!result.isSuccess) {
+      return textResult(
+          'Error: Failed to fetch URL. Status: ${result.statusCode}');
     }
-    
-    final html = response.body;
+
+    final html = result.body;
     final markdown = _convertHtmlToMarkdown(html, includeLinks, includeImages);
-    
+
     return textResult('# Content from $url\n\n$markdown');
+  } on HttpFetchException catch (e) {
+    return textResult('Error: ${e.toUserMessage()}');
   } catch (e) {
     return textResult('Error fetching URL: $e');
   }
 }
 
 /// Extract links from URL
-Future<CallToolResult> _extractLinksFromUrl(String url) async {
+Future<CallToolResult> _extractLinksFromUrl(
+  String url,
+  HttpClientConfig httpConfig,
+) async {
   try {
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ConvertToMD/1.0)',
-      },
-    );
-    
-    if (response.statusCode != 200) {
-      return textResult('Error: Failed to fetch URL. Status: ${response.statusCode}');
+    final result = await fetchUrl(Uri.parse(url), config: httpConfig);
+
+    if (!result.isSuccess) {
+      return textResult(
+          'Error: Failed to fetch URL. Status: ${result.statusCode}');
     }
-    
-    final html = response.body;
+
+    final html = result.body;
     return textResult(_extractLinks(html, url));
+  } on HttpFetchException catch (e) {
+    return textResult('Error: ${e.toUserMessage()}');
   } catch (e) {
     return textResult('Error fetching URL: $e');
   }

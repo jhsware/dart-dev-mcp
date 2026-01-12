@@ -1,8 +1,7 @@
 import 'dart:io';
 
-import 'package:dart_dev_mcp/dart_dev_mcp.dart' show textResult;
+import 'package:dart_dev_mcp/dart_dev_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
-import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart';
 
@@ -14,14 +13,23 @@ const defaultUserAgent =
 ///
 /// Provides URL fetching capabilities with optional robots.txt checking.
 ///
+/// Environment variables:
+/// - `MCP_USER_AGENT`: Custom user agent string
+/// - `MCP_HTTP_TIMEOUT`: Request timeout in seconds (default: 30)
+/// - `MCP_HTTP_CONNECTION_TIMEOUT`: Connection timeout in seconds (default: 10)
+///
 /// Usage: dart run bin/fetch_mcp.dart [--ignore-robots-txt]
 void main(List<String> arguments) async {
   final ignoreRobotsTxt = arguments.contains('--ignore-robots-txt');
   final customUserAgent = Platform.environment['MCP_USER_AGENT'];
   final userAgent = customUserAgent ?? defaultUserAgent;
 
+  // Create HTTP client config from environment
+  final httpConfig = HttpClientConfig.fromEnvironment(userAgent: userAgent);
+
   stderr.writeln('Fetch MCP Server starting...');
   stderr.writeln('User Agent: $userAgent');
+  stderr.writeln('Request timeout: ${httpConfig.timeout.inSeconds}s');
   stderr.writeln('Ignore robots.txt: $ignoreRobotsTxt');
 
   final server = McpServer(
@@ -69,7 +77,7 @@ Synonyms: fetch, follow, load, get''',
       },
     ),
     callback: ({args, extra}) =>
-        _handleFetch(args, userAgent, ignoreRobotsTxt),
+        _handleFetch(args, httpConfig, ignoreRobotsTxt),
   );
 
   // Register the fetch_links tool
@@ -91,7 +99,7 @@ Synonyms: get links, find links, fetch links''',
       },
     ),
     callback: ({args, extra}) =>
-        _handleFetchLinks(args, userAgent, ignoreRobotsTxt),
+        _handleFetchLinks(args, httpConfig, ignoreRobotsTxt),
   );
 
   final transport = StdioServerTransport();
@@ -102,7 +110,7 @@ Synonyms: get links, find links, fetch links''',
 /// Handle fetch request
 Future<CallToolResult> _handleFetch(
   Map<String, dynamic>? args,
-  String userAgent,
+  HttpClientConfig httpConfig,
   bool ignoreRobotsTxt,
 ) async {
   final url = args?['url'] as String?;
@@ -127,7 +135,7 @@ Future<CallToolResult> _handleFetch(
 
   // Check robots.txt
   if (!ignoreRobotsTxt) {
-    final robotsResult = await _checkRobotsTxt(url, userAgent);
+    final robotsResult = await _checkRobotsTxt(url, httpConfig);
     if (robotsResult != null) {
       return textResult(robotsResult);
     }
@@ -135,18 +143,15 @@ Future<CallToolResult> _handleFetch(
 
   // Fetch the URL
   try {
-    final response = await http.get(
-      uri,
-      headers: {'User-Agent': userAgent},
-    );
+    final result = await fetchUrl(uri, config: httpConfig);
 
-    if (response.statusCode != 200) {
+    if (!result.isSuccess) {
       return textResult(
-          'Error: Failed to fetch $url - status code ${response.statusCode}');
+          'Error: Failed to fetch $url - status code ${result.statusCode}');
     }
 
-    final contentType = response.headers['content-type'] ?? '';
-    final pageRaw = response.body;
+    final contentType = result.contentType;
+    final pageRaw = result.body;
     final isHtml = pageRaw.toLowerCase().contains('<html') ||
         contentType.contains('text/html') ||
         contentType.isEmpty;
@@ -189,6 +194,8 @@ Future<CallToolResult> _handleFetch(
     }
 
     return textResult(finalContent);
+  } on HttpFetchException catch (e) {
+    return textResult('Error: ${e.toUserMessage()}');
   } catch (e) {
     return textResult('Error fetching URL: $e');
   }
@@ -197,7 +204,7 @@ Future<CallToolResult> _handleFetch(
 /// Handle fetch_links request
 Future<CallToolResult> _handleFetchLinks(
   Map<String, dynamic>? args,
-  String userAgent,
+  HttpClientConfig httpConfig,
   bool ignoreRobotsTxt,
 ) async {
   final url = args?['url'] as String?;
@@ -219,7 +226,7 @@ Future<CallToolResult> _handleFetchLinks(
 
   // Check robots.txt
   if (!ignoreRobotsTxt) {
-    final robotsResult = await _checkRobotsTxt(url, userAgent);
+    final robotsResult = await _checkRobotsTxt(url, httpConfig);
     if (robotsResult != null) {
       return textResult(robotsResult);
     }
@@ -227,18 +234,15 @@ Future<CallToolResult> _handleFetchLinks(
 
   // Fetch the URL
   try {
-    final response = await http.get(
-      uri,
-      headers: {'User-Agent': userAgent},
-    );
+    final result = await fetchUrl(uri, config: httpConfig);
 
-    if (response.statusCode != 200) {
+    if (!result.isSuccess) {
       return textResult(
-          'Error: Failed to fetch $url - status code ${response.statusCode}');
+          'Error: Failed to fetch $url - status code ${result.statusCode}');
     }
 
-    final contentType = response.headers['content-type'] ?? '';
-    final pageRaw = response.body;
+    final contentType = result.contentType;
+    final pageRaw = result.body;
     final isHtml = pageRaw.toLowerCase().contains('<html') ||
         contentType.contains('text/html');
 
@@ -254,6 +258,8 @@ Future<CallToolResult> _handleFetchLinks(
         .toList();
 
     return textResult('Links of $url:\n${prettyLinks.join('\n')}');
+  } on HttpFetchException catch (e) {
+    return textResult('Error: ${e.toUserMessage()}');
   } catch (e) {
     return textResult('Error fetching URL: $e');
   }
@@ -261,40 +267,45 @@ Future<CallToolResult> _handleFetchLinks(
 
 /// Check robots.txt for permission to fetch
 /// Returns null if allowed, error message if not allowed
-Future<String?> _checkRobotsTxt(String url, String userAgent) async {
+Future<String?> _checkRobotsTxt(String url, HttpClientConfig httpConfig) async {
   try {
     final uri = Uri.parse(url);
     final robotsTxtUrl = '${uri.scheme}://${uri.host}/robots.txt';
+    final robotsTxtUri = Uri.parse(robotsTxtUrl);
 
-    final response = await http.get(
-      Uri.parse(robotsTxtUrl),
-      headers: {'User-Agent': userAgent},
-    );
+    final result = await fetchUrl(robotsTxtUri, config: httpConfig);
 
-    if (response.statusCode == 401 || response.statusCode == 403) {
-      return 'Error: When fetching robots.txt ($robotsTxtUrl), received status ${response.statusCode} so assuming autonomous fetching is not allowed';
+    if (result.statusCode == 401 || result.statusCode == 403) {
+      return 'Error: When fetching robots.txt ($robotsTxtUrl), received status ${result.statusCode} so assuming autonomous fetching is not allowed';
     }
 
     // 4xx errors (except 401/403) mean no robots.txt, so we can proceed
-    if (response.statusCode >= 400 && response.statusCode < 500) {
+    if (result.statusCode >= 400 && result.statusCode < 500) {
       return null;
     }
 
-    if (response.statusCode != 200) {
+    if (result.statusCode != 200) {
       return null; // Can't check, proceed with caution
     }
 
-    final robotsTxt = response.body;
-    
+    final robotsTxt = result.body;
+
     // Simple robots.txt parser
-    if (!_isAllowedByRobotsTxt(robotsTxt, url, userAgent)) {
+    if (!_isAllowedByRobotsTxt(robotsTxt, url, httpConfig.userAgent)) {
       return "Error: The site's robots.txt ($robotsTxtUrl) specifies that autonomous fetching is not allowed\n"
-          '<useragent>$userAgent</useragent>\n'
+          '<useragent>${httpConfig.userAgent}</useragent>\n'
           '<url>$url</url>\n'
           '<robots>\n$robotsTxt\n</robots>';
     }
 
     return null;
+  } on HttpFetchException catch (e) {
+    // If we can't fetch robots.txt due to specific errors, provide context
+    if (e.type == HttpErrorType.clientError) {
+      // 4xx errors on robots.txt generally mean no robots.txt exists
+      return null;
+    }
+    return 'Warning: Failed to fetch robots.txt: ${e.message}';
   } catch (e) {
     // If we can't fetch robots.txt, we'll proceed with caution
     return 'Warning: Failed to fetch robots.txt: $e';
@@ -305,8 +316,9 @@ Future<String?> _checkRobotsTxt(String url, String userAgent) async {
 bool _isAllowedByRobotsTxt(String robotsTxt, String url, String userAgent) {
   final uri = Uri.parse(url);
   final path = uri.path.isEmpty ? '/' : uri.path;
-  
-  final lines = robotsTxt.split('\n')
+
+  final lines = robotsTxt
+      .split('\n')
       .map((line) => line.trim())
       .where((line) => !line.startsWith('#') && line.isNotEmpty)
       .toList();

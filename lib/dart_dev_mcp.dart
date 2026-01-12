@@ -9,6 +9,7 @@
 library;
 
 export 'mcp_server/utils/exceptions.dart';
+export 'mcp_server/utils/http_client.dart';
 export 'mcp_server/utils/line_endings.dart';
 export 'mcp_server/utils/logging.dart';
 export 'mcp_server/utils/path_helpers.dart';
