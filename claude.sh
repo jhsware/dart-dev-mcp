@@ -34,6 +34,8 @@ Servers (comma-separated):
   fetch       URL fetching tools
   dart        Dart runner (analyze, test, run)
   flutter     Flutter runner via FVM (analyze, test, run, build)
+  nix-infra-dev Develop packages for nix-infra
+  nix-infra-machine Perform SysOps on a nix-infra machine fleet
   git         Git version control (branch, merge, commit, stash, tag)
   planner     Task and step management with SQLite storage
   all         Enable all servers
@@ -279,13 +281,20 @@ output_server_cmd() {
   local env_json="$3"
   shift 3
   local extra_args=("$@")
+
+  local binary_src_path=""
+  if [ -f "$HOME/dev/nix-infra/bin/${dart_source}" ]; then
+    binary_src_path="$HOME/dev/nix-infra/bin/${dart_source}"
+  elif [ -f "$SCRIPT_DIR/bin/${dart_source}" ]; then
+    binary_src_path="$SCRIPT_DIR/bin/${dart_source}"
+  fi
   
   if [ "$DEV_MODE" = true ]; then
     # Development mode: use dart run
     echo '      "command": "dart",'
     echo '      "args": ['
     echo '        "run",'
-    echo "        \"$SCRIPT_DIR/bin/${dart_source}\""
+    echo "        \"$binary_src_path\""
     for arg in "${extra_args[@]}"; do
       echo "        ,\"$arg\""
     done
@@ -420,6 +429,36 @@ build_mcp_config() {
     output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
+
+  # nix-infra-dev-mcp
+  if [[ "$servers" == *"nix-infra-dev"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+    
+    echo '    "nix-infra-dev-mcp": {'
+    output_server_cmd "nix-infra-dev-mcp" "nix-infra-dev-mcp.dart" "null" "--project-dir=$project_path"
+    echo '    }'
+  fi
+
+  # nix-infra-machine-mcp
+  if [[ "$servers" == *"nix-infra-machine"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+    
+    echo '    "nix-infra-machine-mcp": {'
+    output_server_cmd "nix-infra-machine-mcp" "nix-infra-machine-mcp.dart" "null" "--project-dir=$project_path"
+    echo '    }'
+  fi
+
+  # nix-infra-cluster-mcp
+  if [[ "$servers" == *"nix-infra-cluster"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+    
+    echo '    "nix-infra-cluster-mcp": {'
+    output_server_cmd "nix-infra-cluster-mcp" "nix-infra-cluster-mcp.dart" "null" "--project-dir=$project_path"
+    echo '    }'
+  fi
   
   echo '  }'
   echo '}'
@@ -489,5 +528,9 @@ echo "Starting Claude..."
 "$CLAUDE_BIN" 2>&1 &
 
 echo ""
-echo "Claude started. When you close Claude, run the following to restore your previous config:"
-echo "  cp -f \"$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak\" \"$PATH_TO_CLAUDE/claude_desktop_config.json\""
+echo "Claude started. Restoring claude_desktop_config.json to previous state"
+if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak" ]; then
+  cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak" "$PATH_TO_CLAUDE/claude_desktop_config.json"
+else
+  rm -f "$PATH_TO_CLAUDE/claude_desktop_config.json"
+fi
