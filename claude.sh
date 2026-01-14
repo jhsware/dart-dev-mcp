@@ -436,7 +436,7 @@ build_mcp_config() {
     first=false
     
     echo '    "nix-infra-dev-mcp": {'
-    output_server_cmd "nix-infra-dev-mcp" "nix-infra-dev-mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "nix-infra-dev-mcp" "nix_infra_dev_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
 
@@ -446,7 +446,7 @@ build_mcp_config() {
     first=false
     
     echo '    "nix-infra-machine-mcp": {'
-    output_server_cmd "nix-infra-machine-mcp" "nix-infra-machine-mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "nix-infra-machine-mcp" "nix_infra_machine_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
 
@@ -456,7 +456,7 @@ build_mcp_config() {
     first=false
     
     echo '    "nix-infra-cluster-mcp": {'
-    output_server_cmd "nix-infra-cluster-mcp" "nix-infra-cluster-mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "nix-infra-cluster-mcp" "nix_infra_cluster_mcp.dart" "null" "--project-dir=$project_path"
     echo '    }'
   fi
   
@@ -525,7 +525,9 @@ echo ""
 
 # Run Claude
 echo "Starting Claude..."
-"$CLAUDE_BIN" 2>&1 &
+"$CLAUDE_BIN" 2>/dev/null &
+
+sleep 10
 
 echo ""
 echo "Claude started. Restoring claude_desktop_config.json to previous state"
@@ -534,3 +536,8 @@ if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak" ]; then
 else
   rm -f "$PATH_TO_CLAUDE/claude_desktop_config.json"
 fi
+
+echo ""
+echo "Configuration restored:"
+echo ""
+cat "$PATH_TO_CLAUDE/claude_desktop_config.json"
