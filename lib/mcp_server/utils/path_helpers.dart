@@ -45,7 +45,7 @@ String? validateRelativePath(String path) {
     return 'No absolute paths allowed';
   }
 
-  if (path.split('/').any((s) => s.startsWith('.'))) {
+  if (path.split('/').any((s) => s.startsWith('.') && s != '.')) {
     return 'No hidden files or directories allowed';
   }
 
