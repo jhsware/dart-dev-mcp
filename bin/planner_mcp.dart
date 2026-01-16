@@ -103,7 +103,7 @@ Operations:
 - get-timeline: Get recent activity timeline (optional: limit, project_id, entity_type, before, after)
 - get-audit-trail: Get detailed change history for an entity (requires: entity_type, id)
 
-Task statuses: todo, draft, started, canceled, done, merged
+Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done''',
     toolInputSchema: ToolInputSchema(
       properties: {
@@ -136,8 +136,8 @@ Step statuses: todo, started, canceled, done''',
         'status': {
           'type': 'string',
           'description':
-              'Status for tasks: todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
-          'enum': ['todo', 'draft', 'started', 'canceled', 'done', 'merged'],
+              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
+          'enum': ['backlog', 'todo', 'draft', 'started', 'canceled', 'done', 'merged'],
         },
         'memory': {
           'type': 'string',

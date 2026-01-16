@@ -6,7 +6,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:uuid/uuid.dart';
 
 /// Valid task statuses.
-const validTaskStatuses = ['todo', 'draft', 'started', 'canceled', 'done', 'merged'];
+const validTaskStatuses = ['backlog', 'todo', 'draft', 'started', 'canceled', 'done', 'merged'];
 
 /// Valid step statuses.
 const validStepStatuses = ['todo', 'started', 'canceled', 'done'];

@@ -211,7 +211,7 @@ void main() {
       });
 
       test('validates task statuses including draft and merged', () {
-        final validStatuses = ['todo', 'draft', 'started', 'canceled', 'done', 'merged'];
+        final validStatuses = ['backlog', 'todo', 'draft', 'started', 'canceled', 'done', 'merged'];
         final now = DateTime.now().toUtc().toIso8601String();
         
         for (final status in validStatuses) {
@@ -224,6 +224,61 @@ void main() {
           final result = db.select('SELECT status FROM tasks WHERE id = ?', [id]);
           expect(result.first['status'], status);
         }
+      });
+
+      test('can create task with backlog status', () {
+        final id = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
+        
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [id, 'project-1', 'Backlog Task', 'backlog', now, now]);
+        
+        final result = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+        expect(result, hasLength(1));
+        expect(result.first['status'], 'backlog');
+      });
+
+      test('can update task from backlog to todo', () {
+        final id = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
+        
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [id, 'project-1', 'Task to promote', 'backlog', now, now]);
+        
+        db.execute(
+          'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
+          ['todo', now, id]
+        );
+        
+        final result = db.select('SELECT status FROM tasks WHERE id = ?', [id]);
+        expect(result.first['status'], 'todo');
+      });
+
+      test('can filter tasks by backlog status', () {
+        final now = DateTime.now().toUtc().toIso8601String();
+        
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [uuid.v4(), 'project-1', 'Backlog Task 1', 'backlog', now, now]);
+        
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [uuid.v4(), 'project-1', 'Backlog Task 2', 'backlog', now, now]);
+        
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [uuid.v4(), 'project-1', 'Todo Task', 'todo', now, now]);
+        
+        final backlogTasks = db.select('SELECT * FROM tasks WHERE status = ?', ['backlog']);
+        expect(backlogTasks, hasLength(2));
+        expect(backlogTasks.every((t) => t['title'].toString().contains('Backlog')), isTrue);
       });
 
     });
