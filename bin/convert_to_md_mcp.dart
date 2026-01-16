@@ -37,35 +37,35 @@ void main(List<String> arguments) async {
 
   // Register the convert tool
   server.tool(
-    'convert-html',
-    description: '''Convert HTML to Markdown or extract content.
+    'fetch-and-transform',
+    description: '''Fetches a web page and extracts content for efficient research.
 
 Operations:
-- convert: Convert HTML content to Markdown
-- convert-url: Fetch URL and convert to Markdown
-- extract-text: Extract plain text from HTML (strips all tags)
-- extract-links: Extract all links from HTML as a list''',
+- html-to-markdown: Convert HTML content to Markdown
+- fetch-to-markdown: Fetch URL and convert to Markdown
+- html-to-plaintext: Extract plain text from HTML (strips all tags)
+- html-to-links: Extract all links from HTML as a list''',
     toolInputSchema: ToolInputSchema(
       properties: {
         'operation': {
           'type': 'string',
           'description': 'The operation to perform',
           'enum': [
-            'convert',
-            'convert-url',
-            'extract-text',
-            'extract-links',
+            'html-to-markdown',
+            'fetch-to-markdown',
+            'html-to-plaintext',
+            'html-to-links',
           ],
         },
         'html': {
           'type': 'string',
           'description':
-              'HTML content to convert (for convert and extract-text)',
+              'HTML content to convert (for html-to-markdown and html-to-plaintext)',
         },
         'url': {
           'type': 'string',
           'description':
-              'URL to fetch and convert (for convert-url and extract-links)',
+              'URL to fetch and convert (for fetch-to-markdown and html-to-links)',
         },
         'include-links': {
           'type': 'boolean',
@@ -93,10 +93,10 @@ void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
 }
 
 const _validOperations = [
-  'convert',
-  'convert-url',
-  'extract-text',
-  'extract-links',
+  'html-to-markdown',
+  'fetch-to-markdown',
+  'html-to-plaintext',
+  'html-to-links',
 ];
 
 Future<CallToolResult> _handleConvert(
@@ -111,7 +111,7 @@ Future<CallToolResult> _handleConvert(
 
   try {
     switch (operation) {
-      case 'convert':
+      case 'html-to-markdown':
         final html = args?['html'] as String?;
         if (requireString(html, 'html') case final error?) {
           return error;
@@ -121,7 +121,7 @@ Future<CallToolResult> _handleConvert(
         return textResult(
             _convertHtmlToMarkdown(html!, includeLinks, includeImages));
 
-      case 'convert-url':
+      case 'fetch-to-markdown':
         final url = args?['url'] as String?;
         if (requireString(url, 'url') case final error?) {
           return error;
@@ -130,14 +130,14 @@ Future<CallToolResult> _handleConvert(
         final includeImages = args?['include-images'] as bool? ?? true;
         return await _convertUrl(url!, includeLinks, includeImages, httpConfig);
 
-      case 'extract-text':
+      case 'html-to-plaintext':
         final html = args?['html'] as String?;
         if (requireString(html, 'html') case final error?) {
           return error;
         }
         return textResult(_extractText(html!));
 
-      case 'extract-links':
+      case 'html-to-links':
         final url = args?['url'] as String?;
         final html = args?['html'] as String?;
         if (url != null && url.isNotEmpty) {
@@ -145,13 +145,13 @@ Future<CallToolResult> _handleConvert(
         } else if (html != null && html.isNotEmpty) {
           return textResult(_extractLinks(html, null));
         }
-        return validationError('url', 'url or html is required for extract-links operation');
+        return validationError('url', 'url or html is required for html-to-links operation');
 
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
-    return errorResult('convert:$operation', e, stackTrace, {
+    return errorResult('fetch-and-transform:$operation', e, stackTrace, {
       'operation': operation,
     });
   }
@@ -546,7 +546,7 @@ Future<CallToolResult> _convertUrl(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('convert:convert-url', e, stackTrace, {
+    return errorResult('fetch-and-transform:fetch-to-markdown', e, stackTrace, {
       'url': url,
     });
   }
@@ -574,7 +574,7 @@ Future<CallToolResult> _extractLinksFromUrl(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('convert:extract-links', e, stackTrace, {
+    return errorResult('fetch-and-transform:html-to-links', e, stackTrace, {
       'url': url,
     });
   }
