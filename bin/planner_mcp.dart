@@ -15,11 +15,14 @@ import 'package:sqlite3/sqlite3.dart';
 /// Usage: `dart run bin/planner_mcp.dart --project-dir=PATH`
 void main(List<String> arguments) async {
   String? projectDir;
+  String? dbPath;
 
   // Parse arguments
   for (final arg in arguments) {
     if (arg.startsWith('--project-dir=')) {
       projectDir = arg.substring('--project-dir='.length);
+    } else if (arg.startsWith('--db-path=')) {
+      dbPath = arg.substring('--db-path='.length);
     } else if (arg == '--help' || arg == '-h') {
       _printUsage();
       exit(0);
@@ -29,6 +32,13 @@ void main(List<String> arguments) async {
   // Validate required arguments
   if (projectDir == null || projectDir.isEmpty) {
     stderr.writeln('Error: --project-dir is required');
+    stderr.writeln('');
+    _printUsage();
+    exit(1);
+  }
+  
+  if (dbPath == null || dbPath.isEmpty) {
+    stderr.writeln('Error: --db-path is required');
     stderr.writeln('');
     _printUsage();
     exit(1);
@@ -48,7 +58,6 @@ void main(List<String> arguments) async {
   }
 
   // Initialize database
-  final dbPath = p.join(aiToolDir.path, 'db.sqlite');
   final database = initializeDatabase(dbPath);
 
   // Initialize transaction log repository
@@ -114,7 +123,8 @@ Step statuses: todo, started, canceled, done''',
         },
         'id': {
           'type': 'string',
-          'description': 'Task or step ID (for show/update/audit-trail operations)',
+          'description':
+              'Task or step ID (for show/update/audit-trail operations)',
         },
         'task_id': {
           'type': 'string',
@@ -137,7 +147,15 @@ Step statuses: todo, started, canceled, done''',
           'type': 'string',
           'description':
               'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
-          'enum': ['backlog', 'todo', 'draft', 'started', 'canceled', 'done', 'merged'],
+          'enum': [
+            'backlog',
+            'todo',
+            'draft',
+            'started',
+            'canceled',
+            'done',
+            'merged'
+          ],
         },
         'memory': {
           'type': 'string',
@@ -145,25 +163,29 @@ Step statuses: todo, started, canceled, done''',
         },
         'entity_type': {
           'type': 'string',
-          'description': "Entity type filter: 'task' or 'step' (for timeline/audit-trail)",
+          'description':
+              "Entity type filter: 'task' or 'step' (for timeline/audit-trail)",
           'enum': ['task', 'step'],
         },
         'limit': {
           'type': 'integer',
-          'description': 'Maximum entries to return (for get-timeline, default 20)',
+          'description':
+              'Maximum entries to return (for get-timeline, default 20)',
         },
         'before': {
           'type': 'string',
-          'description': 'Return entries before this ISO datetime (for get-timeline)',
+          'description':
+              'Return entries before this ISO datetime (for get-timeline)',
         },
         'after': {
           'type': 'string',
-          'description': 'Return entries after this ISO datetime (for get-timeline)',
+          'description':
+              'Return entries after this ISO datetime (for get-timeline)',
         },
       },
     ),
-    callback: ({args, extra}) =>
-        _handlePlanner(args, workingDir, database, taskOps, stepOps, timelineOps),
+    callback: ({args, extra}) => _handlePlanner(
+        args, workingDir, database, taskOps, stepOps, timelineOps),
   );
 
   final transport = StdioServerTransport();
@@ -175,11 +197,13 @@ void _printUsage() {
   stderr.writeln('Usage: planner_mcp --project-dir=PATH');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Path to the project directory (required)');
+  stderr.writeln(
+      '  --project-dir=PATH  Path to the project directory (required)');
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
   stderr.writeln('The planner stores data in .ai_coding_tool/db.sqlite');
-  stderr.writeln('Project instructions are read from .ai_coding_tool/INSTRUCTIONS.md');
+  stderr.writeln(
+      'Project instructions are read from .ai_coding_tool/INSTRUCTIONS.md');
 }
 
 const _validOperations = [
@@ -207,7 +231,8 @@ Future<CallToolResult> _handlePlanner(
 ) async {
   final operation = args?['operation'] as String?;
 
-  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+  if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
     return error;
   }
 
@@ -252,8 +277,8 @@ Future<CallToolResult> _handlePlanner(
     });
 
     if (category == SqliteErrorCategory.corruption) {
-      logWarning(
-          'planner', 'CRITICAL: Database corruption detected. Database may need repair.');
+      logWarning('planner',
+          'CRITICAL: Database corruption detected. Database may need repair.');
     }
 
     return textResult('Error: $userMessage');
