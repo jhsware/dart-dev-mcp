@@ -425,8 +425,10 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
+    project_name=$(basename "$project_path")
+    
     echo '    "dart-dev-mcp-planner": {'
-    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/planner.db"
     echo '    }'
   fi
 

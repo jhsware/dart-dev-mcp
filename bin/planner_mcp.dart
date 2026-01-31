@@ -51,12 +51,6 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
-  // Create .ai_coding_tool directory if it doesn't exist
-  final aiToolDir = Directory(p.join(workingDir.path, '.ai_coding_tool'));
-  if (!await aiToolDir.exists()) {
-    await aiToolDir.create(recursive: true);
-  }
-
   // Initialize database
   final database = initializeDatabase(dbPath);
 

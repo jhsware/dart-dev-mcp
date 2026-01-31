@@ -1,0 +1,24 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "planner_mcp",
+      "type": "dart",
+      "request": "launch",
+      "program": "bin/planner_mcp.dart",
+      "args": [
+        "--project-dir=/Users/jhsware/DEV/dart_dev_mcp",
+        "--db-path=/Users/jhsware/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/dart_dev_mcp/db/planner.db"
+      ]
+    },
+
+    {
+      "name": "dart_dev_mcp",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}
