@@ -177,7 +177,7 @@ void main() {
     test('shows project path and database location with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/planner_mcp.dart',
-        ['--project-dir=.'],
+        ['--project-dir=.', '--db-path=.ai_coding_tool/db.sqlite'],
       );
       await stopServer(process);
 
@@ -192,9 +192,9 @@ void main() {
       final result = await runServer('bin/planner_mcp.dart', ['--help']);
 
       expect(result.exitCode, 0);
-      expect(result.stdout, contains('Usage: planner_mcp --project-dir=PATH'));
-      expect(result.stdout, contains('.ai_coding_tool/db.sqlite'));
-      expect(result.stdout, contains('INSTRUCTIONS.md'));
+      expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
+      expect(result.stderr, contains('.ai_coding_tool/db.sqlite'));
+      expect(result.stderr, contains('INSTRUCTIONS.md'));
     });
   });
 
