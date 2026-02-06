@@ -38,6 +38,7 @@ Servers (comma-separated):
   nix-infra-machine Perform SysOps on a nix-infra machine fleet
   git         Git version control (branch, merge, commit, stash, tag)
   planner     Task and step management with SQLite storage
+  code-index  Code file index for efficient search
   all         Enable all servers
 
 Options:
@@ -356,7 +357,7 @@ build_mcp_config() {
   
   # Check for 'all' keyword
   if [[ "$servers" == *"all"* ]]; then
-    servers="fs,convert,fetch,dart,flutter,git,planner"
+    servers="fs,convert,fetch,dart,flutter,git,planner,code-index"
   fi
   
   # File System Server - uses --project-dir and regular paths only (not git-only)
@@ -429,6 +430,18 @@ build_mcp_config() {
     
     echo '    "dart-dev-mcp-planner": {'
     output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/planner.db"
+    echo '    }'
+  fi
+
+  # Code Index Server - uses --project-dir and --db-path
+  if [[ "$servers" == *"code-index"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+
+    project_name=$(basename "$project_path")
+
+    echo '    "dart-dev-mcp-code-index": {'
+    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/code_index.db"
     echo '    }'
   fi
 
