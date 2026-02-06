@@ -139,8 +139,8 @@ void main() {
       await stopServer(process);
 
       final stderr = stderrBuffer.toString();
-      expect(stderr, contains('User Agent:'));
-      expect(stderr, contains('Ignore robots.txt: false'));
+      expect(stderr, contains('userAgent='));
+      expect(stderr, contains('ignoreRobotsTxt=false'));
     });
 
     test('accepts --ignore-robots-txt flag', () async {
@@ -150,7 +150,7 @@ void main() {
       );
       await stopServer(process);
 
-      expect(stderrBuffer.toString(), contains('Ignore robots.txt: true'));
+      expect(stderrBuffer.toString(), contains('ignoreRobotsTxt=true'));
     });
   });
 
@@ -195,6 +195,31 @@ void main() {
       expect(result.stdout, contains('Usage: planner_mcp --project-dir=PATH'));
       expect(result.stdout, contains('.ai_coding_tool/db.sqlite'));
       expect(result.stdout, contains('INSTRUCTIONS.md'));
+    });
+  });
+
+  group('code_index_mcp arguments', () {
+    test('shows error without --db-path', () async {
+      final result = await runServer(
+          'bin/code_index_mcp.dart', ['--project-dir=.']);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('--db-path is required'));
+    });
+
+    test('shows error without --project-dir', () async {
+      final result = await runServer(
+          'bin/code_index_mcp.dart', ['--db-path=:memory:']);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('--project-dir is required'));
+    });
+
+    test('shows help with --help flag', () async {
+      final result = await runServer('bin/code_index_mcp.dart', ['--help']);
+
+      expect(result.exitCode, 0);
+      expect(result.stderr, contains('Usage: code_index_mcp'));
     });
   });
 }
