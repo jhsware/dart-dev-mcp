@@ -51,6 +51,14 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
+  // Ensure parent directory of database file exists
+  if (dbPath != ':memory:') {
+    final dbDir = Directory(p.dirname(dbPath));
+    if (!await dbDir.exists()) {
+      await dbDir.create(recursive: true);
+    }
+  }
+
   // Initialize database
   final database = initializeDatabase(dbPath);
 

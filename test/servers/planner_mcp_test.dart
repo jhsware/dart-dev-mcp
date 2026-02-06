@@ -736,9 +736,10 @@ Multi-line details with:
       expect(await aiToolDir.exists(), isFalse);
       
       // Start server briefly to trigger directory creation
+      final dbPath = p.join(tempDir.path, '.ai_coding_tool', 'db.sqlite');
       final process = await Process.start(
         'dart',
-        ['run', 'bin/planner_mcp.dart', '--project-dir=${tempDir.path}'],
+        ['run', 'bin/planner_mcp.dart', '--project-dir=${tempDir.path}', '--db-path=$dbPath'],
         workingDirectory: Directory.current.path,
       );
       
