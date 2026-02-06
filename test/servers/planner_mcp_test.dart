@@ -703,8 +703,8 @@ Multi-line details with:
       );
       
       expect(result.exitCode, 0);
-      expect(result.stdout, contains('Usage: planner_mcp --project-dir=PATH'));
-      expect(result.stdout, contains('--help'));
+      expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
+      expect(result.stderr, contains('--help'));
     });
 
     test('requires --project-dir argument', () async {
