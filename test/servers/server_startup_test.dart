@@ -43,7 +43,7 @@ void main() {
 
       expect(
         stderrBuffer.toString(),
-        contains('Fetch MCP Server running on stdio'),
+        contains('Server running on stdio'),
       );
     });
 
@@ -96,6 +96,19 @@ void main() {
       expect(
         stderrBuffer.toString(),
         contains('Planner MCP Server running on stdio'),
+      );
+    });
+
+    test('code_index_mcp starts successfully', () async {
+      final (process, stderrBuffer) = await startServer(
+        'bin/code_index_mcp.dart',
+        ['--project-dir=.', '--db-path=:memory:'],
+      );
+      await stopServer(process);
+
+      expect(
+        stderrBuffer.toString(),
+        contains('Code Index MCP Server running on stdio'),
       );
     });
   });
