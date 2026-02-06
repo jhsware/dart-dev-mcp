@@ -721,7 +721,7 @@ Multi-line details with:
     test('fails with non-existent project directory', () async {
       final result = await Process.run(
         'dart',
-        ['run', 'bin/planner_mcp.dart', '--project-dir=/nonexistent/path'],
+        ['run', 'bin/planner_mcp.dart', '--project-dir=/nonexistent/path', '--db-path=:memory:'],
         workingDirectory: Directory.current.path,
       );
       
