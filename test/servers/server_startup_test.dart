@@ -89,7 +89,7 @@ void main() {
     test('planner_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
         'bin/planner_mcp.dart',
-        ['--project-dir=.'],
+        ['--project-dir=.', '--db-path=:memory:'],
       );
       await stopServer(process);
 
