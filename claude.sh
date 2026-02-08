@@ -22,6 +22,7 @@ DEFAULT_ALLOWED_PATHS=(
   "git:./pubspec.lock"
   "./packages"
   "./claude.sh"
+  "./build.sh"
 )
 
 __help_text__=$(cat <<EOF

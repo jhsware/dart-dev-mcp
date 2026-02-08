@@ -8,7 +8,13 @@ environment:
   sdk: ^3.9.3
 resolution: workspace
 
+dependencies:
+  mcp_dart:
+    path: ../../../mcp_dart
+  path: ^1.9.0
+  http: ^1.2.0
+  sqlite3: ^2.4.6
+
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
-
