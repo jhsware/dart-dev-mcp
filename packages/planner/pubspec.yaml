@@ -1,5 +1,5 @@
 name: planner_mcp
-description: MCP server
+description: Planner MCP server
 version: 1.0.0
 publish_to: none
 repository: https://github.com/jhsware/dart_dev_mcp
@@ -8,8 +8,15 @@ environment:
   sdk: ^3.9.3
 resolution: workspace
 
+dependencies:
+  jhsware_code_shared_libs:
+    path: ../shared_libs
+  mcp_dart:
+    path: ../../../mcp_dart
+  path: ^1.9.0
+  sqlite3: ^2.4.6
+  uuid: ^4.5.1
 
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
-
