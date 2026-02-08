@@ -9,14 +9,14 @@ void main() {
 
   group('file_edit_mcp arguments', () {
     test('shows error without --project-dir', () async {
-      final result = await runServer('bin/file_edit_mcp.dart', []);
+      final result = await runServer('packages/filesystem/bin/file_edit_mcp.dart', []);
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--project-dir is required'));
     });
 
     test('shows error without allowed paths', () async {
-      final result = await runServer('bin/file_edit_mcp.dart', ['--project-dir=.']);
+      final result = await runServer('packages/filesystem/bin/file_edit_mcp.dart', ['--project-dir=.']);
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('At least one allowed path is required'));
@@ -24,7 +24,7 @@ void main() {
 
     test('shows allowed paths on startup', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/file_edit_mcp.dart',
+        'packages/filesystem/bin/file_edit_mcp.dart',
         ['--project-dir=.', './lib', './bin'],
       );
       await stopServer(process);
@@ -37,7 +37,7 @@ void main() {
 
     test('shows project directory on startup', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/file_edit_mcp.dart',
+        'packages/filesystem/bin/file_edit_mcp.dart',
         ['--project-dir=.', './lib'],
       );
       await stopServer(process);
@@ -50,7 +50,7 @@ void main() {
   group('dart_runner_mcp arguments', () {
     test('shows project path on startup with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/dart_runner_mcp.dart',
+        'packages/dart_runner/bin/dart_runner_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -60,7 +60,7 @@ void main() {
 
     test('uses current directory when no --project-dir specified', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/dart_runner_mcp.dart',
+        'packages/dart_runner/bin/dart_runner_mcp.dart',
         [],
       );
       await stopServer(process);
@@ -74,7 +74,7 @@ void main() {
   group('flutter_runner_mcp arguments', () {
     test('shows project path and FVM status with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/flutter_runner_mcp.dart',
+        'packages/flutter_runner/bin/flutter_runner_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -86,7 +86,7 @@ void main() {
 
     test('uses current directory when no --project-dir specified', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/flutter_runner_mcp.dart',
+        'packages/flutter_runner/bin/flutter_runner_mcp.dart',
         [],
       );
       await stopServer(process);
@@ -98,7 +98,7 @@ void main() {
 
   group('git_mcp arguments', () {
     test('shows error without --project-dir', () async {
-      final result = await runServer('bin/git_mcp.dart', []);
+      final result = await runServer('packages/git/bin/git_mcp.dart', []);
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--project-dir is required'));
@@ -106,7 +106,7 @@ void main() {
 
     test('shows git status and project path with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/git_mcp.dart',
+        'packages/git/bin/git_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -118,7 +118,7 @@ void main() {
 
     test('shows allowed paths on startup', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/git_mcp.dart',
+        'packages/git/bin/git_mcp.dart',
         ['--project-dir=.', './lib', './bin'],
       );
       await stopServer(process);
@@ -133,7 +133,7 @@ void main() {
   group('fetch_mcp arguments', () {
     test('shows user agent and respects robots.txt by default', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/fetch_mcp.dart',
+        'packages/fetch/bin/fetch_mcp.dart',
         [],
       );
       await stopServer(process);
@@ -145,7 +145,7 @@ void main() {
 
     test('accepts --ignore-robots-txt flag', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/fetch_mcp.dart',
+        'packages/fetch/bin/fetch_mcp.dart',
         ['--ignore-robots-txt'],
       );
       await stopServer(process);
@@ -154,21 +154,9 @@ void main() {
     });
   });
 
-  group('convert_to_md_mcp arguments', () {
-    test('starts without any arguments', () async {
-      final (process, stderrBuffer) = await startServer(
-        'bin/convert_to_md_mcp.dart',
-        [],
-      );
-      await stopServer(process);
-
-      expect(stderrBuffer.toString(), contains('Convert-to-MD MCP Server starting'));
-    });
-  });
-
   group('planner_mcp arguments', () {
     test('shows error without --project-dir', () async {
-      final result = await runServer('bin/planner_mcp.dart', []);
+      final result = await runServer('packages/planner/bin/planner_mcp.dart', []);
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--project-dir is required'));
@@ -176,7 +164,7 @@ void main() {
 
     test('shows project path and database location with --project-dir', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/planner_mcp.dart',
+        'packages/planner/bin/planner_mcp.dart',
         ['--project-dir=.', '--db-path=.ai_coding_tool/db.sqlite'],
       );
       await stopServer(process);
@@ -189,7 +177,7 @@ void main() {
     });
 
     test('shows help with --help flag', () async {
-      final result = await runServer('bin/planner_mcp.dart', ['--help']);
+      final result = await runServer('packages/planner/bin/planner_mcp.dart', ['--help']);
 
       expect(result.exitCode, 0);
       expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
@@ -201,7 +189,7 @@ void main() {
   group('code_index_mcp arguments', () {
     test('shows error without --db-path', () async {
       final result = await runServer(
-          'bin/code_index_mcp.dart', ['--project-dir=.']);
+          'packages/code_index/bin/code_index_mcp.dart', ['--project-dir=.']);
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--db-path is required'));
@@ -209,14 +197,14 @@ void main() {
 
     test('shows error without --project-dir', () async {
       final result = await runServer(
-          'bin/code_index_mcp.dart', ['--db-path=:memory:']);
+          'packages/code_index/bin/code_index_mcp.dart', ['--db-path=:memory:']);
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--project-dir is required'));
     });
 
     test('shows help with --help flag', () async {
-      final result = await runServer('bin/code_index_mcp.dart', ['--help']);
+      final result = await runServer('packages/code_index/bin/code_index_mcp.dart', ['--help']);
 
       expect(result.exitCode, 0);
       expect(result.stderr, contains('Usage: code_index_mcp'));
