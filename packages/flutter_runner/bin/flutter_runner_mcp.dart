@@ -127,7 +127,7 @@ Use get_output with the session_id to poll for output.''',
       },
     ),
     callback: (args, extra) =>
-        _handleFlutterRunner(args, workingDir, sessionManager, useFvm),
+        _handleFlutterRunner(args, extra, workingDir, sessionManager, useFvm),
   );
 
   final transport = StdioServerTransport();
@@ -158,6 +158,7 @@ const _validOperations = [
 
 Future<CallToolResult> _handleFlutterRunner(
   Map<String, dynamic> args,
+  RequestHandlerExtra extra,
   Directory workingDir,
   SessionManager sessionManager,
   bool useFvm,
@@ -171,7 +172,8 @@ Future<CallToolResult> _handleFlutterRunner(
   try {
     switch (operation) {
       case 'analyze':
-        return _startFlutterCommand(
+        return _startFlutterCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           useFvm,
@@ -181,7 +183,8 @@ Future<CallToolResult> _handleFlutterRunner(
 
       case 'test':
         final target = args?['target'] as String?;
-        return _startFlutterCommand(
+        return _startFlutterCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           useFvm,
@@ -198,7 +201,8 @@ Future<CallToolResult> _handleFlutterRunner(
       case 'run':
         final device = args?['device'] as String?;
         final flavor = args?['flavor'] as String?;
-        return _startFlutterCommand(
+        return _startFlutterCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           useFvm,
@@ -214,7 +218,8 @@ Future<CallToolResult> _handleFlutterRunner(
       case 'build':
         final target = args?['target'] as String? ?? 'apk';
         final flavor = args?['flavor'] as String?;
-        return _startFlutterCommand(
+        return _startFlutterCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           useFvm,
@@ -289,38 +294,54 @@ List<String>? _getExtraArgs(Map<String, dynamic> args) {
   }
 }
 
-/// Start a long-running Flutter command and return session info
-CallToolResult _startFlutterCommand(
+/// Start a long-running Flutter command with progress notifications
+Future<CallToolResult> _startFlutterCommandWithProgress(
+  RequestHandlerExtra extra,
   Directory workingDir,
   SessionManager sessionManager,
   bool useFvm,
   String operation,
   List<String> flutterArgs,
-) {
-  final (executable, args) = _getFlutterCommand(useFvm, flutterArgs);
-  final commandStr = useFvm ? 'fvm flutter ${flutterArgs.join(' ')}' : 'flutter ${flutterArgs.join(' ')}';
-  
+) async {
+  final (executable, cmdArgs) = _getFlutterCommand(useFvm, flutterArgs);
+  final commandStr = useFvm
+      ? 'fvm flutter ${flutterArgs.join(' ')}'
+      : 'flutter ${flutterArgs.join(' ')}';
+
   final sessionId = sessionManager.createSession(operation, commandStr);
   final session = sessionManager.getSession(sessionId)!;
 
-  // Start the command
   final outputStream = streamCommand(
     workingDir,
     executable,
-    args,
+    cmdArgs,
     onProcessStarted: (process) => session.setProcess(process),
   );
 
-  // Collect output in background
-  session.collectOutput(outputStream);
+  final allOutput = StringBuffer();
+  var chunkCount = 0;
 
+  await for (final chunk in outputStream) {
+    session.chunks.add(chunk);
+    allOutput.write(chunk);
+    chunkCount++;
+
+    // Send progress notification with latest output
+    await extra.sendProgress(
+      chunkCount.toDouble(),
+      message: 'Running $operation... (${allOutput.length} chars received)',
+    );
+  }
+
+  session.isComplete = true;
+
+  // Return final complete result
   final response = {
-    'status': 'started',
+    'status': 'completed',
     'session_id': sessionId,
     'operation': operation,
     'command': commandStr,
-    'message':
-        'Operation started. Use get_output with session_id to retrieve output chunks.',
+    'output': allOutput.toString(),
   };
 
   return textResult(jsonEncode(response));

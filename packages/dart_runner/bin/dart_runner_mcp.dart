@@ -108,7 +108,7 @@ Use get_output with the session_id to poll for output.''',
       },
     ),
     callback: (args, extra) =>
-        _handleDartRunner(args, workingDir, sessionManager),
+        _handleDartRunner(args, extra, workingDir, sessionManager),
   );
 
   final transport = StdioServerTransport();
@@ -137,6 +137,7 @@ const _validOperations = [
 
 Future<CallToolResult> _handleDartRunner(
   Map<String, dynamic> args,
+  RequestHandlerExtra extra,
   Directory workingDir,
   SessionManager sessionManager,
 ) async {
@@ -149,7 +150,8 @@ Future<CallToolResult> _handleDartRunner(
   try {
     switch (operation) {
       case 'analyze':
-        return _startDartCommand(
+        return _startDartCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           'analyze',
@@ -158,7 +160,8 @@ Future<CallToolResult> _handleDartRunner(
 
       case 'test':
         final target = args?['target'] as String?;
-        return _startDartCommand(
+        return _startDartCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           'test',
@@ -171,7 +174,8 @@ Future<CallToolResult> _handleDartRunner(
 
       case 'run':
         final target = args?['target'] as String?;
-        return _startDartCommand(
+        return _startDartCommandWithProgress(
+          extra,
           workingDir,
           sessionManager,
           'run',
@@ -181,7 +185,6 @@ Future<CallToolResult> _handleDartRunner(
             ...?_getExtraArgs(args),
           ],
         );
-
       case 'format':
         final target = args?['target'] as String? ?? '.';
         return await _runDartCommandSync(
@@ -228,16 +231,17 @@ List<String>? _getExtraArgs(Map<String, dynamic> args) {
 }
 
 /// Start a long-running Dart command and return session info
-CallToolResult _startDartCommand(
+/// Start a long-running Dart command with progress notifications
+Future<CallToolResult> _startDartCommandWithProgress(
+  RequestHandlerExtra extra,
   Directory workingDir,
   SessionManager sessionManager,
   String operation,
   List<String> dartArgs,
-) {
+) async {
   final sessionId = sessionManager.createSession(operation, dartArgs.join(' '));
   final session = sessionManager.getSession(sessionId)!;
 
-  // Start the command
   final outputStream = streamCommand(
     workingDir,
     'dart',
@@ -245,21 +249,34 @@ CallToolResult _startDartCommand(
     onProcessStarted: (process) => session.setProcess(process),
   );
 
-  // Collect output in background
-  session.collectOutput(outputStream);
+  final allOutput = StringBuffer();
+  var chunkCount = 0;
 
+  await for (final chunk in outputStream) {
+    session.chunks.add(chunk);
+    allOutput.write(chunk);
+    chunkCount++;
+
+    // Send progress notification with latest output
+    await extra.sendProgress(
+      chunkCount.toDouble(),
+      message: 'Running $operation... (${allOutput.length} chars received)',
+    );
+  }
+
+  session.isComplete = true;
+
+  // Return final complete result
   final response = {
-    'status': 'started',
+    'status': 'completed',
     'session_id': sessionId,
     'operation': operation,
     'command': 'dart ${dartArgs.join(' ')}',
-    'message':
-        'Operation started. Use get_output with session_id to retrieve output chunks.',
+    'output': allOutput.toString(),
   };
 
   return textResult(jsonEncode(response));
 }
-
 /// Run a short Dart command synchronously
 Future<CallToolResult> _runDartCommandSync(
   Directory workingDir,
