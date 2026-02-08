@@ -11,8 +11,7 @@ resolution: workspace
 dependencies:
   jhsware_code_shared_libs:
     path: ../shared_libs
-  mcp_dart:
-    path: ../../../mcp_dart
+  mcp_dart: ^1.2.2
   path: ^1.9.0
   git: ^2.3.2
 
