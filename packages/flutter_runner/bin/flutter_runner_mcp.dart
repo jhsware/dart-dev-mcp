@@ -55,7 +55,7 @@ void main(List<String> arguments) async {
 
   final server = McpServer(
     Implementation(name: 'flutter-runner-mcp', version: '1.0.0'),
-    options: ServerOptions(
+    options: McpServerOptions(
       capabilities: ServerCapabilities(
         tools: ServerCapabilitiesTools(),
       ),
