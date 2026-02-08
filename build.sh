@@ -5,7 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # All MCP server binaries
-BINARIES="file_edit_mcp convert_to_md_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp"
+BINARIES="file_edit_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp code_index_mcp"
+
+# Get package directory for a binary
+get_package_dir() {
+  case "$1" in
+    file_edit_mcp) echo "filesystem" ;;
+    fetch_mcp) echo "fetch" ;;
+    dart_runner_mcp) echo "dart_runner" ;;
+    flutter_runner_mcp) echo "flutter_runner" ;;
+    git_mcp) echo "git" ;;
+    planner_mcp) echo "planner" ;;
+    code_index_mcp) echo "code_index" ;;
+    *) echo "$1" ;;
+  esac
+}
 
 show_help() {
   cat <<EOF
@@ -84,7 +98,7 @@ do_build() {
     echo "  Compiling $binary..."
     dart compile exe --verbosity error $os_flag \
       -o "$output_dir/$output_name" \
-      "bin/${binary}.dart"
+      "packages/$(get_package_dir "$binary")/bin/${binary}.dart"
   done
 
   echo ""

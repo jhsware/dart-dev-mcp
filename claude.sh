@@ -33,7 +33,6 @@ Usage: $0 <servers> [options] [allowed_paths...]
 
 Servers (comma-separated):
   fs          File system editing tools
-  convert     HTML to Markdown conversion
   fetch       URL fetching tools
   dart        Dart runner (analyze, test, run)
   flutter     Flutter runner via FVM (analyze, test, run, build)
@@ -75,8 +74,8 @@ Examples:
   # Launch with a specific project directory
   $0 --project-dir=/path/to/project all
 
-  # Launch with fetch and convert tools
-  $0 fetch,convert
+  # Launch with fetch tools
+  $0 fetch
 
   # Launch with Dart runner for current project
   $0 dart
@@ -286,9 +285,23 @@ output_server_cmd() {
   shift 3
   local extra_args=("$@")
 
+  # Look up package directory for this binary
+  local package_dir=""
+  case "$dart_source" in
+    file_edit_mcp.dart) package_dir="filesystem" ;;
+    fetch_mcp.dart) package_dir="fetch" ;;
+    dart_runner_mcp.dart) package_dir="dart_runner" ;;
+    flutter_runner_mcp.dart) package_dir="flutter_runner" ;;
+    git_mcp.dart) package_dir="git" ;;
+    planner_mcp.dart) package_dir="planner" ;;
+    code_index_mcp.dart) package_dir="code_index" ;;
+  esac
+
   local binary_src_path=""
   if [ -f "$HOME/dev/nix-infra/bin/${dart_source}" ]; then
     binary_src_path="$HOME/dev/nix-infra/bin/${dart_source}"
+  elif [ -n "$package_dir" ] && [ -f "$SCRIPT_DIR/packages/$package_dir/bin/${dart_source}" ]; then
+    binary_src_path="$SCRIPT_DIR/packages/$package_dir/bin/${dart_source}"
   elif [ -f "$SCRIPT_DIR/bin/${dart_source}" ]; then
     binary_src_path="$SCRIPT_DIR/bin/${dart_source}"
   fi
@@ -360,7 +373,7 @@ build_mcp_config() {
   
   # Check for 'all' keyword
   if [[ "$servers" == *"all"* ]]; then
-    servers="fs,convert,fetch,dart,flutter,git,planner,code-index"
+    servers="fs,fetch,dart,flutter,git,planner,code-index"
   fi
   
   # File System Server - uses --project-dir and regular paths only (not git-only)
@@ -372,17 +385,8 @@ build_mcp_config() {
     output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "null" "--project-dir=$project_path" "${abs_regular_paths[@]}"
     echo '    }'
   fi
-  
-  # Convert to MD Server
-  if [[ "$servers" == *"convert"* ]]; then
-    if [ "$first" != true ]; then echo ','; fi
-    first=false
-    
-    echo '    "dart-dev-mcp-convert": {'
-    output_server_cmd "convert-to-md-mcp" "convert_to_md_mcp.dart" "null"
-    echo '    }'
-  fi
-  
+
+
   # Fetch Server
   if [[ "$servers" == *"fetch"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
