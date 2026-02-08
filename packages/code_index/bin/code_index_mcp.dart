@@ -81,7 +81,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the code-index tool
-  server.tool(
+  server.registerTool(
     'code-index',
     description: '''Maintains a searchable index of code files in a project.
 
@@ -89,116 +89,87 @@ Operations:
 - index-file: Add or update a file entry in the code index
 - search: Search the index for files matching criteria
 - diff: Scan directories and report changed/added/deleted files''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The operation to perform',
-          'enum': _validOperations,
-        },
+        'operation': JsonSchema.string(
+          description: 'The operation to perform',
+          enumValues: _validOperations,
+        ),
         // index-file parameters
-        'path': {
-          'type': 'string',
-          'description':
+        'path': JsonSchema.string(
+          description:
               'Relative path from project root (for index-file)',
-        },
-        'name': {
-          'type': 'string',
-          'description': 'File name (for index-file)',
-        },
-        'description': {
-          'type': 'string',
-          'description': 'Description of what the file does (for index-file)',
-        },
-        'file_type': {
-          'type': 'string',
-          'description':
+        ),
+        'name': JsonSchema.string(
+          description: 'File name (for index-file)',
+        ),
+        'description': JsonSchema.string(
+          description: 'Description of what the file does (for index-file)',
+        ),
+        'file_type': JsonSchema.string(
+          description:
               'File type e.g. "dart", "yaml", "json" (for index-file, search)',
-        },
-        'exports': {
-          'type': 'array',
-          'description':
+        ),
+        'exports': JsonSchema.array(
+          items: JsonSchema.object(),
+          description:
               'Exported symbols (for index-file). Each item: {name, kind, parameters?, description?, parent_name?}',
-          'items': {
-            'type': 'object',
-          },
-        },
-        'variables': {
-          'type': 'array',
-          'description':
+        ),
+        'variables': JsonSchema.array(
+          items: JsonSchema.object(),
+          description:
               'Exported variables (for index-file). Each item: {name, description?}',
-          'items': {
-            'type': 'object',
-          },
-        },
-        'imports': {
-          'type': 'array',
-          'description': 'Import paths (for index-file)',
-          'items': {
-            'type': 'string',
-          },
-        },
+        ),
+        'imports': JsonSchema.array(
+          items: JsonSchema.string(),
+          description: 'Import paths (for index-file)',
+        ),
         // search parameters
-        'query': {
-          'type': 'string',
-          'description':
+        'query': JsonSchema.string(
+          description:
               'General text search across file names, descriptions, export names, variable names (for search)',
-        },
-        'name_pattern': {
-          'type': 'string',
-          'description': 'Filter by file name pattern (for search)',
-        },
-        'export_name': {
-          'type': 'string',
-          'description':
+        ),
+        'name_pattern': JsonSchema.string(
+          description: 'Filter by file name pattern (for search)',
+        ),
+        'export_name': JsonSchema.string(
+          description:
               'Search for files exporting a specific name (for search)',
-        },
-        'export_kind': {
-          'type': 'string',
-          'description':
+        ),
+        'export_kind': JsonSchema.string(
+          description:
               'Filter exports by kind: class, method, function, class_member, enum, typedef, extension, mixin (for search)',
-        },
-        'import_pattern': {
-          'type': 'string',
-          'description': 'Search by import path pattern (for search)',
-        },
-        'path_pattern': {
-          'type': 'string',
-          'description': 'Filter by file path pattern (for search)',
-        },
-        'description_pattern': {
-          'type': 'string',
-          'description': 'Search in file descriptions (for search)',
-        },
-        'limit': {
-          'type': 'integer',
-          'description': 'Max results (for search, default 50)',
-        },
+        ),
+        'import_pattern': JsonSchema.string(
+          description: 'Search by import path pattern (for search)',
+        ),
+        'path_pattern': JsonSchema.string(
+          description: 'Filter by file path pattern (for search)',
+        ),
+        'description_pattern': JsonSchema.string(
+          description: 'Search in file descriptions (for search)',
+        ),
+        'limit': JsonSchema.integer(
+          description: 'Max results (for search, default 50)',
+        ),
         // diff parameters
-        'directories': {
-          'type': 'array',
-          'description':
+        'directories': JsonSchema.array(
+          items: JsonSchema.string(),
+          description:
               'Directories to scan, relative to project root (for diff)',
-          'items': {
-            'type': 'string',
-          },
-        },
-        'file_extensions': {
-          'type': 'array',
-          'description':
+        ),
+        'file_extensions': JsonSchema.array(
+          items: JsonSchema.string(),
+          description:
               'File extensions to include e.g. [".dart", ".yaml"] (for diff)',
-          'items': {
-            'type': 'string',
-          },
-        },
-        'remove_deleted': {
-          'type': 'boolean',
-          'description':
+        ),
+        'remove_deleted': JsonSchema.boolean(
+          description:
               'Auto-remove deleted files from index (for diff, default true)',
-        },
+        ),
       },
     ),
-    callback: ({args, extra}) =>
+    callback: (args, extra) =>
         _handleCodeIndex(args, database, indexOps, searchOps, diffOps),
   );
 
@@ -222,13 +193,13 @@ void _printUsage() {
 const _validOperations = ['index-file', 'search', 'diff'];
 
 Future<CallToolResult> _handleCodeIndex(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   Database database,
   IndexOperations indexOps,
   SearchOperations searchOps,
   DiffOperations diffOps,
 ) async {
-  final operation = args?['operation'] as String?;
+  final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', _validOperations)
       case final error?) {

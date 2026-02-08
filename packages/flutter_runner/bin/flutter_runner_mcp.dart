@@ -63,7 +63,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the flutter-runner tool
-  server.tool(
+  server.registerTool(
     'flutter-runner',
     description: '''Run Flutter commands via FVM with support for long-running processes.
 
@@ -81,12 +81,11 @@ Operations:
 
 For long-running operations, a session_id is returned.
 Use get_output with the session_id to poll for output.''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The operation to perform',
-          'enum': [
+        'operation': JsonSchema.string(
+          description: 'The operation to perform',
+          enumValues: [
             'analyze',
             'test',
             'run',
@@ -98,43 +97,36 @@ Use get_output with the session_id to poll for output.''',
             'list_sessions',
             'cancel',
           ],
-        },
-        'target': {
-          'type': 'string',
-          'description':
+        ),
+        'target': JsonSchema.string(
+          description:
               'Target file, directory, or build type (e.g., "apk", "ios", "web"). Default varies by operation.',
-        },
-        'device': {
-          'type': 'string',
-          'description': 'Device ID to run on (for run operation)',
-        },
-        'flavor': {
-          'type': 'string',
-          'description': 'Build flavor (for run/build operations)',
-        },
-        'args': {
-          'type': 'array',
-          'items': {'type': 'string'},
-          'description': 'Additional arguments to pass to the Flutter command',
-        },
-        'session_id': {
-          'type': 'string',
-          'description':
+        ),
+        'device': JsonSchema.string(
+          description: 'Device ID to run on (for run operation)',
+        ),
+        'flavor': JsonSchema.string(
+          description: 'Build flavor (for run/build operations)',
+        ),
+        'args': JsonSchema.array(
+          items: JsonSchema.string(),
+          description: 'Additional arguments to pass to the Flutter command',
+        ),
+        'session_id': JsonSchema.string(
+          description:
               'Session ID returned from run/test/analyze (required for get_output and cancel)',
-        },
-        'chunk_index': {
-          'type': 'integer',
-          'description':
+        ),
+        'chunk_index': JsonSchema.integer(
+          description:
               'Starting chunk index for get_output (default: 0). Use to paginate through output.',
-        },
-        'max_chunks': {
-          'type': 'integer',
-          'description':
+        ),
+        'max_chunks': JsonSchema.integer(
+          description:
               'Maximum number of chunks to return in get_output (default: 50, max: 200)',
-        },
+        ),
       },
     ),
-    callback: ({args, extra}) =>
+    callback: (args, extra) =>
         _handleFlutterRunner(args, workingDir, sessionManager, useFvm),
   );
 
@@ -165,12 +157,12 @@ const _validOperations = [
 ];
 
 Future<CallToolResult> _handleFlutterRunner(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   Directory workingDir,
   SessionManager sessionManager,
   bool useFvm,
 ) async {
-  final operation = args?['operation'] as String?;
+  final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
     return error;
@@ -280,8 +272,8 @@ Future<CallToolResult> _handleFlutterRunner(
   }
 }
 
-List<String>? _getExtraArgs(Map<String, dynamic>? args) {
-  final extraArgs = args?['args'];
+List<String>? _getExtraArgs(Map<String, dynamic> args) {
+  final extraArgs = args['args'];
   if (extraArgs is List) {
     return extraArgs.cast<String>();
   }

@@ -11,7 +11,7 @@ import 'logging.dart';
 /// plain text responses in the proper MCP result format.
 CallToolResult textResult(String text) {
   return CallToolResult.fromContent(
-    content: [TextContent(text: text)],
+    [TextContent(text: text)],
   );
 }
 
@@ -21,7 +21,7 @@ CallToolResult textResult(String text) {
 /// automatically formatting the JSON with indentation.
 CallToolResult jsonResult(Map<String, dynamic> data) {
   return CallToolResult.fromContent(
-    content: [TextContent(text: JsonEncoder.withIndent('  ').convert(data))],
+    [TextContent(text: JsonEncoder.withIndent('  ').convert(data))],
   );
 }
 

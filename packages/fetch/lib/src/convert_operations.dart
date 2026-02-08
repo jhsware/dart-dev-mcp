@@ -18,10 +18,10 @@ const validConvertOperations = [
 ];
 
 Future<CallToolResult> handleConvert(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   HttpClientConfig httpConfig,
 ) async {
-  final operation = args?['operation'] as String?;
+  final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', validConvertOperations) case final error?) {
     return error;

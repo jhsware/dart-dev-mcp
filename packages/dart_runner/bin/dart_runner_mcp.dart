@@ -54,7 +54,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the dart-runner tool
-  server.tool(
+  server.registerTool(
     'dart-runner',
     description: '''Run Dart commands with support for long-running processes.
 
@@ -70,12 +70,11 @@ Operations:
 
 For long-running operations (analyze, test, run), a session_id is returned.
 Use get_output with the session_id to poll for output.''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The operation to perform',
-          'enum': [
+        'operation': JsonSchema.string(
+          description: 'The operation to perform',
+          enumValues: [
             'analyze',
             'test',
             'run',
@@ -85,35 +84,30 @@ Use get_output with the session_id to poll for output.''',
             'list_sessions',
             'cancel',
           ],
-        },
-        'target': {
-          'type': 'string',
-          'description':
+        ),
+        'target': JsonSchema.string(
+          description:
               'Target file or directory for run/test/format operations. Default: current directory',
-        },
-        'args': {
-          'type': 'array',
-          'items': {'type': 'string'},
-          'description': 'Additional arguments to pass to the Dart command',
-        },
-        'session_id': {
-          'type': 'string',
-          'description':
+        ),
+        'args': JsonSchema.array(
+          items: JsonSchema.string(),
+          description: 'Additional arguments to pass to the Dart command',
+        ),
+        'session_id': JsonSchema.string(
+          description:
               'Session ID returned from run/test/analyze (required for get_output and cancel)',
-        },
-        'chunk_index': {
-          'type': 'integer',
-          'description':
+        ),
+        'chunk_index': JsonSchema.integer(
+          description:
               'Starting chunk index for get_output (default: 0). Use to paginate through output.',
-        },
-        'max_chunks': {
-          'type': 'integer',
-          'description':
+        ),
+        'max_chunks': JsonSchema.integer(
+          description:
               'Maximum number of chunks to return in get_output (default: 50, max: 200)',
-        },
+        ),
       },
     ),
-    callback: ({args, extra}) =>
+    callback: (args, extra) =>
         _handleDartRunner(args, workingDir, sessionManager),
   );
 
@@ -142,11 +136,11 @@ const _validOperations = [
 ];
 
 Future<CallToolResult> _handleDartRunner(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   Directory workingDir,
   SessionManager sessionManager,
 ) async {
-  final operation = args?['operation'] as String?;
+  final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
     return error;
@@ -225,8 +219,8 @@ Future<CallToolResult> _handleDartRunner(
   }
 }
 
-List<String>? _getExtraArgs(Map<String, dynamic>? args) {
-  final extraArgs = args?['args'];
+List<String>? _getExtraArgs(Map<String, dynamic> args) {
+  final extraArgs = args['args'];
   if (extraArgs is List) {
     return extraArgs.cast<String>();
   }
