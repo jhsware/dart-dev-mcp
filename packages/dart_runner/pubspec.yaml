@@ -1,0 +1,14 @@
+name: dart_runner_mcp
+description: MCP server
+version: 1.0.0
+publish_to: none
+repository: https://github.com/jhsware/dart_dev_mcp
+
+environment:
+  sdk: ^3.9.3
+resolution: workspace
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6
+

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dart pub get:*)",
+      "Bash(dart pub deps:*)",
+      "Bash(dart analyze:*)",
+      "WebFetch(domain:pub.dev)",
+      "Bash(dart test:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge:*)"
+    ]
+  }
+}

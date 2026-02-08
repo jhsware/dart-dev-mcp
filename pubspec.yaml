@@ -5,7 +5,7 @@ publish_to: none
 repository: https://github.com/jhsware/dart_dev_mcp
 
 environment:
-  sdk: ^3.0.0
+  sdk: ^3.9.3
 
 dependencies:
   mcp_dart:
@@ -21,3 +21,13 @@ dependencies:
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
+
+workspace:
+  - packages/code_index
+  - packages/dart_runner
+  - packages/fetch
+  - packages/filesystem
+  - packages/flutter_runner
+  - packages/git
+  - packages/planner
+  - packages/shared_libs

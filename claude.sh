@@ -20,6 +20,8 @@ DEFAULT_ALLOWED_PATHS=(
   "./.github"
   "./macos"
   "git:./pubspec.lock"
+  "./packages"
+  "./claude.sh"
 )
 
 __help_text__=$(cat <<EOF
