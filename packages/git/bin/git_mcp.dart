@@ -93,7 +93,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the git tool
-  server.tool(
+  server.registerTool(
     'git',
     description: '''Git version control operations with SSH/GPG signing support.
 
@@ -114,62 +114,50 @@ Operations:
 - log: Show commit history
 - diff: Show changes
 - signing-status: Check SSH/GPG signing configuration and status''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The git operation to perform',
-          'enum': _validOperations,
-        },
-        'branch': {
-          'type': 'string',
-          'description': 'Branch name (for branch-create, branch-switch, merge)',
-        },
-        'from': {
-          'type': 'string',
-          'description': 'Starting point for new branch (for branch-create). Default: current HEAD',
-        },
-        'files': {
-          'type': 'array',
-          'items': {'type': 'string'},
-          'description': 'Files to stage (for add). Use ["."] for all files including untracked.',
-        },
-        'all': {
-          'type': 'boolean',
-          'description': 'Stage all changes including untracked files (for add). Default: false',
-        },
-        'message': {
-          'type': 'string',
-          'description': 'Commit or stash message (for commit, stash, tag-create)',
-        },
-        'sign': {
-          'type': 'string',
-          'description': 'Signing method for commit: "auto" (default - uses SSH if available, else GPG if available, else none), "ssh", "gpg", or "none"',
-          'enum': ['auto', 'ssh', 'gpg', 'none'],
-        },
-        'stash_index': {
-          'type': 'integer',
-          'description': 'Stash index to apply (for stash-apply, stash-pop). Default: 0 (latest)',
-        },
-        'tag': {
-          'type': 'string',
-          'description': 'Tag name (for tag-create)',
-        },
-        'annotated': {
-          'type': 'boolean',
-          'description': 'Create an annotated tag with message (for tag-create). Default: false',
-        },
-        'include_untracked': {
-          'type': 'boolean',
-          'description': 'Include untracked files in stash (for stash). Default: false',
-        },
-        'max_count': {
-          'type': 'integer',
-          'description': 'Maximum number of commits to show (for log). Default: 10',
-        },
+        'operation': JsonSchema.string(
+          description: 'The git operation to perform',
+          enumValues: _validOperations,
+        ),
+        'branch': JsonSchema.string(
+          description: 'Branch name (for branch-create, branch-switch, merge)',
+        ),
+        'from': JsonSchema.string(
+          description: 'Starting point for new branch (for branch-create). Default: current HEAD',
+        ),
+        'files': JsonSchema.array(
+          items: JsonSchema.string(),
+          description: 'Files to stage (for add). Use ["."] for all files including untracked.',
+        ),
+        'all': JsonSchema.boolean(
+          description: 'Stage all changes including untracked files (for add). Default: false',
+        ),
+        'message': JsonSchema.string(
+          description: 'Commit or stash message (for commit, stash, tag-create)',
+        ),
+        'sign': JsonSchema.string(
+          description: 'Signing method for commit: "auto" (default - uses SSH if available, else GPG if available, else none), "ssh", "gpg", or "none"',
+          enumValues: ['auto', 'ssh', 'gpg', 'none'],
+        ),
+        'stash_index': JsonSchema.integer(
+          description: 'Stash index to apply (for stash-apply, stash-pop). Default: 0 (latest)',
+        ),
+        'tag': JsonSchema.string(
+          description: 'Tag name (for tag-create)',
+        ),
+        'annotated': JsonSchema.boolean(
+          description: 'Create an annotated tag with message (for tag-create). Default: false',
+        ),
+        'include_untracked': JsonSchema.boolean(
+          description: 'Include untracked files in stash (for stash). Default: false',
+        ),
+        'max_count': JsonSchema.integer(
+          description: 'Maximum number of commits to show (for log). Default: 10',
+        ),
       },
     ),
-    callback: ({args, extra}) => _handleGit(args, gitOps, workingDir, signingInfo),
+    callback: (args, extra) => _handleGit(args, gitOps, workingDir, signingInfo),
   );
 
   final transport = StdioServerTransport();
@@ -208,12 +196,12 @@ const _validOperations = [
 ];
 
 Future<CallToolResult> _handleGit(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   GitOperations gitOps,
   Directory workingDir,
   SigningInfo signingInfo,
 ) async {
-  final operation = args?['operation'] as String?;
+  final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
     return error;

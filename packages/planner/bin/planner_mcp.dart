@@ -95,7 +95,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the planner tool
-  server.tool(
+  server.registerTool(
     'planner',
     description: '''Task and step management for AI-assisted development.
 
@@ -115,40 +115,33 @@ Operations:
 
 Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The operation to perform',
-          'enum': _validOperations,
-        },
-        'id': {
-          'type': 'string',
-          'description':
+        'operation': JsonSchema.string(
+          description: 'The operation to perform',
+          enumValues: _validOperations,
+        ),
+        'id': JsonSchema.string(
+          description:
               'Task or step ID (for show/update/audit-trail operations)',
-        },
-        'task_id': {
-          'type': 'string',
-          'description': 'Parent task ID (for add-step)',
-        },
-        'project_id': {
-          'type': 'string',
-          'description':
+        ),
+        'task_id': JsonSchema.string(
+          description: 'Parent task ID (for add-step)',
+        ),
+        'project_id': JsonSchema.string(
+          description:
               'Project identifier (for add-task, list-tasks filter, timeline filter)',
-        },
-        'title': {
-          'type': 'string',
-          'description': 'Title for task or step',
-        },
-        'details': {
-          'type': 'string',
-          'description': 'Detailed description for task or step',
-        },
-        'status': {
-          'type': 'string',
-          'description':
+        ),
+        'title': JsonSchema.string(
+          description: 'Title for task or step',
+        ),
+        'details': JsonSchema.string(
+          description: 'Detailed description for task or step',
+        ),
+        'status': JsonSchema.string(
+          description:
               'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
-          'enum': [
+          enumValues: [
             'backlog',
             'todo',
             'draft',
@@ -157,35 +150,30 @@ Step statuses: todo, started, canceled, done''',
             'done',
             'merged'
           ],
-        },
-        'memory': {
-          'type': 'string',
-          'description': 'Memory/notes content for task',
-        },
-        'entity_type': {
-          'type': 'string',
-          'description':
+        ),
+        'memory': JsonSchema.string(
+          description: 'Memory/notes content for task',
+        ),
+        'entity_type': JsonSchema.string(
+          description:
               "Entity type filter: 'task' or 'step' (for timeline/audit-trail)",
-          'enum': ['task', 'step'],
-        },
-        'limit': {
-          'type': 'integer',
-          'description':
+          enumValues: ['task', 'step'],
+        ),
+        'limit': JsonSchema.integer(
+          description:
               'Maximum entries to return (for get-timeline, default 20)',
-        },
-        'before': {
-          'type': 'string',
-          'description':
+        ),
+        'before': JsonSchema.string(
+          description:
               'Return entries before this ISO datetime (for get-timeline)',
-        },
-        'after': {
-          'type': 'string',
-          'description':
+        ),
+        'after': JsonSchema.string(
+          description:
               'Return entries after this ISO datetime (for get-timeline)',
-        },
+        ),
       },
     ),
-    callback: ({args, extra}) => _handlePlanner(
+    callback: (args, extra) => _handlePlanner(
         args, workingDir, database, taskOps, stepOps, timelineOps),
   );
 
@@ -223,14 +211,14 @@ const _validOperations = [
 ];
 
 Future<CallToolResult> _handlePlanner(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   Directory workingDir,
   Database database,
   TaskOperations taskOps,
   StepOperations stepOps,
   TimelineOperations timelineOps,
 ) async {
-  final operation = args?['operation'] as String?;
+  final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', _validOperations)
       case final error?) {

@@ -44,7 +44,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the fetch tool
-  server.tool(
+  server.registerTool(
     'fetch',
     description:
         '''Fetches a URL from the internet and optionally extracts its contents as markdown.
@@ -53,39 +53,35 @@ Although originally you did not have internet access, this tool now grants you i
 You can fetch the most up-to-date information and let the user know that.
 
 Synonyms: fetch, follow, load, get''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'url': {
-          'type': 'string',
-          'description': 'URL to fetch',
-          'format': 'uri',
-        },
-        'max_length': {
-          'type': 'integer',
-          'description':
+        'url': JsonSchema.string(
+          description: 'URL to fetch',
+          format: 'uri',
+        ),
+        'max_length': JsonSchema.integer(
+          description:
               'Maximum number of characters to return. Default: 5000',
-          'default': 5000,
-        },
-        'start_index': {
-          'type': 'integer',
-          'description':
+          defaultValue: 5000,
+        ),
+        'start_index': JsonSchema.integer(
+          description:
               'Start returning content from this character index. Useful for pagination if previous fetch was truncated. Default: 0',
-          'default': 0,
-        },
-        'raw': {
-          'type': 'boolean',
-          'description':
+          defaultValue: 0,
+        ),
+        'raw': JsonSchema.boolean(
+          description:
               'Get the actual HTML content without simplification. Default: false',
-          'default': false,
-        },
+          defaultValue: false,
+        ),
       },
     ),
-    callback: ({args, extra}) =>
+    callback: (args, extra) =>
         _handleFetch(args, httpConfig, ignoreRobotsTxt),
   );
 
   // Register the fetch_links tool
-  server.tool(
+  server.registerTool(
     'fetch_links',
     description: '''Fetches a URL and extracts all links from it.
 
@@ -93,21 +89,20 @@ You can use this to recursively scrape a website to find more information.
 Do not scrape too many levels deep, probably only one or two.
 
 Synonyms: get links, find links, fetch links''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'url': {
-          'type': 'string',
-          'description': 'URL to fetch and extract links from',
-          'format': 'uri',
-        },
+        'url': JsonSchema.string(
+          description: 'URL to fetch and extract links from',
+          format: 'uri',
+        ),
       },
     ),
-    callback: ({args, extra}) =>
+    callback: (args, extra) =>
         _handleFetchLinks(args, httpConfig, ignoreRobotsTxt),
   );
 
   // Register the fetch-and-transform tool (merged from convert_to_md_mcp)
-  server.tool(
+  server.registerTool(
     'fetch-and-transform',
     description: '''Fetches a web page and extracts content for efficient research.
 
@@ -116,39 +111,34 @@ Operations:
 - fetch-to-markdown: Fetch URL and convert to Markdown
 - html-to-plaintext: Extract plain text from HTML (strips all tags)
 - html-to-links: Extract all links from HTML as a list''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The operation to perform',
-          'enum': [
+        'operation': JsonSchema.string(
+          description: 'The operation to perform',
+          enumValues: [
             'html-to-markdown',
             'fetch-to-markdown',
             'html-to-plaintext',
             'html-to-links',
           ],
-        },
-        'html': {
-          'type': 'string',
-          'description':
+        ),
+        'html': JsonSchema.string(
+          description:
               'HTML content to convert (for html-to-markdown and html-to-plaintext)',
-        },
-        'url': {
-          'type': 'string',
-          'description':
+        ),
+        'url': JsonSchema.string(
+          description:
               'URL to fetch and convert (for fetch-to-markdown and html-to-links)',
-        },
-        'include-links': {
-          'type': 'boolean',
-          'description': 'Include link URLs in markdown output. Default: true',
-        },
-        'include-images': {
-          'type': 'boolean',
-          'description': 'Include images in markdown output. Default: true',
-        },
+        ),
+        'include-links': JsonSchema.boolean(
+          description: 'Include link URLs in markdown output. Default: true',
+        ),
+        'include-images': JsonSchema.boolean(
+          description: 'Include images in markdown output. Default: true',
+        ),
       },
     ),
-    callback: ({args, extra}) => handleConvert(args, httpConfig),
+    callback: (args, extra) => handleConvert(args, httpConfig),
   );
 
   final transport = StdioServerTransport();
@@ -165,14 +155,14 @@ void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
 
 /// Handle fetch request
 Future<CallToolResult> _handleFetch(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   HttpClientConfig httpConfig,
   bool ignoreRobotsTxt,
 ) async {
-  final url = args?['url'] as String?;
-  final maxLength = (args?['max_length'] as num?)?.toInt() ?? 5000;
-  final startIndex = (args?['start_index'] as num?)?.toInt() ?? 0;
-  final raw = args?['raw'] as bool? ?? false;
+  final url = args['url'] as String?;
+  final maxLength = (args['max_length'] as num?)?.toInt() ?? 5000;
+  final startIndex = (args['start_index'] as num?)?.toInt() ?? 0;
+  final raw = args['raw'] as bool? ?? false;
 
   if (requireString(url, 'url') case final error?) {
     return error;
@@ -270,11 +260,11 @@ Future<CallToolResult> _handleFetch(
 
 /// Handle fetch_links request
 Future<CallToolResult> _handleFetchLinks(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   HttpClientConfig httpConfig,
   bool ignoreRobotsTxt,
 ) async {
-  final url = args?['url'] as String?;
+  final url = args['url'] as String?;
 
   if (requireString(url, 'url') case final error?) {
     return error;

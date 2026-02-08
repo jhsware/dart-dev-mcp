@@ -97,7 +97,7 @@ void main(List<String> arguments) async {
   );
 
   // Register the file system tool
-  server.tool(
+  server.registerTool(
     'filesystem',
     description: '''File system operations for reading and editing files.
 
@@ -109,50 +109,42 @@ Operations:
 - create-directory: Create a new directory
 - create-file: Create a new file with content
 - edit-file: Edit file content (overwrite, insert, or replace lines)''',
-    toolInputSchema: ToolInputSchema(
+    inputSchema: ToolInputSchema(
       properties: {
-        'operation': {
-          'type': 'string',
-          'description': 'The operation to perform',
-          'enum': _validOperations,
-        },
-        'path': {
-          'type': 'string',
-          'description':
+        'operation': JsonSchema.string(
+          description: 'The operation to perform',
+          enumValues: _validOperations,
+        ),
+        'path': JsonSchema.string(
+          description:
               'Relative path to file or directory (comma-separated for read-files)',
-        },
-        'content': {
-          'type': 'string',
-          'description': 'Content for create-file or edit-file operations',
-        },
-        'pattern': {
-          'type': 'string',
-          'description': 'Regex pattern for search-text operation',
-        },
-        'file-pattern': {
-          'type': 'string',
-          'description':
+        ),
+        'content': JsonSchema.string(
+          description: 'Content for create-file or edit-file operations',
+        ),
+        'pattern': JsonSchema.string(
+          description: 'Regex pattern for search-text operation',
+        ),
+        'file-pattern': JsonSchema.string(
+          description:
               'Glob pattern to filter files (e.g., "*.dart"). Default: all files',
-        },
-        'case-sensitive': {
-          'type': 'boolean',
-          'description': 'Whether search is case-sensitive. Default: true',
-        },
-        'startLine': {
-          'type': 'integer',
-          'description': '''For edit-file: starting line number (1-indexed).
+        ),
+        'case-sensitive': JsonSchema.boolean(
+          description: 'Whether search is case-sensitive. Default: true',
+        ),
+        'startLine': JsonSchema.integer(
+          description: '''For edit-file: starting line number (1-indexed).
 - If not provided: overwrites entire file
 - If provided without endLine: inserts at this line
 - If provided with endLine: replaces lines startLine to endLine''',
-        },
-        'endLine': {
-          'type': 'integer',
-          'description':
+        ),
+        'endLine': JsonSchema.integer(
+          description:
               'For edit-file: ending line number (1-indexed, inclusive)',
-        },
+        ),
       },
     ),
-    callback: ({args, extra}) => _handleFileSystem(args, readOps, writeOps),
+    callback: (args, extra) => _handleFileSystem(args, readOps, writeOps),
   );
 
   final transport = StdioServerTransport();
@@ -183,12 +175,12 @@ const _validOperations = [
 ];
 
 Future<CallToolResult> _handleFileSystem(
-  Map<String, dynamic>? args,
+  Map<String, dynamic> args,
   FileReadOperations readOps,
   FileWriteOperations writeOps,
 ) async {
-  final operation = args?['operation'] as String?;
-  final path = args?['path'] as String? ?? '.';
+  final operation = args['operation'] as String?;
+  final path = args['path'] as String? ?? '.';
 
   if (requireStringOneOf(operation, 'operation', _validOperations)
       case final error?) {
