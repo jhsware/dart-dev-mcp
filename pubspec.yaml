@@ -1,5 +1,5 @@
 name: dart_dev_mcp
-description: MCP servers for Dart/Flutter development - file editing, HTML to markdown conversion, URL fetching, and Dart/Flutter runners.
+description: MCP servers for Dart/Flutter development - file editing, URL fetching, code indexing, and Dart/Flutter runners.
 version: 1.0.0
 publish_to: none
 repository: https://github.com/jhsware/dart_dev_mcp
