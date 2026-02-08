@@ -10,7 +10,7 @@ void main() {
   group('MCP Server Startup', () {
     test('file_edit_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/file_edit_mcp.dart',
+        'packages/filesystem/bin/file_edit_mcp.dart',
         ['--project-dir=.', './lib', './bin', './test'],
       );
       await stopServer(process);
@@ -21,22 +21,9 @@ void main() {
       );
     });
 
-    test('convert_to_md_mcp starts successfully', () async {
-      final (process, stderrBuffer) = await startServer(
-        'bin/convert_to_md_mcp.dart',
-        [],
-      );
-      await stopServer(process);
-
-      expect(
-        stderrBuffer.toString(),
-        contains('Convert-to-MD MCP Server running on stdio'),
-      );
-    });
-
     test('fetch_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/fetch_mcp.dart',
+        'packages/fetch/bin/fetch_mcp.dart',
         [],
       );
       await stopServer(process);
@@ -49,7 +36,7 @@ void main() {
 
     test('dart_runner_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/dart_runner_mcp.dart',
+        'packages/dart_runner/bin/dart_runner_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -62,7 +49,7 @@ void main() {
 
     test('flutter_runner_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/flutter_runner_mcp.dart',
+        'packages/flutter_runner/bin/flutter_runner_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -75,7 +62,7 @@ void main() {
 
     test('git_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/git_mcp.dart',
+        'packages/git/bin/git_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -88,7 +75,7 @@ void main() {
 
     test('planner_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/planner_mcp.dart',
+        'packages/planner/bin/planner_mcp.dart',
         ['--project-dir=.', '--db-path=:memory:'],
       );
       await stopServer(process);
@@ -101,7 +88,7 @@ void main() {
 
     test('code_index_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'bin/code_index_mcp.dart',
+        'packages/code_index/bin/code_index_mcp.dart',
         ['--project-dir=.', '--db-path=:memory:'],
       );
       await stopServer(process);

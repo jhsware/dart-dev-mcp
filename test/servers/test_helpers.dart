@@ -3,14 +3,13 @@ import 'dart:io';
 
 /// All server scripts available for compilation
 const serverScripts = [
-  'bin/file_edit_mcp.dart',
-  'bin/convert_to_md_mcp.dart',
-  'bin/fetch_mcp.dart',
-  'bin/dart_runner_mcp.dart',
-  'bin/flutter_runner_mcp.dart',
-  'bin/git_mcp.dart',
-  'bin/planner_mcp.dart',
-  'bin/code_index_mcp.dart',
+  'packages/filesystem/bin/file_edit_mcp.dart',
+  'packages/fetch/bin/fetch_mcp.dart',
+  'packages/dart_runner/bin/dart_runner_mcp.dart',
+  'packages/flutter_runner/bin/flutter_runner_mcp.dart',
+  'packages/git/bin/git_mcp.dart',
+  'packages/planner/bin/planner_mcp.dart',
+  'packages/code_index/bin/code_index_mcp.dart',
 ];
 
 /// Compiles a Dart script to kernel format (.dill) for faster execution.
