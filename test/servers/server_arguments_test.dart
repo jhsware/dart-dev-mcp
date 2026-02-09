@@ -71,7 +71,7 @@ void main() {
 
       final stderr = stderrBuffer.toString();
       expect(stderr, contains('Project path:'));
-      expect(stderr, contains('dart_dev_mcp'));
+      expect(stderr, contains(p.basename(Directory.current.path)));
     });
   });
 
