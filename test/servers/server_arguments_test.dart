@@ -1,6 +1,10 @@
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'test_helpers.dart';
+
 
 void main() {
   setUpAll(() async {
@@ -184,7 +188,45 @@ void main() {
       expect(result.stderr, contains('.ai_coding_tool/db.sqlite'));
       expect(result.stderr, contains('INSTRUCTIONS.md'));
     });
+
+    test('fails with non-existent project directory', () async {
+      final result = await runServer(
+        'packages/planner/bin/planner_mcp.dart',
+        ['--project-dir=/nonexistent/path', '--db-path=:memory:'],
+      );
+
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('does not exist'));
+    });
+
+    test('creates .ai_coding_tool directory if missing', () async {
+      final tempDir = await Directory.systemTemp.createTemp('planner_cli_test_');
+      try {
+        final aiToolDir = Directory(p.join(tempDir.path, '.ai_coding_tool'));
+        expect(await aiToolDir.exists(), isFalse);
+
+        final dbPath = p.join(tempDir.path, '.ai_coding_tool', 'db.sqlite');
+        final (process, _) = await startServer(
+          'packages/planner/bin/planner_mcp.dart',
+          ['--project-dir=${tempDir.path}', '--db-path=$dbPath'],
+        );
+
+        // Check directory was created
+        expect(await aiToolDir.exists(), isTrue);
+
+        // Check database was created
+        final dbFile = File(dbPath);
+        expect(await dbFile.exists(), isTrue);
+
+        await stopServer(process);
+      } finally {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      }
+    });
   });
+
 
   group('code_index_mcp arguments', () {
     test('shows error without --db-path', () async {
