@@ -201,6 +201,28 @@ void main() {
       expect(text, contains('"count": 1'));
     });
 
+    test('returns rich results with file metadata', () {
+      final result = searchOps.search({'query': 'utils'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // Rich results should include name, description, file_type
+      expect(text, contains('"name": "utils.dart"'));
+      expect(text, contains('"description": "Utility functions"'));
+      expect(text, contains('"file_type": "dart"'));
+    });
+
+    test('returns exports summary in search results', () {
+      final result = searchOps.search({'query': 'utils'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // Should include exports summary
+      expect(text, contains('"exports"'));
+      expect(text, contains('"helper"'));
+      expect(text, contains('"StringUtils"'));
+      expect(text, contains('"function"'));
+      expect(text, contains('"class"'));
+    });
+
     test('filters by file_type', () {
       final result = searchOps.search({'file_type': 'yaml'});
       final text = result.content.first.toJson()['text'] as String;
@@ -244,6 +266,105 @@ void main() {
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"count": 1'));
+    });
+  });
+
+  group('ShowFile operation', () {
+    late IndexOperations indexOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database);
+
+      // Index a file with full metadata
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'description': 'Application entry point',
+        'file_type': 'dart',
+        'exports': [
+          {
+            'name': 'main',
+            'kind': 'function',
+            'parameters': 'List<String> args',
+            'description': 'Entry point',
+          },
+          {
+            'name': 'App',
+            'kind': 'class',
+            'description': 'Main application class',
+          },
+          {
+            'name': 'run',
+            'kind': 'method',
+            'parent_name': 'App',
+            'description': 'Run the app',
+          },
+        ],
+        'variables': [
+          {'name': 'appVersion', 'description': 'App version string'},
+          {'name': 'debug', 'description': 'Debug mode flag'},
+        ],
+        'imports': ['dart:io', 'package:path/path.dart'],
+      });
+    });
+
+    test('returns full file metadata', () {
+      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"path": "lib/main.dart"'));
+      expect(text, contains('"name": "main.dart"'));
+      expect(text, contains('"description": "Application entry point"'));
+      expect(text, contains('"file_type": "dart"'));
+      expect(text, contains('"file_hash"'));
+      expect(text, contains('"created_at"'));
+      expect(text, contains('"updated_at"'));
+    });
+
+    test('returns all exports with full details', () {
+      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"main"'));
+      expect(text, contains('"function"'));
+      expect(text, contains('"List<String> args"'));
+      expect(text, contains('"App"'));
+      expect(text, contains('"class"'));
+      expect(text, contains('"run"'));
+      expect(text, contains('"method"'));
+    });
+
+    test('returns all variables', () {
+      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"appVersion"'));
+      expect(text, contains('"debug"'));
+    });
+
+    test('returns all imports', () {
+      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('dart:io'));
+      expect(text, contains('package:path/path.dart'));
+    });
+
+    test('returns not found for unindexed file', () {
+      final result = searchOps.showFile({'path': 'lib/nonexistent.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('not found'));
+      expect(text, contains('lib/nonexistent.dart'));
+    });
+
+    test('returns error when path is missing', () {
+      final result = searchOps.showFile({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('path is required'));
     });
   });
 

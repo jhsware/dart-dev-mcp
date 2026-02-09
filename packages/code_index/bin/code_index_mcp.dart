@@ -88,6 +88,7 @@ void main(List<String> arguments) async {
 Operations:
 - index-file: Add or update a file entry in the code index
 - search: Search the index for files matching criteria
+- show-file: Show full indexed information for a specific file
 - diff: Scan directories and report changed/added/deleted files''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -98,7 +99,8 @@ Operations:
         // index-file parameters
         'path': JsonSchema.string(
           description:
-              'Relative path from project root (for index-file)',
+              'Relative path from project root (for index-file, show-file)',
+        ),
         ),
         'name': JsonSchema.string(
           description: 'File name (for index-file)',
@@ -190,7 +192,7 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-const _validOperations = ['index-file', 'search', 'diff'];
+const _validOperations = ['index-file', 'search', 'show-file', 'diff'];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
@@ -207,14 +209,16 @@ Future<CallToolResult> _handleCodeIndex(
   }
 
   try {
-    switch (operation) {
       case 'index-file':
         return indexOps.indexFile(args);
       case 'search':
         return searchOps.search(args);
+      case 'show-file':
+        return searchOps.showFile(args);
       case 'diff':
         return diffOps.diff(args);
       default:
+        return validationError('operation', 'Unknown operation: $operation');
         return validationError('operation', 'Unknown operation: $operation');
     }
   } on SqliteException catch (e) {
