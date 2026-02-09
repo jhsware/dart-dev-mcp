@@ -487,6 +487,144 @@ void main() {
     });
   });
 
+  group('Dependency operations', () {
+    late IndexOperations indexOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database);
+
+      // Index files with import relationships
+      // main.dart imports utils.dart and models.dart
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'description': 'Application entry point',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'main', 'kind': 'function'},
+        ],
+        'imports': ['lib/utils.dart', 'lib/models.dart', 'dart:io'],
+      });
+
+      // utils.dart imports models.dart
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'description': 'Utility functions',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'helper', 'kind': 'function'},
+          {'name': 'StringUtils', 'kind': 'class'},
+        ],
+        'imports': ['lib/models.dart', 'package:path/path.dart'],
+      });
+
+      // models.dart has no imports
+      indexOps.indexFile({
+        'path': 'lib/models.dart',
+        'name': 'models.dart',
+        'description': 'Data models',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'User', 'kind': 'class'},
+        ],
+      });
+    });
+
+    test('dependents finds files that import a path', () {
+      final result = searchOps.dependents({'path': 'models.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // Both main.dart and utils.dart import models.dart
+      expect(text, contains('lib/main.dart'));
+      expect(text, contains('lib/utils.dart'));
+      expect(text, contains('"count": 2'));
+    });
+
+    test('dependents returns matching imports', () {
+      final result = searchOps.dependents({'path': 'utils.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/main.dart'));
+      expect(text, contains('"matching_imports"'));
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('dependents includes exports summary', () {
+      final result = searchOps.dependents({'path': 'models.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"exports"'));
+    });
+
+    test('dependents returns empty for file with no dependents', () {
+      final result = searchOps.dependents({'path': 'main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 0'));
+    });
+
+    test('dependents returns error when path is missing', () {
+      final result = searchOps.dependents({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('path is required'));
+    });
+
+    test('dependencies returns all imports for a file', () {
+      final result = searchOps.dependencies({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 3'));
+      expect(text, contains('lib/utils.dart'));
+      expect(text, contains('lib/models.dart'));
+      expect(text, contains('dart:io'));
+    });
+
+    test('dependencies classifies internal vs external imports', () {
+      final result = searchOps.dependencies({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // utils.dart and models.dart are indexed (internal)
+      expect(text, contains('"internal_count": 2'));
+      // dart:io is not indexed (external)
+      expect(text, contains('"external_count": 1'));
+    });
+
+    test('dependencies includes metadata for indexed imports', () {
+      final result = searchOps.dependencies({'path': 'lib/utils.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // models.dart is indexed, should have resolved info
+      expect(text, contains('"is_indexed": true'));
+      expect(text, contains('"resolved_path"'));
+      expect(text, contains('"Data models"'));
+    });
+
+    test('dependencies returns empty for file with no imports', () {
+      final result = searchOps.dependencies({'path': 'lib/models.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 0'));
+    });
+
+    test('dependencies returns not found for unindexed file', () {
+      final result = searchOps.dependencies({'path': 'lib/nonexistent.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('not found'));
+    });
+
+    test('dependencies returns error when path is missing', () {
+      final result = searchOps.dependencies({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('path is required'));
+    });
+  });
+
   group('DiffOperations', () {
     late IndexOperations indexOps;
     late DiffOperations diffOps;

@@ -269,4 +269,138 @@ class SearchOperations {
       'imports': imports.map((i) => i['import_path'] as String).toList(),
     });
   }
+  /// Find all files that import a given path.
+  ///
+  /// Given an import path (or pattern), returns all indexed files whose
+  /// imports match. Results include file metadata and exports summary.
+  CallToolResult dependents(Map<String, dynamic>? args) {
+    final importPath = args?['path'] as String?;
+
+    if (requireString(importPath, 'path') case final error?) {
+      return error;
+    }
+
+    // Search for files that have a matching import
+    final result = database.select('''
+      SELECT DISTINCT f.id, f.path, f.name, f.description, f.file_type
+      FROM files f
+      JOIN imports i ON i.file_id = f.id
+      WHERE i.import_path LIKE ?
+      ORDER BY f.path
+    ''', ['%$importPath%']);
+
+    final files = <Map<String, dynamic>>[];
+    for (final row in result) {
+      final fileId = row['id'] as String;
+      final fileEntry = <String, dynamic>{
+        'path': row['path'] as String,
+        'name': row['name'] as String,
+        'description': row['description'],
+        'file_type': row['file_type'],
+      };
+
+      // Get the specific matching imports
+      final matchingImports = database.select(
+        'SELECT import_path FROM imports WHERE file_id = ? AND import_path LIKE ?',
+        [fileId, '%$importPath%'],
+      );
+      fileEntry['matching_imports'] =
+          matchingImports.map((i) => i['import_path'] as String).toList();
+
+      // Get exports summary
+      final exports = database.select(
+        'SELECT name, kind FROM exports WHERE file_id = ?',
+        [fileId],
+      );
+      fileEntry['exports'] = exports
+          .map((e) => {
+                'name': e['name'] as String,
+                'kind': e['kind'] as String,
+              })
+          .toList();
+
+      files.add(fileEntry);
+    }
+
+    return jsonResult({
+      'dependents': files,
+      'count': files.length,
+      'import_path_query': importPath,
+    });
+  }
+
+  /// Get all dependencies (imports) for a specific file.
+  ///
+  /// Returns the file's imports with an indication of whether each
+  /// import is indexed (internal) or external.
+  CallToolResult dependencies(Map<String, dynamic>? args) {
+    final path = args?['path'] as String?;
+
+    if (requireString(path, 'path') case final error?) {
+      return error;
+    }
+
+    // Look up the file
+    final fileResult = database.select(
+      'SELECT id, path, name, description, file_type FROM files WHERE path = ?',
+      [path],
+    );
+
+    if (fileResult.isEmpty) {
+      return notFoundError('File', path!);
+    }
+
+    final file = fileResult.first;
+    final fileId = file['id'] as String;
+
+    // Get all imports for this file
+    final imports = database.select(
+      'SELECT import_path FROM imports WHERE file_id = ? ORDER BY import_path',
+      [fileId],
+    );
+
+    final deps = <Map<String, dynamic>>[];
+    for (final imp in imports) {
+      final importPath = imp['import_path'] as String;
+
+      // Check if the imported file is indexed (try exact match and common variations)
+      final indexed = database.select(
+        'SELECT path, name, description, file_type FROM files WHERE path = ? OR path LIKE ?',
+        [importPath, '%$importPath'],
+      );
+
+      if (indexed.isNotEmpty) {
+        final indexedFile = indexed.first;
+        deps.add({
+          'import_path': importPath,
+          'is_indexed': true,
+          'resolved_path': indexedFile['path'] as String,
+          'name': indexedFile['name'],
+          'description': indexedFile['description'],
+          'file_type': indexedFile['file_type'],
+        });
+      } else {
+        deps.add({
+          'import_path': importPath,
+          'is_indexed': false,
+        });
+      }
+    }
+
+    final internal = deps.where((d) => d['is_indexed'] == true).length;
+    final external = deps.where((d) => d['is_indexed'] == false).length;
+
+    return jsonResult({
+      'file': {
+        'path': file['path'],
+        'name': file['name'],
+        'description': file['description'],
+        'file_type': file['file_type'],
+      },
+      'dependencies': deps,
+      'count': deps.length,
+      'internal_count': internal,
+      'external_count': external,
+    });
+  }
 }

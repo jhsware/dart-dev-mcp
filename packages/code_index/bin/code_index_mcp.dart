@@ -89,6 +89,8 @@ Operations:
 - index-file: Add or update a file entry in the code index
 - search: Search the index for files matching criteria
 - show-file: Show full indexed information for a specific file
+- dependents: Find all files that import a given path
+- dependencies: Get all imports for a file with internal/external classification
 - diff: Scan directories and report changed/added/deleted files''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -99,8 +101,7 @@ Operations:
         // index-file parameters
         'path': JsonSchema.string(
           description:
-              'Relative path from project root (for index-file, show-file)',
-        ),
+              'Relative path from project root (for index-file, show-file, dependents, dependencies)',
         ),
         'name': JsonSchema.string(
           description: 'File name (for index-file)',
@@ -192,7 +193,7 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-const _validOperations = ['index-file', 'search', 'show-file', 'diff'];
+const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'diff'];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
@@ -209,16 +210,20 @@ Future<CallToolResult> _handleCodeIndex(
   }
 
   try {
+    switch (operation) {
       case 'index-file':
         return indexOps.indexFile(args);
       case 'search':
         return searchOps.search(args);
       case 'show-file':
         return searchOps.showFile(args);
+      case 'dependents':
+        return searchOps.dependents(args);
+      case 'dependencies':
+        return searchOps.dependencies(args);
       case 'diff':
         return diffOps.diff(args);
       default:
-        return validationError('operation', 'Unknown operation: $operation');
         return validationError('operation', 'Unknown operation: $operation');
     }
   } on SqliteException catch (e) {
