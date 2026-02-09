@@ -92,6 +92,7 @@ Operations:
 - dependents: Find all files that import a given path
 - dependencies: Get all imports for a file with internal/external classification
 - search-annotations: Search TODO/FIXME/HACK annotations across the codebase
+- stats: Get aggregate statistics about the code index (files, exports, imports, annotations)
 - diff: Scan directories and report changed/added/deleted files''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -207,7 +208,7 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'diff'];
+const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff'];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
@@ -237,6 +238,8 @@ Future<CallToolResult> _handleCodeIndex(
         return searchOps.dependencies(args);
       case 'search-annotations':
         return searchOps.searchAnnotations(args);
+      case 'stats':
+        return searchOps.stats(args);
       case 'diff':
         return diffOps.diff(args);
       default:

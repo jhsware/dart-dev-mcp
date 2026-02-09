@@ -818,6 +818,126 @@ void main() {
     });
   });
 
+  group('Stats operation', () {
+    late IndexOperations indexOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database);
+
+      // Index files with varied metadata
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'description': 'Application entry point',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'main', 'kind': 'function'},
+          {'name': 'App', 'kind': 'class'},
+        ],
+        'variables': [
+          {'name': 'appVersion'},
+        ],
+        'imports': ['dart:io', 'lib/utils.dart'],
+        'annotations': [
+          {'kind': 'TODO', 'message': 'Add error handling', 'line': 10},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'description': 'Utility functions',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'helper', 'kind': 'function'},
+          {'name': 'StringUtils', 'kind': 'class'},
+        ],
+        'imports': ['dart:io', 'lib/models.dart'],
+        'annotations': [
+          {'kind': 'TODO', 'message': 'Optimize parsing', 'line': 5},
+          {'kind': 'FIXME', 'message': 'Memory leak', 'line': 20},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'lib/models.dart',
+        'name': 'models.dart',
+        'description': 'Data models',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'User', 'kind': 'class'},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'pubspec.yaml',
+        'name': 'pubspec.yaml',
+        'description': 'Package configuration',
+        'file_type': 'yaml',
+      });
+    });
+
+    test('returns file counts and breakdown by type', () {
+      final result = searchOps.stats({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"total": 4'));
+      expect(text, contains('"dart": 3'));
+      expect(text, contains('"yaml": 1'));
+    });
+
+    test('returns export counts and breakdown by kind', () {
+      final result = searchOps.stats({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // 5 exports: 2 functions, 3 classes
+      expect(text, contains('"exports"'));
+      expect(text, contains('"function": 2'));
+      expect(text, contains('"class": 3'));
+    });
+
+    test('returns variable count', () {
+      final result = searchOps.stats({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"variables"'));
+    });
+
+    test('returns import counts and top imported paths', () {
+      final result = searchOps.stats({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // 4 imports total: dart:io (2x), lib/utils.dart (1x), lib/models.dart (1x)
+      expect(text, contains('"top_imported"'));
+      expect(text, contains('dart:io'));
+      // dart:io should be first (highest count)
+      expect(text, contains('"count": 2'));
+    });
+
+    test('returns annotation counts and breakdown by kind', () {
+      final result = searchOps.stats({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"annotations"'));
+      expect(text, contains('"TODO": 2'));
+      expect(text, contains('"FIXME": 1'));
+    });
+
+    test('returns zero counts for empty index', () {
+      // Use a fresh database
+      final freshDb = initializeDatabase(':memory:');
+      final freshSearchOps = SearchOperations(database: freshDb);
+
+      final result = freshSearchOps.stats({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"total": 0'));
+      closeDatabase(freshDb);
+    });
+  });
+
   group('DiffOperations', () {
     late IndexOperations indexOps;
     late DiffOperations diffOps;

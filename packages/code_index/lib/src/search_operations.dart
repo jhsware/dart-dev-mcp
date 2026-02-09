@@ -493,4 +493,86 @@ class SearchOperations {
       'filters': filters,
     });
   }
+  /// Get aggregate statistics about the code index.
+  ///
+  /// Returns counts for files (by type), exports (by kind), variables,
+  /// imports (with top-imported paths), and annotations (by kind).
+  CallToolResult stats(Map<String, dynamic>? args) {
+    final topN = args?['limit'] as int? ?? 10;
+
+    // Files
+    final totalFiles =
+        database.select('SELECT COUNT(*) as cnt FROM files').first['cnt'] as int;
+    final filesByType = database.select(
+      'SELECT file_type, COUNT(*) as cnt FROM files GROUP BY file_type ORDER BY cnt DESC',
+    );
+
+    // Exports
+    final totalExports =
+        database.select('SELECT COUNT(*) as cnt FROM exports').first['cnt'] as int;
+    final exportsByKind = database.select(
+      'SELECT kind, COUNT(*) as cnt FROM exports GROUP BY kind ORDER BY cnt DESC',
+    );
+
+    // Variables
+    final totalVars =
+        database.select('SELECT COUNT(*) as cnt FROM variables').first['cnt'] as int;
+
+    // Imports
+    final totalImports =
+        database.select('SELECT COUNT(*) as cnt FROM imports').first['cnt'] as int;
+    final topImported = database.select('''
+      SELECT import_path, COUNT(*) as cnt FROM imports
+      GROUP BY import_path ORDER BY cnt DESC LIMIT ?
+    ''', [topN]);
+
+    // Annotations
+    final totalAnnotations =
+        database.select('SELECT COUNT(*) as cnt FROM annotations').first['cnt'] as int;
+    final annotationsByKind = database.select(
+      'SELECT kind, COUNT(*) as cnt FROM annotations GROUP BY kind ORDER BY cnt DESC',
+    );
+
+    return jsonResult({
+      'files': {
+        'total': totalFiles,
+        'by_type': Map.fromEntries(
+          filesByType.map((r) => MapEntry(
+            r['file_type'] as String? ?? 'unknown',
+            r['cnt'] as int,
+          )),
+        ),
+      },
+      'exports': {
+        'total': totalExports,
+        'by_kind': Map.fromEntries(
+          exportsByKind.map((r) => MapEntry(
+            r['kind'] as String,
+            r['cnt'] as int,
+          )),
+        ),
+      },
+      'variables': {
+        'total': totalVars,
+      },
+      'imports': {
+        'total': totalImports,
+        'top_imported': topImported
+            .map((r) => {
+                  'path': r['import_path'] as String,
+                  'count': r['cnt'] as int,
+                })
+            .toList(),
+      },
+      'annotations': {
+        'total': totalAnnotations,
+        'by_kind': Map.fromEntries(
+          annotationsByKind.map((r) => MapEntry(
+            r['kind'] as String,
+            r['cnt'] as int,
+          )),
+        ),
+      },
+    });
+  }
 }
