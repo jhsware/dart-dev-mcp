@@ -91,6 +91,7 @@ Operations:
 - show-file: Show full indexed information for a specific file
 - dependents: Find all files that import a given path
 - dependencies: Get all imports for a file with internal/external classification
+- search-annotations: Search TODO/FIXME/HACK annotations across the codebase
 - diff: Scan directories and report changed/added/deleted files''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -127,6 +128,11 @@ Operations:
           items: JsonSchema.string(),
           description: 'Import paths (for index-file)',
         ),
+        'annotations': JsonSchema.array(
+          items: JsonSchema.object(),
+          description:
+              'Code annotations (for index-file). Each item: {kind, message?, line?}. Kinds: TODO, FIXME, HACK, NOTE, DEPRECATED',
+        ),
         // search parameters
         'query': JsonSchema.string(
           description:
@@ -153,7 +159,15 @@ Operations:
           description: 'Search in file descriptions (for search)',
         ),
         'limit': JsonSchema.integer(
-          description: 'Max results (for search, default 50)',
+          description: 'Max results (for search, search-annotations, default 50)',
+        ),
+        // search-annotations parameters
+        'kind': JsonSchema.string(
+          description:
+              'Annotation kind filter: TODO, FIXME, HACK, NOTE, DEPRECATED (for search-annotations)',
+        ),
+        'message_pattern': JsonSchema.string(
+          description: 'Search in annotation messages (for search-annotations)',
         ),
         // diff parameters
         'directories': JsonSchema.array(
@@ -193,7 +207,7 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'diff'];
+const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'diff'];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
@@ -221,6 +235,8 @@ Future<CallToolResult> _handleCodeIndex(
         return searchOps.dependents(args);
       case 'dependencies':
         return searchOps.dependencies(args);
+      case 'search-annotations':
+        return searchOps.searchAnnotations(args);
       case 'diff':
         return diffOps.diff(args);
       default:

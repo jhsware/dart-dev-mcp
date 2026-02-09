@@ -267,6 +267,17 @@ class SearchOperations {
               })
           .toList(),
       'imports': imports.map((i) => i['import_path'] as String).toList(),
+      'annotations': database
+          .select(
+            'SELECT kind, message, line FROM annotations WHERE file_id = ? ORDER BY line',
+            [fileId],
+          )
+          .map((a) => {
+                'kind': a['kind'],
+                'message': a['message'],
+                'line': a['line'],
+              })
+          .toList(),
     });
   }
   /// Find all files that import a given path.
@@ -401,6 +412,85 @@ class SearchOperations {
       'count': deps.length,
       'internal_count': internal,
       'external_count': external,
+    });
+  }
+
+  /// Search annotations (TODO, FIXME, HACK, etc.) across the codebase.
+  ///
+  /// Supports filtering by kind, message pattern, file path pattern, and file type.
+  CallToolResult searchAnnotations(Map<String, dynamic>? args) {
+    final kind = args?['kind'] as String?;
+    final messagePattern = args?['message_pattern'] as String?;
+    final pathPattern = args?['path_pattern'] as String?;
+    final fileType = args?['file_type'] as String?;
+    final limit = args?['limit'] as int? ?? 100;
+
+    final conditions = <String>[];
+    final values = <Object?>[];
+    final filters = <String, dynamic>{};
+
+    if (kind != null && kind.isNotEmpty) {
+      conditions.add('a.kind = ?');
+      values.add(kind);
+      filters['kind'] = kind;
+    }
+
+    if (messagePattern != null && messagePattern.isNotEmpty) {
+      conditions.add('a.message LIKE ?');
+      values.add('%$messagePattern%');
+      filters['message_pattern'] = messagePattern;
+    }
+
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      conditions.add('f.path LIKE ?');
+      values.add('%$pathPattern%');
+      filters['path_pattern'] = pathPattern;
+    }
+
+    if (fileType != null && fileType.isNotEmpty) {
+      conditions.add('f.file_type = ?');
+      values.add(fileType);
+      filters['file_type'] = fileType;
+    }
+
+    final whereClause =
+        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+
+    final sql = '''
+      SELECT a.kind, a.message, a.line, f.path, f.name, f.file_type
+      FROM annotations a
+      JOIN files f ON a.file_id = f.id
+      $whereClause
+      ORDER BY f.path, a.line
+      LIMIT ?
+    ''';
+    values.add(limit);
+
+    final result = database.select(sql, values);
+
+    final annotations = result
+        .map((row) => {
+              'kind': row['kind'] as String,
+              'message': row['message'],
+              'line': row['line'],
+              'file_path': row['path'] as String,
+              'file_name': row['name'] as String,
+              'file_type': row['file_type'],
+            })
+        .toList();
+
+    // Summary by kind
+    final kindCounts = <String, int>{};
+    for (final a in annotations) {
+      final k = a['kind'] as String;
+      kindCounts[k] = (kindCounts[k] ?? 0) + 1;
+    }
+
+    return jsonResult({
+      'annotations': annotations,
+      'count': annotations.length,
+      'by_kind': kindCounts,
+      'filters': filters,
     });
   }
 }

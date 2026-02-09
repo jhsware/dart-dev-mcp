@@ -46,6 +46,7 @@ void main() {
       expect(tableNames, contains('variables'));
       expect(tableNames, contains('imports'));
       expect(tableNames, contains('schema_metadata'));
+      expect(tableNames, contains('annotations'));
     });
 
     test('sets schema version', () {
@@ -622,6 +623,198 @@ void main() {
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('path is required'));
+    });
+  });
+
+  group('Annotation tracking', () {
+    late IndexOperations indexOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database);
+
+      // Index files with annotations
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'description': 'Application entry point',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'main', 'kind': 'function'},
+        ],
+        'annotations': [
+          {'kind': 'TODO', 'message': 'Add error handling', 'line': 10},
+          {'kind': 'FIXME', 'message': 'Memory leak in loop', 'line': 25},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'description': 'Utility functions',
+        'file_type': 'dart',
+        'annotations': [
+          {'kind': 'TODO', 'message': 'Optimize string parsing', 'line': 5},
+          {'kind': 'HACK', 'message': 'Workaround for platform bug', 'line': 42},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'pubspec.yaml',
+        'name': 'pubspec.yaml',
+        'description': 'Package configuration',
+        'file_type': 'yaml',
+      });
+    });
+
+    test('index-file stores annotations and reports count', () {
+      final result = indexOps.indexFile({
+        'path': 'lib/models.dart',
+        'name': 'models.dart',
+        'file_type': 'dart',
+        'annotations': [
+          {'kind': 'TODO', 'message': 'Add validation', 'line': 3},
+        ],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"annotation_count": 1'));
+    });
+
+    test('index-file with no annotations reports zero count', () {
+      final result = indexOps.indexFile({
+        'path': 'lib/models.dart',
+        'name': 'models.dart',
+        'file_type': 'dart',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"annotation_count": 0'));
+    });
+
+    test('showFile includes annotations', () {
+      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"annotations"'));
+      expect(text, contains('"TODO"'));
+      expect(text, contains('"Add error handling"'));
+      expect(text, contains('"FIXME"'));
+      expect(text, contains('"Memory leak in loop"'));
+    });
+
+    test('showFile returns empty annotations for file without annotations', () {
+      final result = searchOps.showFile({'path': 'pubspec.yaml'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"annotations": []'));
+    });
+
+    test('search-annotations returns all annotations', () {
+      final result = searchOps.searchAnnotations({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 4'));
+      expect(text, contains('"by_kind"'));
+    });
+
+    test('search-annotations filters by kind', () {
+      final result = searchOps.searchAnnotations({'kind': 'TODO'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 2'));
+      expect(text, contains('"Add error handling"'));
+      expect(text, contains('"Optimize string parsing"'));
+      expect(text, isNot(contains('"FIXME"')));
+      expect(text, isNot(contains('"HACK"')));
+    });
+
+    test('search-annotations filters by message_pattern', () {
+      final result =
+          searchOps.searchAnnotations({'message_pattern': 'leak'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 1'));
+      expect(text, contains('"Memory leak in loop"'));
+    });
+
+    test('search-annotations filters by path_pattern', () {
+      final result =
+          searchOps.searchAnnotations({'path_pattern': 'utils'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 2'));
+      expect(text, contains('lib/utils.dart'));
+      expect(text, isNot(contains('lib/main.dart')));
+    });
+
+    test('search-annotations filters by file_type', () {
+      final result =
+          searchOps.searchAnnotations({'file_type': 'dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 4'));
+    });
+
+    test('search-annotations returns by_kind summary', () {
+      final result = searchOps.searchAnnotations({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"TODO": 2'));
+      expect(text, contains('"FIXME": 1'));
+      expect(text, contains('"HACK": 1'));
+    });
+
+    test('annotations are cleaned up on file re-index', () {
+      // Verify initial state
+      final before = searchOps.searchAnnotations({'kind': 'TODO'});
+      final beforeText = before.content.first.toJson()['text'] as String;
+      expect(beforeText, contains('"count": 2'));
+
+      // Re-index main.dart with different annotations
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'description': 'Application entry point',
+        'file_type': 'dart',
+        'annotations': [
+          {'kind': 'NOTE', 'message': 'Refactored', 'line': 1},
+        ],
+      });
+
+      // Old annotations should be gone, new one present
+      final after = searchOps.searchAnnotations({});
+      final afterText = after.content.first.toJson()['text'] as String;
+
+      // Should now have 3: 1 NOTE (main.dart) + 1 TODO + 1 HACK (utils.dart)
+      expect(afterText, contains('"count": 3'));
+      expect(afterText, contains('"NOTE"'));
+      expect(afterText, isNot(contains('"Add error handling"')));
+      expect(afterText, isNot(contains('"FIXME"')));
+    });
+
+    test('annotations are removed when file is deleted', () {
+      // Delete the file from disk
+      File(p.join(tempDir.path, 'lib', 'main.dart')).deleteSync();
+
+      // Use diff to remove deleted files
+      final diffOps =
+          DiffOperations(database: database, workingDir: workingDir);
+      diffOps.diff({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+        'remove_deleted': true,
+      });
+
+      // Annotations for deleted file should be gone (CASCADE)
+      final result = searchOps.searchAnnotations({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // Only utils.dart annotations should remain
+      expect(text, contains('"count": 2'));
+      expect(text, isNot(contains('"Add error handling"')));
+      expect(text, isNot(contains('"FIXME"')));
     });
   });
 

@@ -26,6 +26,7 @@ class IndexOperations {
     final exports = args?['exports'] as List<dynamic>?;
     final variables = args?['variables'] as List<dynamic>?;
     final imports = args?['imports'] as List<dynamic>?;
+    final annotations = args?['annotations'] as List<dynamic>?;
 
     if (requireString(path, 'path') case final error?) {
       return error;
@@ -62,6 +63,8 @@ class IndexOperations {
         database.execute('DELETE FROM imports WHERE file_id = ?', [fileId]);
         database
             .execute('DELETE FROM code_search_fts WHERE file_id = ?', [fileId]);
+        database
+            .execute('DELETE FROM annotations WHERE file_id = ?', [fileId]);
 
         // Update file record
         database.execute('''
@@ -134,6 +137,24 @@ class IndexOperations {
         }
       }
 
+      // Insert annotations (TODO, FIXME, HACK, etc.)
+      if (annotations != null) {
+        for (final annotation in annotations) {
+          final a = annotation as Map<String, dynamic>;
+          database.execute('''
+            INSERT INTO annotations (id, file_id, kind, message, line, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          ''', [
+            _uuid.v4(),
+            fileId,
+            a['kind'] as String,
+            a['message'],
+            a['line'],
+            now,
+          ]);
+        }
+      }
+
       // Sync FTS table
       final exportNames = exports
               ?.map((e) => (e as Map<String, dynamic>)['name'] as String?)
@@ -162,6 +183,7 @@ class IndexOperations {
         'export_count': exports?.length ?? 0,
         'variable_count': variables?.length ?? 0,
         'import_count': imports?.length ?? 0,
+        'annotation_count': annotations?.length ?? 0,
       },
     });
   }

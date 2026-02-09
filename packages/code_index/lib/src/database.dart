@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 2;
+const int currentSchemaVersion = 3;
 
 /// Initialize the code-index database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -125,6 +125,25 @@ Database initializeDatabase(String dbPath) {
     )
   ''');
 
+  // Create annotations table for TODO/FIXME/HACK tracking
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS annotations (
+      id TEXT PRIMARY KEY,
+      file_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      message TEXT,
+      line INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+    )
+  ''');
+
+  // Create indexes for annotations table
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_annotations_file_id ON annotations(file_id)');
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_annotations_kind ON annotations(kind)');
+
   // Run migrations to ensure schema is up to date
   _runMigrations(database);
 
@@ -181,6 +200,15 @@ void _runMigrations(Database database) {
 
     _setSchemaVersion(database, 2);
     logInfo('code-index', 'Migration to schema version 2 complete.');
+  }
+
+  // Migration from version 2 to version 3: Add annotations table
+  if (currentVersion < 3) {
+    logInfo('code-index', 'Running migration to schema version 3...');
+    // Table and indexes are created via CREATE IF NOT EXISTS above,
+    // so just bump the version.
+    _setSchemaVersion(database, 3);
+    logInfo('code-index', 'Migration to schema version 3 complete.');
   }
 
   // Verify we're at the expected version
