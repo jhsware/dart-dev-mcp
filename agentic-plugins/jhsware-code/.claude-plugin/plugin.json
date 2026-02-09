@@ -1,0 +1,9 @@
+{
+  "name": "jhsware-code",
+  "description": "Opinionated coding environment.",
+  "version": "0.3",
+  "author": {
+    "name": "Sebastian Ware",
+    "email": "sebastian@urbantalk.se"
+  }
+}
