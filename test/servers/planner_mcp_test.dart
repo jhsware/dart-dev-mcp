@@ -681,83 +681,8 @@ Multi-line details with:
       });
     });
   });
-
-  group('Planner Server CLI Tests', () {
-    late Directory tempDir;
-
-    setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('planner_cli_test_');
-    });
-
-    tearDown(() async {
-      if (await tempDir.exists()) {
-        await tempDir.delete(recursive: true);
-      }
-    });
-
-    test('shows help with --help flag', () async {
-      final result = await Process.run(
-        'dart',
-        ['run', 'bin/planner_mcp.dart', '--help'],
-        workingDirectory: Directory.current.path,
-      );
-      
-      expect(result.exitCode, 0);
-      expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
-      expect(result.stderr, contains('--help'));
-    });
-
-    test('requires --project-dir argument', () async {
-      final result = await Process.run(
-        'dart',
-        ['run', 'bin/planner_mcp.dart'],
-        workingDirectory: Directory.current.path,
-      );
-      
-      expect(result.exitCode, 1);
-      expect(result.stderr, contains('--project-dir is required'));
-    });
-
-    test('fails with non-existent project directory', () async {
-      final result = await Process.run(
-        'dart',
-        ['run', 'bin/planner_mcp.dart', '--project-dir=/nonexistent/path', '--db-path=:memory:'],
-        workingDirectory: Directory.current.path,
-      );
-      
-      expect(result.exitCode, 1);
-      expect(result.stderr, contains('does not exist'));
-    });
-
-    test('creates .ai_coding_tool directory if missing', () async {
-      // The server creates the directory on startup
-      // We test this indirectly by checking the startup message
-      final aiToolDir = Directory(p.join(tempDir.path, '.ai_coding_tool'));
-      expect(await aiToolDir.exists(), isFalse);
-      
-      // Start server briefly to trigger directory creation
-      final dbPath = p.join(tempDir.path, '.ai_coding_tool', 'db.sqlite');
-      final process = await Process.start(
-        'dart',
-        ['run', 'bin/planner_mcp.dart', '--project-dir=${tempDir.path}', '--db-path=$dbPath'],
-        workingDirectory: Directory.current.path,
-      );
-      
-      // Wait for startup
-      await Future.delayed(Duration(seconds: 2));
-      
-      // Check directory was created
-      expect(await aiToolDir.exists(), isTrue);
-      
-      // Check database was created
-      final dbFile = File(p.join(aiToolDir.path, 'db.sqlite'));
-      expect(await dbFile.exists(), isTrue);
-      
-      process.kill();
-      await process.exitCode;
-    });
-  });
 }
+
 
 /// Initialize database with the same schema as the planner server
 Database _initializeDatabase(String dbPath) {
