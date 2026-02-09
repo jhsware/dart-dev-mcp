@@ -60,6 +60,8 @@ class IndexOperations {
         database.execute('DELETE FROM exports WHERE file_id = ?', [fileId]);
         database.execute('DELETE FROM variables WHERE file_id = ?', [fileId]);
         database.execute('DELETE FROM imports WHERE file_id = ?', [fileId]);
+        database
+            .execute('DELETE FROM code_search_fts WHERE file_id = ?', [fileId]);
 
         // Update file record
         database.execute('''
@@ -131,6 +133,22 @@ class IndexOperations {
           ]);
         }
       }
+
+      // Sync FTS table
+      final exportNames = exports
+              ?.map((e) => (e as Map<String, dynamic>)['name'] as String?)
+              .where((n) => n != null)
+              .join(' ') ??
+          '';
+      final variableNames = variables
+              ?.map((v) => (v as Map<String, dynamic>)['name'] as String?)
+              .where((n) => n != null)
+              .join(' ') ??
+          '';
+      database.execute('''
+        INSERT INTO code_search_fts (file_id, name, description, export_names, variable_names, file_path)
+        VALUES (?, ?, ?, ?, ?, ?)
+      ''', [fileId, name, description ?? '', exportNames, variableNames, path]);
     });
 
     return jsonResult({

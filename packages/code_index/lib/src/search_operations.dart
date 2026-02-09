@@ -26,17 +26,16 @@ class SearchOperations {
     final conditions = <String>[];
     final values = <Object?>[];
     final filters = <String, dynamic>{};
+    var useFts = false;
 
-    // General text search across multiple fields
+    // General text search — use FTS5 for ranked results
     if (query != null && query.isNotEmpty) {
-      joins.add('LEFT JOIN exports e ON e.file_id = f.id');
-      joins.add('LEFT JOIN variables v ON v.file_id = f.id');
-      final likeQuery = '%$query%';
-      conditions.add('''(
-        f.name LIKE ? OR f.description LIKE ? OR f.path LIKE ?
-        OR e.name LIKE ? OR v.name LIKE ?
-      )''');
-      values.addAll([likeQuery, likeQuery, likeQuery, likeQuery, likeQuery]);
+      // Escape FTS5 special characters and wrap each token with *
+      final ftsQuery = _buildFtsQuery(query);
+      joins.add('JOIN code_search_fts fts ON fts.file_id = f.id');
+      conditions.add('code_search_fts MATCH ?');
+      values.add(ftsQuery);
+      useFts = true;
       filters['query'] = query;
     }
 
@@ -92,24 +91,82 @@ class SearchOperations {
       filters['description_pattern'] = descriptionPattern;
     }
 
-    // Build the query - returns rich file metadata
+    // Build the query — use BM25 ranking when FTS is active
     final joinClause = joins.join('\n');
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final orderClause = useFts ? 'ORDER BY fts.rank' : 'ORDER BY f.path';
 
     final sql = '''
       SELECT DISTINCT f.id, f.path, f.name, f.description, f.file_type
       FROM files f
       $joinClause
       $whereClause
-      ORDER BY f.path
+      $orderClause
       LIMIT ?
     ''';
     values.add(limit);
 
-    final result = database.select(sql, values);
+    ResultSet result;
+    try {
+      result = database.select(sql, values);
+    } on SqliteException {
+      // FTS syntax error — fall back to LIKE search
+      return _fallbackLikeSearch(query!, filters, limit);
+    }
 
-    // Build rich results with exports summary
+    return _buildRichResults(result, filters);
+  }
+
+  /// Build FTS5 query string from user input.
+  ///
+  /// Escapes special FTS5 characters and adds prefix matching (*).
+  String _buildFtsQuery(String query) {
+    // Split on whitespace, escape each token, add prefix wildcard
+    final tokens = query.split(RegExp(r'\s+'));
+    final escaped = tokens
+        .where((t) => t.isNotEmpty)
+        .map((t) {
+          // Escape double quotes in the token
+          final safe = t.replaceAll('"', '""');
+          // Wrap in quotes for safety, add * for prefix matching
+          return '"$safe"*';
+        })
+        .join(' ');
+    return escaped;
+  }
+
+  /// Fallback LIKE-based search when FTS query fails.
+  CallToolResult _fallbackLikeSearch(
+    String query,
+    Map<String, dynamic> filters,
+    int limit,
+  ) {
+    final likeQuery = '%$query%';
+    final sql = '''
+      SELECT DISTINCT f.id, f.path, f.name, f.description, f.file_type
+      FROM files f
+      LEFT JOIN exports e ON e.file_id = f.id
+      LEFT JOIN variables v ON v.file_id = f.id
+      WHERE (
+        f.name LIKE ? OR f.description LIKE ? OR f.path LIKE ?
+        OR e.name LIKE ? OR v.name LIKE ?
+      )
+      ORDER BY f.path
+      LIMIT ?
+    ''';
+    final result = database.select(
+      sql,
+      [likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, limit],
+    );
+    return _buildRichResults(result, filters);
+  }
+
+  /// Build rich results with exports summary from a result set.
+  CallToolResult _buildRichResults(
+    ResultSet result,
+    Map<String, dynamic> filters,
+  ) {
     final files = <Map<String, dynamic>>[];
     for (final row in result) {
       final fileId = row['id'] as String;

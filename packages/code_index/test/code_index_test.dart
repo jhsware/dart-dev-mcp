@@ -51,7 +51,7 @@ void main() {
     test('sets schema version', () {
       final result = database.select(
           "SELECT value FROM schema_metadata WHERE key = 'schema_version'");
-      expect(result.first['value'], '1');
+      expect(result.first['value'], '$currentSchemaVersion');
     });
 
     test('enables foreign keys', () {
@@ -266,6 +266,125 @@ void main() {
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"count": 1'));
+    });
+  });
+
+  group('FTS5 search', () {
+    late IndexOperations indexOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database);
+
+      // Index files with varied descriptions for ranking tests
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'description': 'Application entry point',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'main', 'kind': 'function'},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'description': 'Utility functions for string processing',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'helper', 'kind': 'function'},
+          {'name': 'StringUtils', 'kind': 'class'},
+        ],
+        'variables': [
+          {'name': 'defaultLocale'},
+        ],
+      });
+
+      indexOps.indexFile({
+        'path': 'lib/models.dart',
+        'name': 'models.dart',
+        'description': 'Data models',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'User', 'kind': 'class'},
+          {'name': 'UserUtils', 'kind': 'class'},
+        ],
+      });
+    });
+
+    test('finds files via FTS query', () {
+      final result = searchOps.search({'query': 'utils'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('FTS search finds by export names', () {
+      final result = searchOps.search({'query': 'StringUtils'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('FTS search finds by variable names', () {
+      final result = searchOps.search({'query': 'defaultLocale'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('FTS search finds by description words', () {
+      final result = searchOps.search({'query': 'entry'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/main.dart'));
+    });
+
+    test('FTS search finds by file path', () {
+      final result = searchOps.search({'query': 'models'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/models.dart'));
+    });
+
+    test('FTS search returns no results for unmatched query', () {
+      final result = searchOps.search({'query': 'zzzznonexistent'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 0'));
+    });
+
+    test('FTS syncs on file update', () {
+      // Update utils.dart with new export
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'description': 'Utility functions for string processing',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'helper', 'kind': 'function'},
+          {'name': 'StringUtils', 'kind': 'class'},
+          {'name': 'DateUtils', 'kind': 'class'},
+        ],
+      });
+
+      // Should find by new export name
+      final result = searchOps.search({'query': 'DateUtils'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('FTS can combine with filter parameters', () {
+      final result = searchOps.search({
+        'query': 'utils',
+        'file_type': 'dart',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('lib/utils.dart'));
     });
   });
 

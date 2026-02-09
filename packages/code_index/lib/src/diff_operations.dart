@@ -96,6 +96,11 @@ class DiffOperations {
     if (removeDeleted && deleted.isNotEmpty) {
       withRetryTransactionSync(database, () {
         for (final path in deleted) {
+          // Delete FTS entry before deleting the file (FTS doesn't cascade)
+          database.execute(
+            'DELETE FROM code_search_fts WHERE file_id = (SELECT id FROM files WHERE path = ?)',
+            [path],
+          );
           database.execute('DELETE FROM files WHERE path = ?', [path]);
         }
       });
