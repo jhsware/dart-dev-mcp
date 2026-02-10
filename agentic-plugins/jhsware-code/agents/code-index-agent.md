@@ -2,7 +2,7 @@
 name: code-index-agent
 description: Index code files for quick and token efficient exploration and search in code base.
 tools: filesystem, code-index
-disallowed-tools: Bash, Read, Write, Edit
+disallowed-tools: Bash, Read, Write, Edit, Cowork
 permission-mode: dontAsk
 model: haiku
 skills:

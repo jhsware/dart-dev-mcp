@@ -1,7 +1,8 @@
 ---
 name: planner-plan
 description: Create a plan and use the planner tool to create one or more tasks with steps that describe how to perform the plan.
-allowed-tools: planner, filesystem, git, fetch, convert, flutter, dart
+allowed-tools: planner, filesystem, git, fetch, convert, flutter-runner, dart-runner
+model: opus
 context: fork
 agent: planner-agent
 ---
@@ -23,6 +24,6 @@ Use filesystem (dart-dev-mcp-fs) to read, search and edit files.
 Use git (dart-dev-mcp-git) for git operations.
 Use flutter (dart-dev-mcp-flutter-runner) or dart (dart-dev-mcp-dart-runner) to run code test, analyze or build the project.
 
-Do not use native tools: Bash, Read, Write, Edit.
+Do not use native tools: Bash, Read, Write, Edit, Git.
 Do not delete files, ask user to delete them.
 Do not run bash commands, ask user to do this.
