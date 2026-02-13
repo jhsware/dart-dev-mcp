@@ -9,6 +9,7 @@
 library;
 
 export 'database.dart';
+export 'git_log_operations.dart';
 export 'step_operations.dart';
 export 'task_operations.dart';
 export 'timeline_operations.dart';

@@ -77,6 +77,10 @@ void main(List<String> arguments) async {
   final timelineOps = TimelineOperations(
     transactionLogRepository: transactionLogRepository,
   );
+  final gitLogOps = GitLogOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
 
   logInfo('planner', 'Planner MCP Server starting...');
   logInfo('planner', 'Project path: ${workingDir.path}');
@@ -174,7 +178,7 @@ Step statuses: todo, started, canceled, done''',
       },
     ),
     callback: (args, extra) => _handlePlanner(
-        args, workingDir, database, taskOps, stepOps, timelineOps),
+        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps),
   );
 
   final transport = StdioServerTransport();
@@ -207,9 +211,10 @@ const _validOperations = [
   'show-step',
   'update-step',
   'get-subtask-prompt',
+  'log-commit',
+  'log-merge',
   'get-timeline',
   'get-audit-trail',
-];
 
 Future<CallToolResult> _handlePlanner(
   Map<String, dynamic> args,
@@ -218,6 +223,7 @@ Future<CallToolResult> _handlePlanner(
   TaskOperations taskOps,
   StepOperations stepOps,
   TimelineOperations timelineOps,
+  GitLogOperations gitLogOps,
 ) async {
   final operation = args['operation'] as String?;
 
@@ -250,6 +256,10 @@ Future<CallToolResult> _handlePlanner(
         return stepOps.updateStep(args);
       case 'get-subtask-prompt':
         return stepOps.getSubtaskPrompt(args);
+      case 'log-commit':
+        return gitLogOps.logCommit(args);
+      case 'log-merge':
+        return gitLogOps.logMerge(args);
       case 'get-timeline':
         return timelineOps.getTimeline(args);
       case 'get-audit-trail':
