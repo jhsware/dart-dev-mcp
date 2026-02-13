@@ -206,6 +206,7 @@ const _validOperations = [
   'add-step',
   'show-step',
   'update-step',
+  'get-subtask-prompt',
   'get-timeline',
   'get-audit-trail',
 ];
@@ -247,6 +248,8 @@ Future<CallToolResult> _handlePlanner(
         return stepOps.showStep(args);
       case 'update-step':
         return stepOps.updateStep(args);
+      case 'get-subtask-prompt':
+        return stepOps.getSubtaskPrompt(args);
       case 'get-timeline':
         return timelineOps.getTimeline(args);
       case 'get-audit-trail':
