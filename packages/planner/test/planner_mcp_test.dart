@@ -680,6 +680,112 @@ Multi-line details with:
         expect(result.first['updated_at'], isoString);
       });
     });
+
+    group('Sub-task References', () {
+      final uuid = Uuid();
+      late String taskId;
+
+      setUp(() {
+        taskId = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [taskId, 'project-1', 'Parent Task', 'todo', now, now]);
+      });
+
+      test('steps table has sub_task_id column', () {
+        final result = db.select(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='steps'"
+        );
+        expect(result, isNotEmpty);
+        final schema = result.first['sql'] as String;
+        expect(schema, contains('sub_task_id TEXT'));
+      });
+
+      test('can add a step with sub_task_id', () {
+        final stepId = uuid.v4();
+        final subTaskId = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
+
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, sub_task_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [stepId, taskId, 'Step with sub-task', 'todo', subTaskId, now, now]);
+
+        final result = db.select('SELECT * FROM steps WHERE id = ?', [stepId]);
+        expect(result, hasLength(1));
+        expect(result.first['sub_task_id'], subTaskId);
+      });
+
+      test('sub_task_id defaults to null', () {
+        final stepId = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
+
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [stepId, taskId, 'Step without sub-task', 'todo', now, now]);
+
+        final result = db.select('SELECT sub_task_id FROM steps WHERE id = ?', [stepId]);
+        expect(result.first['sub_task_id'], isNull);
+      });
+
+      test('can update step sub_task_id', () {
+        final stepId = uuid.v4();
+        final subTaskId = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
+
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [stepId, taskId, 'Step to link', 'todo', now, now]);
+
+        // Initially null
+        var result = db.select('SELECT sub_task_id FROM steps WHERE id = ?', [stepId]);
+        expect(result.first['sub_task_id'], isNull);
+
+        // Update to set sub_task_id
+        db.execute(
+          'UPDATE steps SET sub_task_id = ?, updated_at = ? WHERE id = ?',
+          [subTaskId, now, stepId]
+        );
+
+        result = db.select('SELECT sub_task_id FROM steps WHERE id = ?', [stepId]);
+        expect(result.first['sub_task_id'], subTaskId);
+      });
+
+      test('can query steps with sub_task_id for show-task listing', () {
+        final now = DateTime.now().toUtc().toIso8601String();
+        final subTaskId1 = uuid.v4();
+        final subTaskId2 = uuid.v4();
+
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, sub_task_id, sort_order, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', [uuid.v4(), taskId, 'Step 1', 'todo', subTaskId1, 1, now, now]);
+
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, sub_task_id, sort_order, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', [uuid.v4(), taskId, 'Step 2', 'todo', subTaskId2, 2, now, now]);
+
+        db.execute('''
+          INSERT INTO steps (id, task_id, title, status, sort_order, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [uuid.v4(), taskId, 'Step 3', 'todo', 3, now, now]);
+
+        final steps = db.select(
+          'SELECT id, title, status, sub_task_id FROM steps WHERE task_id = ? ORDER BY COALESCE(sort_order, 9999999), created_at',
+          [taskId]
+        );
+
+        expect(steps, hasLength(3));
+        expect(steps[0]['sub_task_id'], subTaskId1);
+        expect(steps[1]['sub_task_id'], subTaskId2);
+        expect(steps[2]['sub_task_id'], isNull);
+      });
+    });
   });
 
   group('Planner Server CLI Tests', () {
@@ -785,6 +891,8 @@ Database _initializeDatabase(String dbPath) {
       status TEXT NOT NULL DEFAULT 'todo',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      sort_order INTEGER,
+      sub_task_id TEXT,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     )
   ''');
