@@ -23,6 +23,7 @@ class StepOperations {
     final taskId = args?['task_id'] as String?;
     final title = args?['title'] as String?;
     final details = args?['details'] as String?;
+    final subTaskId = args?['sub_task_id'] as String?;
     // Normalize legacy statuses for backward compatibility
     final status = normalizeStepStatus(args?['status'] as String? ?? 'todo');
 
@@ -61,6 +62,7 @@ class StepOperations {
       'details': details,
       'status': status,
       'sort_order': sortOrder,
+      'sub_task_id': subTaskId,
       'created_at': now,
       'updated_at': now,
     };
@@ -68,9 +70,9 @@ class StepOperations {
     // Wrap INSERT and transaction log in atomic transaction with retry
     withRetryTransactionSync(database, () {
       database.execute('''
-        INSERT INTO steps (id, task_id, title, details, status, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [id, taskId, title, details, status, sortOrder, now, now]);
+        INSERT INTO steps (id, task_id, title, details, status, sort_order, sub_task_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''', [id, taskId, title, details, status, sortOrder, subTaskId, now, now]);
 
       transactionLogRepository.log(
         entityType: EntityType.step,
@@ -119,6 +121,7 @@ class StepOperations {
       'title': step['title'],
       'details': step['details'],
       'status': normalizeStepStatus(step['status'] as String),
+      'sub_task_id': step['sub_task_id'],
       'created_at': step['created_at'],
       'updated_at': step['updated_at'],
     });
@@ -170,6 +173,11 @@ class StepOperations {
       values.add(status);
     }
 
+    if (args?.containsKey('sub_task_id') == true) {
+      updates.add('sub_task_id = ?');
+      values.add(args!['sub_task_id']);
+    }
+
     if (updates.isEmpty) {
       return validationError('fields', 'No fields to update');
     }
@@ -214,5 +222,69 @@ class StepOperations {
 
     // Return updated step
     return showStep(args);
+  }
+
+  /// Get sub-task prompt for a step that references a sub-task.
+  ///
+  /// This is the intended entry point for an LLM to start working on a
+  /// sub-task. It fetches the sub-task's full details (title, details, steps)
+  /// so the LLM has everything needed to understand the work involved.
+  CallToolResult getSubtaskPrompt(Map<String, dynamic>? args) {
+    final id = args?['id'] as String?;
+
+    if (requireString(id, 'id') case final error?) {
+      return error;
+    }
+
+    // Look up the step
+    final stepResult = database.select(
+        'SELECT id, task_id, sub_task_id FROM steps WHERE id = ?', [id]);
+    if (stepResult.isEmpty) {
+      return notFoundError('Step', id!);
+    }
+
+    final step = stepResult.first;
+    final subTaskId = step['sub_task_id'] as String?;
+
+    // Check that the step has a linked sub-task
+    if (subTaskId == null) {
+      return textResult(
+          'Error: Step has no linked sub-task. Only steps with a sub_task_id can be used with get-subtask-prompt.');
+    }
+
+    // Look up the sub-task
+    final taskResult =
+        database.select('SELECT * FROM tasks WHERE id = ?', [subTaskId]);
+    if (taskResult.isEmpty) {
+      return notFoundError('Task (sub-task)', subTaskId);
+    }
+
+    final task = taskResult.first;
+
+    // Get steps for the sub-task
+    final stepsResult = database.select(
+        'SELECT id, title, details, status, sub_task_id FROM steps WHERE task_id = ? ORDER BY COALESCE(sort_order, 9999999), created_at',
+        [subTaskId]);
+
+    final steps = stepsResult
+        .map((row) => {
+              'id': row['id'],
+              'title': row['title'],
+              'details': row['details'],
+              'status': normalizeStepStatus(row['status'] as String),
+              'sub_task_id': row['sub_task_id'],
+            })
+        .toList();
+
+    return jsonResult({
+      'id': task['id'],
+      'project_id': task['project_id'],
+      'title': task['title'],
+      'details': task['details'],
+      'status': task['status'],
+      'created_at': task['created_at'],
+      'updated_at': task['updated_at'],
+      'steps': steps,
+    });
   }
 }

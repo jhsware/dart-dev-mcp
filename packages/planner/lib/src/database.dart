@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 2;
+const int currentSchemaVersion = 3;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -55,6 +55,8 @@ Database initializeDatabase(String dbPath) {
       status TEXT NOT NULL DEFAULT 'todo',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      sort_order INTEGER,
+      sub_task_id TEXT,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     )
   ''');
@@ -99,11 +101,13 @@ void _setSchemaVersion(Database database, int version) {
 void _runMigrations(Database database) {
   final currentVersion = _getSchemaVersion(database);
 
-  // Migration from version 0 (fresh) to version 1
-  if (currentVersion < 1) {
-    logInfo('planner', 'Running migration to schema version 1...');
-    _setSchemaVersion(database, 1);
-    logInfo('planner', 'Migration to schema version 1 complete.');
+  // For a fresh database (version 0), the CREATE TABLE statements above
+  // already include the full current schema, so we just set the version
+  // to currentSchemaVersion and skip incremental migrations.
+  if (currentVersion == 0) {
+    logInfo('planner', 'Fresh database, setting schema version to $currentSchemaVersion.');
+    _setSchemaVersion(database, currentSchemaVersion);
+    return;
   }
 
   // Migration from version 1 to version 2
@@ -113,6 +117,15 @@ void _runMigrations(Database database) {
     database.execute('ALTER TABLE steps ADD COLUMN sort_order INTEGER');
     _setSchemaVersion(database, 2);
     logInfo('planner', 'Migration to schema version 2 complete.');
+  }
+
+  // Migration from version 2 to version 3
+  // Add sub_task_id column for step-to-subtask references
+  if (currentVersion < 3) {
+    logInfo('planner', 'Running migration to schema version 3...');
+    database.execute('ALTER TABLE steps ADD COLUMN sub_task_id TEXT');
+    _setSchemaVersion(database, 3);
+    logInfo('planner', 'Migration to schema version 3 complete.');
   }
 
   // Verify we're at the expected version

@@ -77,6 +77,10 @@ void main(List<String> arguments) async {
   final timelineOps = TimelineOperations(
     transactionLogRepository: transactionLogRepository,
   );
+  final gitLogOps = GitLogOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
 
   logInfo('planner', 'Planner MCP Server starting...');
   logInfo('planner', 'Project path: ${workingDir.path}');
@@ -107,14 +111,19 @@ Operations:
 - show-task-memory: Show task memory/notes
 - update-task-memory: Update task memory/notes
 - list-tasks: List all tasks (optional filters: project_id, status)
-- add-step: Add a step to a task
+- add-step: Add a step to a task. Use sub_task_id to link the step to a sub-task (for parent task pattern).
 - show-step: Show step details
 - update-step: Update step properties
+- get-subtask-prompt: Get the sub-task details for a step in a parent task. Use this operation to fetch the sub-task details when ready to work on it. Requires: id (step ID). Returns error if step has no linked sub-task.
+- log-commit: Log a git commit to the timeline. Records commits so they appear in the timeline viewer alongside task activity. Requires: commit_hash, branch, task_id. Optional: step_id, message.
+- log-merge: Log a git branch merge to the timeline. Records merges so they appear in the timeline viewer. Requires: commit_hash, source_branch, target_branch, task_id.
 - get-timeline: Get recent activity timeline (optional: limit, project_id, entity_type, before, after)
 - get-audit-trail: Get detailed change history for an entity (requires: entity_type, id)
 
 Task statuses: backlog, todo, draft, started, canceled, done, merged
-Step statuses: todo, started, canceled, done''',
+Step statuses: todo, started, canceled, done
+
+Parent task pattern: Prefix parent task title with "Parent:". Each step references a sub-task via sub_task_id. Use get-subtask-prompt to fetch the sub-task details for a step when ready to work on it.''',
     inputSchema: ToolInputSchema(
       properties: {
         'operation': JsonSchema.string(
@@ -126,7 +135,7 @@ Step statuses: todo, started, canceled, done''',
               'Task or step ID (for show/update/audit-trail operations)',
         ),
         'task_id': JsonSchema.string(
-          description: 'Parent task ID (for add-step)',
+          description: 'Parent task ID (for add-step, log-commit, log-merge)',
         ),
         'project_id': JsonSchema.string(
           description:
@@ -137,6 +146,10 @@ Step statuses: todo, started, canceled, done''',
         ),
         'details': JsonSchema.string(
           description: 'Detailed description for task or step',
+        ),
+        'sub_task_id': JsonSchema.string(
+          description:
+              'Optional reference to another task ID (sub-task). Used when creating parent tasks whose steps reference sub-tasks. Use get-subtask-prompt to fetch the sub-task details.',
         ),
         'status': JsonSchema.string(
           description:
@@ -171,10 +184,28 @@ Step statuses: todo, started, canceled, done''',
           description:
               'Return entries after this ISO datetime (for get-timeline)',
         ),
+        'commit_hash': JsonSchema.string(
+          description: 'Git commit hash (for log-commit, log-merge)',
+        ),
+        'branch': JsonSchema.string(
+          description: 'Git branch name (for log-commit)',
+        ),
+        'source_branch': JsonSchema.string(
+          description: 'Source branch name being merged (for log-merge)',
+        ),
+        'target_branch': JsonSchema.string(
+          description: 'Target branch name being merged into (for log-merge)',
+        ),
+        'message': JsonSchema.string(
+          description: 'Commit message (for log-commit, optional)',
+        ),
+        'step_id': JsonSchema.string(
+          description: 'Step ID associated with a git commit (for log-commit, optional)',
+        ),
       },
     ),
     callback: (args, extra) => _handlePlanner(
-        args, workingDir, database, taskOps, stepOps, timelineOps),
+        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps),
   );
 
   final transport = StdioServerTransport();
@@ -206,6 +237,9 @@ const _validOperations = [
   'add-step',
   'show-step',
   'update-step',
+  'get-subtask-prompt',
+  'log-commit',
+  'log-merge',
   'get-timeline',
   'get-audit-trail',
 ];
@@ -217,6 +251,7 @@ Future<CallToolResult> _handlePlanner(
   TaskOperations taskOps,
   StepOperations stepOps,
   TimelineOperations timelineOps,
+  GitLogOperations gitLogOps,
 ) async {
   final operation = args['operation'] as String?;
 
@@ -247,6 +282,12 @@ Future<CallToolResult> _handlePlanner(
         return stepOps.showStep(args);
       case 'update-step':
         return stepOps.updateStep(args);
+      case 'get-subtask-prompt':
+        return stepOps.getSubtaskPrompt(args);
+      case 'log-commit':
+        return gitLogOps.logCommit(args);
+      case 'log-merge':
+        return gitLogOps.logMerge(args);
       case 'get-timeline':
         return timelineOps.getTimeline(args);
       case 'get-audit-trail':

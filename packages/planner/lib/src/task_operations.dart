@@ -121,7 +121,7 @@ class TaskOperations {
 
     // Get steps for this task, ordered by sort_order with fallback to created_at
     final stepsResult = database.select(
-        'SELECT id, title, status FROM steps WHERE task_id = ? ORDER BY COALESCE(sort_order, 9999999), created_at',
+        'SELECT id, title, status, sub_task_id FROM steps WHERE task_id = ? ORDER BY COALESCE(sort_order, 9999999), created_at',
         [id]);
 
     final steps = stepsResult
@@ -129,6 +129,7 @@ class TaskOperations {
               'id': row['id'],
               'title': row['title'],
               'status': normalizeStepStatus(row['status'] as String),
+              'sub_task_id': row['sub_task_id'],
             })
         .toList();
 

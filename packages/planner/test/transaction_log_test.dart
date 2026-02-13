@@ -702,6 +702,7 @@ void main() {
           'title': 'My step',
           'details': 'Step details',
           'status': 'todo',
+          'sub_task_id': null,
           'created_at': '2025-01-01T00:00:00Z',
           'updated_at': '2025-01-02T00:00:00Z',
         };
@@ -712,6 +713,24 @@ void main() {
         expect(loggable['task_id'], 'task-1');
         expect(loggable['title'], 'My step');
         expect(loggable['status'], 'todo');
+        expect(loggable['sub_task_id'], isNull);
+      });
+
+      test('includes sub_task_id when set', () {
+        final step = {
+          'id': 'step-1',
+          'task_id': 'task-1',
+          'title': 'My step',
+          'details': 'Step details',
+          'status': 'todo',
+          'sub_task_id': 'sub-task-123',
+          'created_at': '2025-01-01T00:00:00Z',
+          'updated_at': '2025-01-02T00:00:00Z',
+        };
+
+        final loggable = stepToLoggable(step);
+
+        expect(loggable['sub_task_id'], 'sub-task-123');
       });
     });
   });
