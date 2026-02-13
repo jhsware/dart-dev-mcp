@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:planner_mcp/planner_mcp.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -234,7 +235,8 @@ void main() {
         'branch': 'main',
         'task_id': taskId,
       });
-      expect(result.isError, isTrue);
+      final text = resultText(result);
+      expect(text, contains('commit_hash is required'));
     });
 
     test('uses task project_id for log entry', () {
@@ -312,7 +314,6 @@ void main() {
       final text = resultText(result);
       expect(text, contains('not found'));
     });
-
     test('returns error when source_branch is missing', () {
       final taskId = createTask('My task');
       final result = gitLogOps.logMerge({
@@ -320,7 +321,8 @@ void main() {
         'target_branch': 'main',
         'task_id': taskId,
       });
-      expect(result.isError, isTrue);
+      final text = resultText(result);
+      expect(text, contains('source_branch is required'));
     });
   });
 

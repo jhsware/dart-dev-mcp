@@ -101,11 +101,13 @@ void _setSchemaVersion(Database database, int version) {
 void _runMigrations(Database database) {
   final currentVersion = _getSchemaVersion(database);
 
-  // Migration from version 0 (fresh) to version 1
-  if (currentVersion < 1) {
-    logInfo('planner', 'Running migration to schema version 1...');
-    _setSchemaVersion(database, 1);
-    logInfo('planner', 'Migration to schema version 1 complete.');
+  // For a fresh database (version 0), the CREATE TABLE statements above
+  // already include the full current schema, so we just set the version
+  // to currentSchemaVersion and skip incremental migrations.
+  if (currentVersion == 0) {
+    logInfo('planner', 'Fresh database, setting schema version to $currentSchemaVersion.');
+    _setSchemaVersion(database, currentSchemaVersion);
+    return;
   }
 
   // Migration from version 1 to version 2
