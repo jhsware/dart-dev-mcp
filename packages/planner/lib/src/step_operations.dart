@@ -23,6 +23,7 @@ class StepOperations {
     final taskId = args?['task_id'] as String?;
     final title = args?['title'] as String?;
     final details = args?['details'] as String?;
+    final subTaskId = args?['sub_task_id'] as String?;
     // Normalize legacy statuses for backward compatibility
     final status = normalizeStepStatus(args?['status'] as String? ?? 'todo');
 
@@ -61,6 +62,7 @@ class StepOperations {
       'details': details,
       'status': status,
       'sort_order': sortOrder,
+      'sub_task_id': subTaskId,
       'created_at': now,
       'updated_at': now,
     };
@@ -68,9 +70,9 @@ class StepOperations {
     // Wrap INSERT and transaction log in atomic transaction with retry
     withRetryTransactionSync(database, () {
       database.execute('''
-        INSERT INTO steps (id, task_id, title, details, status, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [id, taskId, title, details, status, sortOrder, now, now]);
+        INSERT INTO steps (id, task_id, title, details, status, sort_order, sub_task_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''', [id, taskId, title, details, status, sortOrder, subTaskId, now, now]);
 
       transactionLogRepository.log(
         entityType: EntityType.step,
@@ -119,6 +121,7 @@ class StepOperations {
       'title': step['title'],
       'details': step['details'],
       'status': normalizeStepStatus(step['status'] as String),
+      'sub_task_id': step['sub_task_id'],
       'created_at': step['created_at'],
       'updated_at': step['updated_at'],
     });
@@ -168,6 +171,11 @@ class StepOperations {
       }
       updates.add('status = ?');
       values.add(status);
+    }
+
+    if (args?.containsKey('sub_task_id') == true) {
+      updates.add('sub_task_id = ?');
+      values.add(args!['sub_task_id']);
     }
 
     if (updates.isEmpty) {

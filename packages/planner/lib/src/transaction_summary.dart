@@ -210,6 +210,7 @@ Map<String, dynamic> taskToLoggable(Map<String, dynamic> task) {
 }
 
 /// Helper to create a loggable entity from step data.
+/// Helper to create a loggable entity from step data.
 Map<String, dynamic> stepToLoggable(Map<String, dynamic> step) {
   return {
     'id': step['id'],
@@ -217,6 +218,7 @@ Map<String, dynamic> stepToLoggable(Map<String, dynamic> step) {
     'title': step['title'],
     'details': step['details'],
     'status': step['status'],
+    'sub_task_id': step['sub_task_id'],
     'created_at': step['created_at'],
     'updated_at': step['updated_at'],
   };
