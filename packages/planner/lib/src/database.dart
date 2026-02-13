@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 2;
+const int currentSchemaVersion = 3;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -55,6 +55,8 @@ Database initializeDatabase(String dbPath) {
       status TEXT NOT NULL DEFAULT 'todo',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      sort_order INTEGER,
+      sub_task_id TEXT,
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     )
   ''');
@@ -113,6 +115,15 @@ void _runMigrations(Database database) {
     database.execute('ALTER TABLE steps ADD COLUMN sort_order INTEGER');
     _setSchemaVersion(database, 2);
     logInfo('planner', 'Migration to schema version 2 complete.');
+  }
+
+  // Migration from version 2 to version 3
+  // Add sub_task_id column for step-to-subtask references
+  if (currentVersion < 3) {
+    logInfo('planner', 'Running migration to schema version 3...');
+    database.execute('ALTER TABLE steps ADD COLUMN sub_task_id TEXT');
+    _setSchemaVersion(database, 3);
+    logInfo('planner', 'Migration to schema version 3 complete.');
   }
 
   // Verify we're at the expected version
