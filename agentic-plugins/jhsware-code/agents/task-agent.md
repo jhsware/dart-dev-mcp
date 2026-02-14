@@ -70,7 +70,7 @@ For regular tasks (not parent tasks):
 
 Use code-index as the primary tool for understanding the codebase before making changes. Each operation serves a specific purpose:
 
-- **`diff`** (directories, file_extensions) — ALWAYS run first (once per task) to ensure the index is up-to-date. Compare filesystem against index to find changed/added/deleted files. If changed/added files are found, spawn code-index-agent to re-index them before exploring.
+- **`diff`** (file_extensions, directories) — ALWAYS run first (once per task) to ensure the index is up-to-date. Compare filesystem against index to find changed/added/deleted files. Scans entire project by default; optionally pass `directories` to limit scope. If changed/added files are found, spawn code-index-agent to re-index them before exploring.
 - **`overview`** — Get a compact listing of all indexed files with path, description, file_type, and export names. Use as the first exploration step after ensuring index freshness to understand the codebase layout (~50-100 tokens).
 - **`search`** (query, export_name, export_kind, file_type, path_pattern, import_pattern) — Primary discovery tool. Use FTS5 full-text queries to find relevant files, classes, functions, or variables. **Note:** Keyword-based (FTS5) — no phrase search. Multi-word queries match independent keywords. For phrase/regex, use `filesystem search-text`.
 - **`file-summary`** (path) — Get a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` — use when you only need to understand what a file provides (no imports/annotations/timestamps).

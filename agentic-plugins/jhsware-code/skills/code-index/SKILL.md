@@ -21,12 +21,15 @@ The code-index maintains a searchable database of file metadata (exports, import
 Use `code-index diff` to compare the filesystem against the index:
 
 ```
+code-index: diff
+# → Scans entire project from root. Returns: changed: [...], added: [...], deleted: [...]
+
+# Or filter to specific directories:
 code-index: diff (directories: ["lib", "test"], file_extensions: [".dart"])
-# → Returns: changed: [...], added: [...], deleted: [...]
 ```
 
 Parameters:
-- `directories` (required): Array of directories to scan relative to project root
+- `directories` (optional, default: ["."]): Array of directories to scan relative to project root. When omitted, scans the entire project from root.
 - `file_extensions` (optional): Array of extensions to include, e.g. `[".dart", ".yaml"]`
 - `remove_deleted` (optional, default true): Automatically remove deleted files from the index
 

@@ -37,7 +37,7 @@ Process each step in order:
 For each step:
 1. Change step status to `started`
 2. **Read step details**: Call `planner` with operation `show-step` using the step's id to get the full detailed instructions. Read these carefully — they describe exactly what to change, which files to modify, and what the expected outcome is. Follow these instructions precisely.
-3. **Ensure index is fresh** (once per task, not per step) — Run `code-index diff` on relevant directories at the start of a task. If there are changed or added files, spawn a code-index-agent to re-index them before exploring.
+3. **Ensure index is fresh** (once per task, not per step) — Run `code-index diff` (optionally filtering to relevant directories) at the start of a task. If there are changed or added files, spawn a code-index-agent to re-index them before exploring.
 4. **Explore before editing** — Use code-index to understand context before making changes:
    - `code-index overview` — Get a compact listing of all indexed files with descriptions and exports. Use at the start to understand the codebase layout (~50-100 tokens).
    - `code-index search` — find files related to the step's work. Supports FTS5 queries with filters: `query`, `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`.
@@ -158,7 +158,7 @@ git: branch-switch (branch: "task/add-validation")
 planner: update-task (id: "abc-123", status: "started")
 
 # Phase 2 — First ensure index is fresh (once per task)
-code-index: diff (directories: ["src"], file_extensions: [".dart", ".tsx"])
+code-index: diff (file_extensions: [".dart", ".tsx"])
 # → 0 changed, 0 added — index is fresh
 
 # Get overview to understand codebase layout
