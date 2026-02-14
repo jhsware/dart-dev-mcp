@@ -574,6 +574,8 @@ class SearchOperations {
         ),
       },
     });
+  }
+
   /// Get a focused summary of a file's API surface.
   ///
   /// Returns file path, description, exports grouped by parent (class),
