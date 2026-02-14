@@ -25,11 +25,15 @@ Before creating any tasks, explore the codebase to understand scope and identify
 Use code-index operations in this order to minimize context consumption. Each step narrows focus before you spend tokens reading full files.
 
 **Step 0 — Ensure index freshness with `diff` + re-index:**
-ALWAYS start by running `code-index diff` on relevant directories. If there are changed or added files, index/re-index them using the code-index skill (spawn a code-index-agent sub-agent for batches). This ensures all subsequent operations work with up-to-date data.
+ALWAYS start by running `code-index diff` to detect changed or added files. If there are changed or added files, index/re-index them using the code-index skill (spawn a code-index-agent sub-agent for batches). This ensures all subsequent operations work with up-to-date data. When omitted, `directories` defaults to `["."]` (project root).
 
 ```
-code-index: diff (directories: ["lib", "test"], file_extensions: [".dart"])
+code-index: diff
+# → Scans entire project from root
 # If changed/added files found → spawn code-index-agent to index them
+
+# Or filter to specific directories:
+code-index: diff (directories: ["lib", "test"], file_extensions: [".dart"])
 ```
 
 **Step 1 — Get codebase overview with `overview`:**
@@ -150,7 +154,7 @@ A user asks to add input validation to a form component. First explore:
 
 ```
 # Step 0: Ensure index is fresh
-code-index: diff (directories: ["src"], file_extensions: [".dart", ".tsx"])
+code-index: diff (file_extensions: [".dart", ".tsx"])
 # → 2 changed, 1 added → spawn code-index-agent to re-index them
 
 # Step 1: Get codebase overview
