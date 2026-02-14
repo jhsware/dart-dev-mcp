@@ -93,7 +93,9 @@ Operations:
 - dependencies: Get all imports for a file with internal/external classification
 - search-annotations: Search TODO/FIXME/HACK annotations across the codebase
 - stats: Get aggregate statistics about the code index (files, exports, imports, annotations)
-- diff: Scan directories and report changed/added/deleted files''',
+- diff: Scan directories and report changed/added/deleted files
+- overview: Get a compact overview of all indexed files with descriptions and export names
+- file-summary: Show a file's exports grouped by class and variables, without heavy metadata''',
     inputSchema: ToolInputSchema(
       properties: {
         'operation': JsonSchema.string(
@@ -208,7 +210,7 @@ void _printUsage() {
   stderr.writeln('  --help, -h          Show this help message');
 }
 
-const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff'];
+const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff', 'overview', 'file-summary'];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
@@ -242,6 +244,10 @@ Future<CallToolResult> _handleCodeIndex(
         return searchOps.stats(args);
       case 'diff':
         return diffOps.diff(args);
+      case 'overview':
+        return searchOps.overview(args);
+      case 'file-summary':
+        return searchOps.fileSummary(args);
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
