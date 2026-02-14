@@ -13,6 +13,9 @@ The code-index maintains a searchable database of file metadata (exports, import
 
 ## Indexing Workflow
 
+> **IMPORTANT: Always start with `diff`**
+> Before any exploration or search, always run `code-index diff` first to detect changed/new files. Then index/re-index those files. This ensures the index is fresh for subsequent operations.
+
 ### Step 1 — Detect files that need indexing
 
 Use `code-index diff` to compare the filesystem against the index:
@@ -113,6 +116,19 @@ When indexing a large number of files:
 - Group files by directory or feature area for coherent batches
 - After all batches complete, use `code-index stats` to verify the index is complete
 - Use `code-index diff` again to confirm no files were missed
+
+## Exploration Operations Reference
+
+After indexing, these operations are available for exploring the codebase:
+
+- **overview** — Compact listing of all indexed files with path, description, file_type, and export names as "name (kind)" strings. Use `path_pattern` and `file_type` to filter. Returns ~50-100 tokens for an entire codebase.
+- **file-summary** (path) — Shows a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` (excludes imports, annotations, timestamps). Use to understand a file's API surface.
+- **search** (query + filters) — FTS5 keyword search across file names, descriptions, export names, variable names. Supports filters: `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`, `description_pattern`. **Limitation:** keyword-based only, no phrase search. Multi-word queries match independent keywords joined by AND. For phrase/regex, use `filesystem search-text`.
+- **show-file** (path) — Full indexed info including exports, imports, variables, and annotations. Use when you need the complete picture.
+- **dependents** (path) — Find all files that import a given path.
+- **dependencies** (path) — Get a file's imports classified as internal (indexed) or external.
+- **search-annotations** — Find TODO/FIXME/HACK/NOTE/DEPRECATED across the codebase. Filter by `kind`, `path_pattern`, `message_pattern`, `file_type`.
+- **stats** — Aggregate counts: files by type, exports by kind, top imports, annotations by kind.
 
 ## Error Handling
 
