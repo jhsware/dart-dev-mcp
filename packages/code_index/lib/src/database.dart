@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 3;
+const int currentSchemaVersion = 4;
 
 /// Initialize the code-index database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -120,6 +120,7 @@ Database initializeDatabase(String dbPath) {
       name,
       description,
       export_names,
+      export_descriptions,
       variable_names,
       file_path
     )
@@ -187,12 +188,13 @@ void _runMigrations(Database database) {
 
     // Populate FTS from existing data
     database.execute('''
-      INSERT INTO code_search_fts (file_id, name, description, export_names, variable_names, file_path)
+      INSERT INTO code_search_fts (file_id, name, description, export_names, export_descriptions, variable_names, file_path)
       SELECT 
         f.id,
         f.name,
         COALESCE(f.description, ''),
         COALESCE((SELECT GROUP_CONCAT(e.name, ' ') FROM exports e WHERE e.file_id = f.id), ''),
+        COALESCE((SELECT GROUP_CONCAT(e.description, ' ') FROM exports e WHERE e.file_id = f.id AND e.description IS NOT NULL), ''),
         COALESCE((SELECT GROUP_CONCAT(v.name, ' ') FROM variables v WHERE v.file_id = f.id), ''),
         f.path
       FROM files f
@@ -209,6 +211,42 @@ void _runMigrations(Database database) {
     // so just bump the version.
     _setSchemaVersion(database, 3);
     logInfo('code-index', 'Migration to schema version 3 complete.');
+  }
+
+  // Migration from version 3 to version 4: Add export_descriptions to FTS5
+  if (currentVersion < 4) {
+    logInfo('code-index', 'Running migration to schema version 4...');
+
+    // Drop and recreate FTS table with new export_descriptions column
+    database.execute('DROP TABLE IF EXISTS code_search_fts');
+    database.execute('''
+      CREATE VIRTUAL TABLE code_search_fts USING fts5(
+        file_id UNINDEXED,
+        name,
+        description,
+        export_names,
+        export_descriptions,
+        variable_names,
+        file_path
+      )
+    ''');
+
+    // Repopulate FTS from existing data including export descriptions
+    database.execute('''
+      INSERT INTO code_search_fts (file_id, name, description, export_names, export_descriptions, variable_names, file_path)
+      SELECT 
+        f.id,
+        f.name,
+        COALESCE(f.description, ''),
+        COALESCE((SELECT GROUP_CONCAT(e.name, ' ') FROM exports e WHERE e.file_id = f.id), ''),
+        COALESCE((SELECT GROUP_CONCAT(e.description, ' ') FROM exports e WHERE e.file_id = f.id AND e.description IS NOT NULL), ''),
+        COALESCE((SELECT GROUP_CONCAT(v.name, ' ') FROM variables v WHERE v.file_id = f.id), ''),
+        f.path
+      FROM files f
+    ''');
+
+    _setSchemaVersion(database, 4);
+    logInfo('code-index', 'Migration to schema version 4 complete.');
   }
 
   // Verify we're at the expected version

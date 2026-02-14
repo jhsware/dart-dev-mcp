@@ -161,15 +161,21 @@ class IndexOperations {
               .where((n) => n != null)
               .join(' ') ??
           '';
+      final exportDescriptions = exports
+              ?.map((e) =>
+                  (e as Map<String, dynamic>)['description'] as String?)
+              .where((d) => d != null)
+              .join(' ') ??
+          '';
       final variableNames = variables
               ?.map((v) => (v as Map<String, dynamic>)['name'] as String?)
               .where((n) => n != null)
               .join(' ') ??
           '';
       database.execute('''
-        INSERT INTO code_search_fts (file_id, name, description, export_names, variable_names, file_path)
-        VALUES (?, ?, ?, ?, ?, ?)
-      ''', [fileId, name, description ?? '', exportNames, variableNames, path]);
+        INSERT INTO code_search_fts (file_id, name, description, export_names, export_descriptions, variable_names, file_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      ''', [fileId, name, description ?? '', exportNames, exportDescriptions, variableNames, path]);
     });
 
     return jsonResult({
