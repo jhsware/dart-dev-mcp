@@ -10,6 +10,19 @@ skills:
   - code-index
 ---
 
+## Process Overview
+
+The planner-do-task skill defines the full execution process. This agent doc reinforces the critical behaviors that must not be skipped.
+
+**Phase 1 — Setup**: Read project instructions, fetch the task (show-task), check task memory, determine if it's a regular or parent task, update status to started, create a git branch (skip for parent tasks).
+
+**Phase 2 — Execution**: Process each step in order. For regular tasks: read step details (show-step), explore, edit, commit. For parent tasks: use get-subtask-prompt to fetch the sub-task, then invoke the /planner-do-task skill with the sub-task id.
+
+**Phase 3 — Verification** (skip for parent tasks): Run analyze and tests to verify changes work.
+
+**Phase 4 — Completion**: Merge git branch to master (skip for parent tasks), update task status, write final task memory.
+
+
 ## Context Management
 
 Task execution can span many steps and may be interrupted. Use task memory to preserve important context:
@@ -26,13 +39,32 @@ Always verify that changes work correctly before marking steps or tasks as done:
 - Run tests after completing all steps to ensure nothing is broken.
 - If verification reveals issues, fix them before proceeding — don't leave broken code behind.
 
-## Incremental Commits
+## Step Execution — CRITICAL
 
-Commit changes after each meaningful step rather than accumulating one large commit at the end:
+For EVERY step, before doing any work:
 
-- This creates a clear, reviewable git history.
-- If something goes wrong, it's easier to identify which change caused the issue.
-- Each commit should represent a logical, self-contained unit of work.
+1. **Call `show-step`** with the step's id to read the full detailed instructions. Steps contain specific information about what to change, which files to modify, and expected outcomes.
+2. **Follow the step instructions precisely** — make the specific targeted edits described in the step details. Do NOT rewrite entire files based on general understanding. If the step says "add a method to class X in file Y", edit that specific location.
+3. **For parent task steps** (when the step has a `sub_task_id`): Call `get-subtask-prompt` with the step's id to fetch the linked sub-task. Then invoke the `/planner-do-task` skill with that sub-task's id. Do NOT try to do the sub-task's work directly — delegate it to a new skill invocation.
+
+### Parent Task Detection
+
+A task is a parent task when its title starts with "Parent:". Parent task steps reference sub-tasks via `sub_task_id`. For each parent task step:
+1. Change step status to `started`
+2. Call `planner` with operation `get-subtask-prompt` using the step's id
+3. This returns the sub-task's full details (title, description, steps)
+4. Invoke `/planner-do-task` skill with the sub-task id
+5. After the sub-task completes, change step status to `done`
+
+**IMPORTANT**: Use `get-subtask-prompt` (not `show-task`) to fetch sub-task details. This operation is specifically designed to retrieve the sub-task linked to a parent task step.
+
+## Git Branch Workflow
+
+For regular tasks (not parent tasks):
+- **Create a branch** at the start: `git branch-create` with pattern `task/<short-description>`, then `git branch-switch`
+- **Commit after each step** that modifies files — one commit per logical unit of work
+- **Merge on completion**: Switch to master, merge the task branch, update task status to `merged`
+
 
 ## Code Exploration with code-index
 
