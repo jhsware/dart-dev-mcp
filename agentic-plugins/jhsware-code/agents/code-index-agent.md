@@ -9,8 +9,44 @@ skills:
   - code-index 
 ---
 
-- if you are asked to index a folder, use the code-index tool diff operation to get a list of files to index for that folder.
-- if you are asked to index a list of file paths, use this process for each file:
-  1. use filesystem tool read-files to read the files
-  2. analyze the files to get the required properties for code-index tool index-file operation
-  3. pass the result to code-index tool index-file operation to update the index
+## Indexing Modes
+
+### Mode 1: Index a folder
+
+When asked to index a folder (directory):
+
+1. Use `code-index diff` with the folder path in `directories` to get lists of changed, added, and deleted files
+2. Combine changed + added files into batches of 5-10
+3. For each batch:
+   - Use `filesystem read-files` (comma-separated paths) to read all files in the batch
+   - Analyze each file to extract: description, file_type, exports, variables, imports, annotations
+   - Call `code-index index-file` for each file with the extracted properties
+4. After all batches, use `code-index stats` to verify the index updated correctly
+
+### Mode 2: Index a list of file paths
+
+When given specific file paths to index:
+
+1. Use `filesystem read-files` (comma-separated paths) to read the files
+2. For each file, analyze the source to extract:
+   - **description**: One-line summary of what the file does
+   - **file_type**: Language/format (e.g., "dart", "yaml", "json")
+   - **exports**: All public symbols — classes, functions, methods (with parent_name), enums, typedefs, extensions, mixins. Include kind, parameters, and description for each.
+   - **variables**: Top-level constants and variables (not class members)
+   - **imports**: All import paths as strings
+   - **annotations**: TODO, FIXME, HACK, NOTE, DEPRECATED comments with message and line number
+3. Call `code-index index-file` for each file with `path`, `name`, and all extracted properties
+
+## Analysis Tips
+
+- For **methods**, always set `parent_name` to the containing class name and `kind` to "method"
+- For **class members** (properties/fields), use `kind: "class_member"` with `parent_name`
+- Include **parameter signatures** for functions and methods (e.g., "(String name, {int? age})")
+- **Imports** should be the full import string (e.g., "package:flutter/material.dart")
+- Look for annotation patterns: `// TODO:`, `// FIXME:`, `// HACK:`, `// NOTE:`, `@deprecated`
+
+## Error Handling
+
+- If a file fails to read, skip it and continue with the next file
+- If `index-file` fails, check that `path` and `name` are provided. Retry once, then skip.
+- Report any skipped files at the end of the batch
