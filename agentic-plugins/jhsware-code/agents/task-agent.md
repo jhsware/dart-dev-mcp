@@ -38,21 +38,25 @@ Commit changes after each meaningful step rather than accumulating one large com
 
 Use code-index as the primary tool for understanding the codebase before making changes. Each operation serves a specific purpose:
 
-- **`search`** (query, export_name, export_kind, file_type, path_pattern, import_pattern) — Primary discovery tool. Use FTS5 full-text queries to find relevant files, classes, functions, or variables. Start here when looking for code related to a step.
-- **`show-file`** (path) — Get a file's full indexed structure: exports (with parameters and descriptions), imports, variables, and annotations. Returns ~100-200 tokens vs ~500-5000+ for reading the full file. Use this BEFORE `filesystem read-file` to confirm a file is relevant and understand its structure.
+- **`diff`** (directories, file_extensions) — ALWAYS run first (once per task) to ensure the index is up-to-date. Compare filesystem against index to find changed/added/deleted files. If changed/added files are found, spawn code-index-agent to re-index them before exploring.
+- **`overview`** — Get a compact listing of all indexed files with path, description, file_type, and export names. Use as the first exploration step after ensuring index freshness to understand the codebase layout (~50-100 tokens).
+- **`search`** (query, export_name, export_kind, file_type, path_pattern, import_pattern) — Primary discovery tool. Use FTS5 full-text queries to find relevant files, classes, functions, or variables. **Note:** Keyword-based (FTS5) — no phrase search. Multi-word queries match independent keywords. For phrase/regex, use `filesystem search-text`.
+- **`file-summary`** (path) — Get a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` — use when you only need to understand what a file provides (no imports/annotations/timestamps).
+- **`show-file`** (path) — Get a file's full indexed structure: exports (with parameters and descriptions), imports, variables, and annotations. Returns ~100-200 tokens vs ~500-5000+ for reading the full file. Use when you need imports and annotations.
 - **`dependents`** (path) — Find all files that import a given path. Check BEFORE modifying a file to understand what other files will be affected by the change.
 - **`dependencies`** (path) — Get all imports for a file, classified as internal (indexed) or external. Understand what a file relies on before changing it.
 - **`search-annotations`** (kind, path_pattern, message_pattern) — Find TODO/FIXME/HACK/NOTE/DEPRECATED annotations. Useful for finding related work items or known issues in the area you're modifying.
-- **`diff`** (directories, file_extensions) — Compare filesystem against index to find changed/added/deleted files. Use to verify changes or detect stale index entries.
-- **`stats`** — Get codebase overview: file counts by type, export counts by kind, top imports, annotation summary. Useful when starting on an unfamiliar codebase.
+- **`stats`** — Get codebase overview: file counts by type, export counts by kind, top imports, annotation summary. Useful for aggregate statistics.
 
 ### Exploration workflow for each step
 
-1. `search` to find relevant files for the step
-2. `show-file` on each candidate to understand structure without reading source
-3. `dependents` on files you plan to modify — check for impact
-4. `filesystem read-file` only on confirmed-relevant files
-5. Make changes and commit
+0. `diff` + re-index (once per task, not per step)
+1. `overview` to see all files and understand codebase layout
+2. `search` to find relevant files for the step
+3. `file-summary` or `show-file` on candidates to understand structure
+4. `dependents` on files you plan to modify — check for impact
+5. `filesystem read-file` only on confirmed-relevant files
+6. Make changes and commit
 
 ### Fallback
 

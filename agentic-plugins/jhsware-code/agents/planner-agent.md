@@ -13,14 +13,15 @@ skills:
 
 Planning requires broad understanding of the codebase without exhausting the context window. Use code-index operations strategically to minimize token consumption:
 
-- **Scope first with `stats`**: Start with `code-index stats` to understand codebase size, language breakdown, and annotation counts before diving in. This costs ~20 tokens.
-- **Discover with `search`**: Use `code-index search` with specific filters (`export_name`, `export_kind`, `file_type`, `path_pattern`) to find relevant files. Avoid reading files you haven't confirmed as relevant.
-- **Understand structure with `show-file`**: Use `code-index show-file` to get a file's exports, imports, variables, and annotations WITHOUT reading source code. This is your primary tool for understanding files — it returns ~100-200 tokens vs ~500-5000+ tokens for `filesystem read-file`.
+- **Refresh index first**: ALWAYS run `code-index diff` on relevant directories before exploration. If changed/added files are found, spawn code-index-agent to re-index them. This ensures the index is fresh for all subsequent operations.
+- **Overview first with `overview`**: After ensuring index freshness, use `code-index overview` to get a compact listing of all files with descriptions and export names (~50-100 tokens). This gives you a "table of contents" before diving deeper.
+- **Discover with `search`**: Use `code-index search` with specific filters (`export_name`, `export_kind`, `file_type`, `path_pattern`) to find relevant files. Avoid reading files you haven't confirmed as relevant. **Note:** Search is keyword-based (FTS5) — no phrase support. Use `filesystem search-text` for phrase/regex matching.
+- **Understand file API with `file-summary`**: Use `code-index file-summary` to get a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` — use when you only need to understand what a file provides.
+- **Understand full structure with `show-file`**: Use `code-index show-file` to get a file's exports, imports, variables, and annotations WITHOUT reading source code. Returns ~100-200 tokens vs ~500-5000+ for `filesystem read-file`. Use when you need imports and annotations.
 - **Map relationships with `dependents` / `dependencies`**: Before planning changes to a file, check what depends on it (`dependents`) and what it depends on (`dependencies`). This prevents plans that miss ripple effects.
 - **Find related TODOs with `search-annotations`**: Check for existing TODO, FIXME, or HACK annotations in the task area to inform your plan.
 - **Read selectively**: When you must read full files, focus on the sections relevant to your planning (e.g., function signatures, class definitions, configuration) rather than entire files.
 - **Summarize as you go**: After exploring a set of files, summarize your findings in your own words before continuing exploration. This helps consolidate understanding without re-reading.
-
 ### Fallback Strategy
 
 If code-index returns no results, the index may be stale:

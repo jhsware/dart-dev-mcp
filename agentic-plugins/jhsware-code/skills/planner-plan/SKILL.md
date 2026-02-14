@@ -24,8 +24,16 @@ Before creating any tasks, explore the codebase to understand scope and identify
 
 Use code-index operations in this order to minimize context consumption. Each step narrows focus before you spend tokens reading full files.
 
-**Step 1 — Scope the codebase with `stats`:**
-Use `code-index stats` to get an overview: file counts by type, export counts by kind, top-imported paths, and annotation summary. This tells you the codebase size and language breakdown in ~20 tokens.
+**Step 0 — Ensure index freshness with `diff` + re-index:**
+ALWAYS start by running `code-index diff` on relevant directories. If there are changed or added files, index/re-index them using the code-index skill (spawn a code-index-agent sub-agent for batches). This ensures all subsequent operations work with up-to-date data.
+
+```
+code-index: diff (directories: ["lib", "test"], file_extensions: [".dart"])
+# If changed/added files found → spawn code-index-agent to index them
+```
+
+**Step 1 — Get codebase overview with `overview`:**
+Use `code-index overview` to get a compact listing of all indexed files with descriptions and export names. This gives you a "table of contents" in ~50-100 tokens. Use optional `path_pattern` or `file_type` filters to narrow scope.
 
 **Step 2 — Discover relevant files with `search`:**
 Use `code-index search` to find files related to the task. Search supports FTS5 full-text queries across file names, descriptions, export names, and variable names. You can also filter by:
@@ -34,8 +42,10 @@ Use `code-index search` to find files related to the task. Search supports FTS5 
 - `import_pattern` — find files importing a specific package
 - `path_pattern` — restrict to a directory subtree
 
-**Step 3 — Understand file structure with `show-file`:**
-Use `code-index show-file` to get a file's full indexed info (exports with parameters, imports, variables, annotations) WITHOUT reading the source. This returns ~100-200 tokens vs ~500-5000+ tokens for `filesystem read-file`. Use show-file to understand what a file contains before deciding whether to read its full source.
+> **Search limitations:** `search` uses FTS5 full-text indexing. It works well for individual keywords and prefix matching (e.g., "valid", "User", "database"). It does NOT support phrase search — multi-word queries are treated as independent keywords joined by AND. For exact phrase matching or regex patterns, use `filesystem search-text` instead.
+
+**Step 3 — Understand file API with `file-summary` or `show-file`:**
+Use `code-index file-summary` to get a file's exports grouped by class, with descriptions and parameters. This is lighter than `show-file` — use it when you only need to understand what a file provides. Use `code-index show-file` when you also need imports, annotations, and timestamps.
 
 **Step 4 — Map relationships with `dependents` and `dependencies`:**
 - `code-index dependents` (path) — find all files that import a given path. Critical for impact analysis when planning changes.
@@ -43,9 +53,6 @@ Use `code-index show-file` to get a file's full indexed info (exports with param
 
 **Step 5 — Find TODOs and annotations with `search-annotations`:**
 Use `code-index search-annotations` to find TODO, FIXME, HACK, NOTE, and DEPRECATED annotations. Filter by kind, file path pattern, or message content. Useful for discovering existing plans, known issues, and technical debt related to the task area.
-
-**Step 6 — Detect changes with `diff`:**
-Use `code-index diff` to compare the current filesystem against the index. Returns lists of changed, added, and deleted files. Useful when the index may be stale or when you need to understand what changed recently on disk.
 
 ### Fallback Tools
 
@@ -62,8 +69,9 @@ Prefer code-index operations to save context for planning decisions:
 
 | Instead of... | Use... | Token savings |
 |---|---|---|
-| `filesystem list-content` on large dirs | `code-index stats` | ~20 tokens vs hundreds |
-| `filesystem read-file` to understand a file | `code-index show-file` | ~100-200 vs ~500-5000+ tokens |
+| `filesystem list-content` on large dirs | `code-index overview` | ~50-100 tokens for entire codebase |
+| `filesystem read-file` to understand a file | `code-index file-summary` | Lighter than `show-file` (no imports/annotations/timestamps) |
+| `filesystem read-file` for full file details | `code-index show-file` | ~100-200 vs ~500-5000+ tokens |
 | `filesystem search-text` scanning all files | `code-index search` with filters | Targeted results vs full-line matches |
 | Manually searching imports to find dependents | `code-index dependents` | Instant reverse lookup |
 
@@ -141,9 +149,13 @@ After creating all tasks:
 A user asks to add input validation to a form component. First explore:
 
 ```
-# Step 1: Scope the codebase
-code-index: stats
-# → 45 dart files, 3 yaml files, 12 TODO annotations, top imports: flutter/material.dart
+# Step 0: Ensure index is fresh
+code-index: diff (directories: ["src"], file_extensions: [".dart", ".tsx"])
+# → 2 changed, 1 added → spawn code-index-agent to re-index them
+
+# Step 1: Get codebase overview
+code-index: overview
+# → 15 files listed with descriptions and exports
 
 # Step 2: Find relevant files
 code-index: search (query: "validation", export_kind: "class")
@@ -151,15 +163,15 @@ code-index: search (query: "validation", export_kind: "class")
 code-index: search (query: "RegisterForm")
 # → Found RegisterForm class in src/components/RegisterForm.tsx
 
-# Step 3: Understand file structure without reading source
-code-index: show-file (path: "src/components/RegisterForm.tsx")
-# → exports: RegisterForm (class), methods: build, _onSubmit
-# → imports: react, ./styles.css
-# → annotations: TODO "add email validation" at line 42
+# Step 3: Understand file API without reading source
+code-index: file-summary (path: "src/components/RegisterForm.tsx")
+# → exports grouped by class: RegisterForm { build, _onSubmit }
+# → no variables
 
 code-index: show-file (path: "src/utils/validation.dart")
 # → exports: validateEmail (function), validatePassword (function)
-# → no annotations
+# → imports: dart:core
+# → annotations: TODO "add password strength check" at line 15
 
 # Step 4: Check impact — who else uses validation?
 code-index: dependents (path: "src/utils/validation")
@@ -170,7 +182,7 @@ code-index: search-annotations (kind: "TODO", path_pattern: "%validation%")
 # → TODO: "add email format validation" in RegisterForm.tsx line 42
 # → TODO: "add password strength check" in validation.dart line 15
 
-# Step 6: Only NOW read specific files that need detailed understanding
+# Only NOW read specific files that need detailed understanding
 filesystem: read-file (path: "src/utils/validation.dart")
 ```
 

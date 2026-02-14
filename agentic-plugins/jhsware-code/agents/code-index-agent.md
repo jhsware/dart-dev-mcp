@@ -11,6 +11,8 @@ skills:
 
 ## Indexing Modes
 
+> **IMPORTANT**: The diff-first workflow is essential. Always call `diff` before any exploration to ensure the index is fresh. Index/re-index changed and added files before using search, overview, or other operations.
+
 ### Mode 1: Index a folder
 
 When asked to index a folder (directory):
@@ -50,3 +52,7 @@ When given specific file paths to index:
 - If a file fails to read, skip it and continue with the next file
 - If `index-file` fails, check that `path` and `name` are provided. Retry once, then skip.
 - Report any skipped files at the end of the batch
+
+## Available Exploration Operations
+
+After indexing, agents can use these operations to explore the codebase efficiently: `overview`, `file-summary`, `search`, `show-file`, `dependents`, `dependencies`, `search-annotations`, `stats`. See the code-index SKILL.md for detailed documentation of each operation.

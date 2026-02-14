@@ -36,21 +36,24 @@ Process each step in order:
 
 For each step:
 1. Change step status to `started`
-2. **Explore before editing** — Use code-index to understand context before making changes:
+2. **Ensure index is fresh** (once per task, not per step) — Run `code-index diff` on relevant directories at the start of a task. If there are changed or added files, spawn a code-index-agent to re-index them before exploring.
+3. **Explore before editing** — Use code-index to understand context before making changes:
+   - `code-index overview` — Get a compact listing of all indexed files with descriptions and exports. Use at the start to understand the codebase layout (~50-100 tokens).
    - `code-index search` — find files related to the step's work. Supports FTS5 queries with filters: `query`, `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`.
-   - `code-index show-file` (path) — understand a file's structure (exports, imports, variables, annotations) without reading full source. Returns ~100-200 tokens vs ~500-5000+ for `filesystem read-file`. Use this BEFORE reading a file to confirm it's relevant.
+     > **Note:** `search` is keyword-based (FTS5). It works well for individual words and prefix matches but does NOT support phrase search. Multi-word queries are treated as independent keywords. For phrase or regex matching, use `filesystem search-text`.
+   - `code-index file-summary` (path) — get a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` — use when you only need to understand what a file provides (no imports/annotations/timestamps).
+   - `code-index show-file` (path) — understand a file's full structure (exports, imports, variables, annotations) without reading full source. Returns ~100-200 tokens vs ~500-5000+ for `filesystem read-file`. Use when you need imports and annotations.
    - `code-index dependents` (path) — find all files that import a given path. Check this BEFORE modifying a file to understand impact on other files.
    - `code-index dependencies` (path) — get all imports for a file, classified as internal or external. Understand what a file relies on before changing it.
    - `code-index search-annotations` — find TODO/FIXME/HACK/NOTE/DEPRECATED annotations. Filter by `kind`, `path_pattern`, `message_pattern`, `file_type`.
-   - `code-index diff` (directories) — check what files changed on disk since last indexing. Useful to verify your changes or detect unexpected modifications.
-3. **Read and edit files**:
+4. **Read and edit files**:
    - `filesystem read-file` — read specific files after confirming relevance with show-file
    - `filesystem edit-file` — modify files (use startLine/endLine for targeted edits, or omit to overwrite)
    - `filesystem create-file` — create new files
    - `filesystem search-text` — regex-based search as fallback when code-index search isn't sufficient
-4. After completing the step work, commit changes to git (see Git Workflow below)
-5. Change step status to `done`
-6. Update task memory with a brief note about what was accomplished
+5. After completing the step work, commit changes to git (see Git Workflow below)
+6. Change step status to `done`
+7. Update task memory with a brief note about what was accomplished
 
 ### Ensuring code-index is available
 
@@ -153,14 +156,24 @@ git: branch-create (branch: "task/add-validation")
 git: branch-switch (branch: "task/add-validation")
 planner: update-task (id: "abc-123", status: "started")
 
+# Phase 2 — First ensure index is fresh (once per task)
+code-index: diff (directories: ["src"], file_extensions: [".dart", ".tsx"])
+# → 0 changed, 0 added — index is fresh
+
+# Get overview to understand codebase layout
+code-index: overview (path_pattern: "src/components%")
+# → 5 component files listed with descriptions and exports
+
 # Phase 2 — Execution (step 1: understand context first)
 planner: update-step (id: "step-1", status: "started")
 
-# Explore with code-index before editing
-code-index: show-file (path: "src/components/Form.tsx")
-# → exports: Form (class), methods: build, _onSubmit, _validate
-# → imports: react, ./validation.ts
-# → annotations: TODO "add email validation"
+# Search for specific files related to this step
+code-index: search (query: "Form", export_kind: "class")
+# → Found Form class in src/components/Form.tsx
+
+# Understand file API surface
+code-index: file-summary (path: "src/components/Form.tsx")
+# → exports grouped by Form: { build, _onSubmit, _validate }
 
 code-index: dependents (path: "src/components/Form.tsx")
 # → 2 files import this: App.tsx, FormPage.tsx
