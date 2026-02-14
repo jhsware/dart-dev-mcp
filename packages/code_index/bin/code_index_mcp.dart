@@ -139,7 +139,7 @@ Operations:
         // search parameters
         'query': JsonSchema.string(
           description:
-              'General text search across file names, descriptions, export names, variable names (for search)',
+              'General text search across file names, descriptions, export names, export descriptions, variable names (for search). Multiple keywords are joined with OR — files matching more keywords rank higher via BM25. Each keyword uses prefix matching (e.g. "add" matches "addTask"). For AND semantics, run separate searches or use other filters.',
         ),
         'name_pattern': JsonSchema.string(
           description: 'Filter by file name pattern (for search)',
