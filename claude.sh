@@ -144,7 +144,7 @@ fi
 
 # Convert to absolute path
 if [[ "$PROJECT_DIR" != /* ]]; then
-  PROJECT_DIR="$(cd "$(pwd)" && realpath -m "$PROJECT_DIR")"
+  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 fi
 
 # Verify project directory exists
