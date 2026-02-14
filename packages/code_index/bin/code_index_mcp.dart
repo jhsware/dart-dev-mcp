@@ -176,7 +176,7 @@ Operations:
         'directories': JsonSchema.array(
           items: JsonSchema.string(),
           description:
-              'Directories to scan, relative to project root (for diff)',
+              'Directories to scan, relative to project root (for diff). Default: ["."]',
         ),
         'file_extensions': JsonSchema.array(
           items: JsonSchema.string(),

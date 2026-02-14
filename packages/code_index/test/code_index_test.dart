@@ -1045,10 +1045,20 @@ void main() {
       expect(text, isNot(contains('.dart')));
     });
 
-    test('returns error without directories', () {
+    test('defaults to project root when directories omitted', () {
       final result = diffOps.diff({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      // Should scan from root and find all files (lib/*.dart + pubspec.yaml)
+      expect(text, contains('"total_scanned"'));
+      // Should detect the unindexed files as added
+      expect(text, contains('"added"'));
+    });
+
+    test('returns error for empty directories list', () {
+      final result = diffOps.diff({'directories': []});
       expect(result.content.first.toJson()['text'],
-          contains('directories is required'));
+          contains('directories must not be empty'));
     });
   });
   group('Overview operation', () {

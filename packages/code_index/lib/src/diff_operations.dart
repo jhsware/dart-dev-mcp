@@ -16,12 +16,12 @@ class DiffOperations {
 
   /// Scan directories and report changed/added/deleted files compared to the index.
   CallToolResult diff(Map<String, dynamic>? args) {
-    final directories = args?['directories'] as List<dynamic>?;
+    final directories = args?['directories'] as List<dynamic>? ?? ['.'];
     final fileExtensions = args?['file_extensions'] as List<dynamic>?;
     final removeDeleted = args?['remove_deleted'] as bool? ?? true;
 
-    if (directories == null || directories.isEmpty) {
-      return validationError('directories', 'directories is required');
+    if (directories.isEmpty) {
+      return validationError('directories', 'directories must not be empty');
     }
 
     final extensionSet = fileExtensions
