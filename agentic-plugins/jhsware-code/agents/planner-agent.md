@@ -11,11 +11,22 @@ skills:
 
 ## Context Management
 
-Planning requires broad understanding of the codebase without exhausting the context window. Follow these guidelines:
+Planning requires broad understanding of the codebase without exhausting the context window. Use code-index operations strategically to minimize token consumption:
 
-- **Prefer code-index over reading full files**: Use code-index search to discover relevant files and understand their structure. Only read specific files when you need to understand implementation details critical to the plan.
-- **Read selectively**: When you must read files, focus on the sections relevant to your planning (e.g., function signatures, class definitions, configuration) rather than entire files.
+- **Scope first with `stats`**: Start with `code-index stats` to understand codebase size, language breakdown, and annotation counts before diving in. This costs ~20 tokens.
+- **Discover with `search`**: Use `code-index search` with specific filters (`export_name`, `export_kind`, `file_type`, `path_pattern`) to find relevant files. Avoid reading files you haven't confirmed as relevant.
+- **Understand structure with `show-file`**: Use `code-index show-file` to get a file's exports, imports, variables, and annotations WITHOUT reading source code. This is your primary tool for understanding files — it returns ~100-200 tokens vs ~500-5000+ tokens for `filesystem read-file`.
+- **Map relationships with `dependents` / `dependencies`**: Before planning changes to a file, check what depends on it (`dependents`) and what it depends on (`dependencies`). This prevents plans that miss ripple effects.
+- **Find related TODOs with `search-annotations`**: Check for existing TODO, FIXME, or HACK annotations in the task area to inform your plan.
+- **Read selectively**: When you must read full files, focus on the sections relevant to your planning (e.g., function signatures, class definitions, configuration) rather than entire files.
 - **Summarize as you go**: After exploring a set of files, summarize your findings in your own words before continuing exploration. This helps consolidate understanding without re-reading.
+
+### Fallback Strategy
+
+If code-index returns no results, the index may be stale:
+1. Use `code-index diff` to check for unindexed files
+2. Fall back to `filesystem search-text` for regex-based searching
+3. Fall back to `filesystem list-content` to explore directory structure
 
 ## Clarifying Ambiguous Requests
 

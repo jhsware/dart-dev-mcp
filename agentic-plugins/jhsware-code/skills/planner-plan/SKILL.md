@@ -20,20 +20,61 @@ Before doing anything else:
 
 Before creating any tasks, explore the codebase to understand scope and identify the files and patterns involved. This prevents creating tasks with incorrect assumptions.
 
-**Tool selection for exploration:**
+### Token-Efficient Exploration Workflow
 
-- **code-index search** (preferred): Use for keyword discovery and finding relevant files quickly. Supports simple keyword searching across indexed files.
-- **filesystem list-content**: Use to understand directory structure and find files by path patterns.
-- **filesystem read-file**: Use to examine specific files in detail once you know which files matter.
-- **filesystem search-text**: Use as regex fallback when code-index doesn't find what you need, or when you need pattern-based searching.
+Use code-index operations in this order to minimize context consumption. Each step narrows focus before you spend tokens reading full files.
+
+**Step 1 — Scope the codebase with `stats`:**
+Use `code-index stats` to get an overview: file counts by type, export counts by kind, top-imported paths, and annotation summary. This tells you the codebase size and language breakdown in ~20 tokens.
+
+**Step 2 — Discover relevant files with `search`:**
+Use `code-index search` to find files related to the task. Search supports FTS5 full-text queries across file names, descriptions, export names, and variable names. You can also filter by:
+- `export_name` / `export_kind` — find specific classes, functions, or methods
+- `file_type` — restrict to e.g. "dart" files only
+- `import_pattern` — find files importing a specific package
+- `path_pattern` — restrict to a directory subtree
+
+**Step 3 — Understand file structure with `show-file`:**
+Use `code-index show-file` to get a file's full indexed info (exports with parameters, imports, variables, annotations) WITHOUT reading the source. This returns ~100-200 tokens vs ~500-5000+ tokens for `filesystem read-file`. Use show-file to understand what a file contains before deciding whether to read its full source.
+
+**Step 4 — Map relationships with `dependents` and `dependencies`:**
+- `code-index dependents` (path) — find all files that import a given path. Critical for impact analysis when planning changes.
+- `code-index dependencies` (path) — get all imports for a file, classified as internal (indexed) or external. Helps understand what a file relies on.
+
+**Step 5 — Find TODOs and annotations with `search-annotations`:**
+Use `code-index search-annotations` to find TODO, FIXME, HACK, NOTE, and DEPRECATED annotations. Filter by kind, file path pattern, or message content. Useful for discovering existing plans, known issues, and technical debt related to the task area.
+
+**Step 6 — Detect changes with `diff`:**
+Use `code-index diff` to compare the current filesystem against the index. Returns lists of changed, added, and deleted files. Useful when the index may be stale or when you need to understand what changed recently on disk.
+
+### Fallback Tools
+
+Use these when code-index doesn't cover what you need:
+
+- **filesystem list-content**: Use to explore directory structure or find files in unindexed directories.
+- **filesystem read-file**: Use to examine specific files in detail — but only AFTER using show-file to confirm the file is relevant.
+- **filesystem search-text**: Use for regex-based searching when you need pattern matching (code-index search is keyword/FTS-based, not regex).
 - **git log/diff**: Use to understand recent changes and what areas of code are actively being modified.
+
+### Token Economy
+
+Prefer code-index operations to save context for planning decisions:
+
+| Instead of... | Use... | Token savings |
+|---|---|---|
+| `filesystem list-content` on large dirs | `code-index stats` | ~20 tokens vs hundreds |
+| `filesystem read-file` to understand a file | `code-index show-file` | ~100-200 vs ~500-5000+ tokens |
+| `filesystem search-text` scanning all files | `code-index search` with filters | Targeted results vs full-line matches |
+| Manually searching imports to find dependents | `code-index dependents` | Instant reverse lookup |
 
 **For large codebases**: If you need to analyze many files, consider spawning code-index-agent sub-agents to analyze batches of files to avoid running out of context.
 
 Summarize your findings before moving to Phase 3. You should understand:
 - Which files need to be modified
 - What patterns/conventions exist in the codebase
-- Any dependencies or risks
+- Dependencies and dependents of key files (use `dependents` and `dependencies`)
+- TODOs or annotations related to the task area (use `search-annotations`)
+- Any risks or cross-cutting concerns
 
 ## Phase 3 — Plan & Create Tasks
 
@@ -90,15 +131,50 @@ After creating all tasks:
 - **project_id mismatch**: If `get-project-instructions` returns nothing or the project_id convention is unclear, ask the user to clarify or check the `.ai_coding_tool/INSTRUCTIONS.md` file.
 - **Task creation fails**: Check that required fields (title, project_id) are provided. Retry once, then report the error to the user.
 - **Duplicate task found**: If `list-tasks` shows a similar task already exists, inform the user and ask whether to update the existing task or create a new one.
-- **Exploration hits dead ends**: If code-index returns no results, fall back to filesystem search-text with broader patterns. If the codebase structure is unclear, use filesystem list-content to map the directory tree first.
+- **code-index returns no results**: The index may be stale — use `code-index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
+- **code-index show-file returns nothing**: The file may not be indexed. Fall back to `filesystem read-file` for that specific file.
 
 ## Examples
 
-### Example 1 — Simple task with steps
+### Example 1 — Exploration with code-index before planning
 
-A user asks to add input validation to a form component.
+A user asks to add input validation to a form component. First explore:
 
-After research, create:
+```
+# Step 1: Scope the codebase
+code-index: stats
+# → 45 dart files, 3 yaml files, 12 TODO annotations, top imports: flutter/material.dart
+
+# Step 2: Find relevant files
+code-index: search (query: "validation", export_kind: "class")
+# → Found ValidationUtils in src/utils/validation.dart
+code-index: search (query: "RegisterForm")
+# → Found RegisterForm class in src/components/RegisterForm.tsx
+
+# Step 3: Understand file structure without reading source
+code-index: show-file (path: "src/components/RegisterForm.tsx")
+# → exports: RegisterForm (class), methods: build, _onSubmit
+# → imports: react, ./styles.css
+# → annotations: TODO "add email validation" at line 42
+
+code-index: show-file (path: "src/utils/validation.dart")
+# → exports: validateEmail (function), validatePassword (function)
+# → no annotations
+
+# Step 4: Check impact — who else uses validation?
+code-index: dependents (path: "src/utils/validation")
+# → 3 files import this module: LoginForm, RegisterForm, ProfileForm
+
+# Step 5: Check for related TODOs
+code-index: search-annotations (kind: "TODO", path_pattern: "%validation%")
+# → TODO: "add email format validation" in RegisterForm.tsx line 42
+# → TODO: "add password strength check" in validation.dart line 15
+
+# Step 6: Only NOW read specific files that need detailed understanding
+filesystem: read-file (path: "src/utils/validation.dart")
+```
+
+After research, create the task:
 
 ```
 add-task:
@@ -107,14 +183,17 @@ add-task:
   details: |
     ## Background
     The user registration form at `./src/components/RegisterForm.tsx` currently accepts any input without validation.
+    There are existing TODO annotations requesting email and password validation.
+    ValidationUtils already exists in `./src/utils/validation.dart` with basic functions.
+    3 other files depend on the validation module (LoginForm, RegisterForm, ProfileForm).
     
     ## Purpose
     Add client-side validation for email format, password strength, and required fields.
     
     ## Files involved
-    - `./src/components/RegisterForm.tsx`
-    - `./src/utils/validation.ts` (new file)
-    - `./src/components/__tests__/RegisterForm.test.tsx`
+    - `./src/components/RegisterForm.tsx` (modify — add validation calls)
+    - `./src/utils/validation.ts` (modify — add new validation functions)
+    - `./src/components/__tests__/RegisterForm.test.tsx` (create/modify — add tests)
     
     ## Acceptance Criteria
     - Email field validates format using regex
@@ -125,7 +204,7 @@ add-task:
 
 add-step (to above task):
   title: "Create validation utility functions"
-  details: "Create `./src/utils/validation.ts` with functions: validateEmail(email: string), validatePassword(password: string), validateRequired(value: string). Each returns { valid: boolean, error?: string }."
+  details: "Update `./src/utils/validation.ts` with functions: validateEmail(email: string), validatePassword(password: string), validateRequired(value: string). Each returns { valid: boolean, error?: string }. Note: 3 files depend on this module so ensure backward compatibility."
   
 add-step:
   title: "Integrate validation into RegisterForm component"
