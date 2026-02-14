@@ -132,7 +132,7 @@ class SearchOperations {
           // Wrap in quotes for safety, add * for prefix matching
           return '"$safe"*';
         })
-        .join(' ');
+        .join(' OR ');
     return escaped;
   }
 
