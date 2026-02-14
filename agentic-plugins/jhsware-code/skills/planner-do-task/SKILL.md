@@ -9,8 +9,6 @@ agent: task-agent
 
 ultrathink
 
-Use code-index tool search operation when exploring the code base. It supports simple keyword searching. Use filesystem tool search-text as fallback.
-
 ## Phase 1 — Setup
 
 1. **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions and constraints.
@@ -38,15 +36,28 @@ Process each step in order:
 
 For each step:
 1. Change step status to `started`
-2. Perform the work described in the step details. Use:
-   - **code-index search** for finding relevant code and understanding the codebase
-   - **filesystem read-file** to examine specific files
-   - **filesystem edit-file** to modify files (use startLine/endLine for targeted edits, or omit to overwrite)
-   - **filesystem create-file** to create new files
-   - **filesystem search-text** for regex-based code search when code-index isn't sufficient
-3. After completing the step work, commit changes to git (see Git Workflow below)
-4. Change step status to `done`
-5. Update task memory with a brief note about what was accomplished
+2. **Explore before editing** — Use code-index to understand context before making changes:
+   - `code-index search` — find files related to the step's work. Supports FTS5 queries with filters: `query`, `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`.
+   - `code-index show-file` (path) — understand a file's structure (exports, imports, variables, annotations) without reading full source. Returns ~100-200 tokens vs ~500-5000+ for `filesystem read-file`. Use this BEFORE reading a file to confirm it's relevant.
+   - `code-index dependents` (path) — find all files that import a given path. Check this BEFORE modifying a file to understand impact on other files.
+   - `code-index dependencies` (path) — get all imports for a file, classified as internal or external. Understand what a file relies on before changing it.
+   - `code-index search-annotations` — find TODO/FIXME/HACK/NOTE/DEPRECATED annotations. Filter by `kind`, `path_pattern`, `message_pattern`, `file_type`.
+   - `code-index diff` (directories) — check what files changed on disk since last indexing. Useful to verify your changes or detect unexpected modifications.
+3. **Read and edit files**:
+   - `filesystem read-file` — read specific files after confirming relevance with show-file
+   - `filesystem edit-file` — modify files (use startLine/endLine for targeted edits, or omit to overwrite)
+   - `filesystem create-file` — create new files
+   - `filesystem search-text` — regex-based search as fallback when code-index search isn't sufficient
+4. After completing the step work, commit changes to git (see Git Workflow below)
+5. Change step status to `done`
+6. Update task memory with a brief note about what was accomplished
+
+### Ensuring code-index is available
+
+If `code-index search` returns no results for queries you expect to match:
+- The index may be stale or empty. Use `code-index diff` with the relevant directories to check.
+- Fall back to `filesystem search-text` for the current step.
+- Note in task memory that the index needs updating.
 
 ### For parent tasks
 
@@ -126,10 +137,12 @@ Task memory preserves context across steps and across interrupted sessions. Use 
 - **File not found**: Verify the path using `filesystem list-content`. The file may have been moved or renamed. Check git history with `git log` if needed.
 - **Git merge conflicts**: If merging to master fails due to conflicts, note the conflict in task memory and ask the user for guidance. Do not force-resolve conflicts without understanding the other changes.
 - **Step is unclear**: If a step's details are insufficient to complete the work, check task memory and task details for additional context. If still unclear, ask the user for clarification.
+- **code-index returns no results**: Index may be stale. Use `code-index diff` to check, then fall back to `filesystem search-text`. Note in task memory.
+- **code-index show-file returns nothing for a known file**: File is not indexed. Use `filesystem read-file` directly for that file.
 
 ## Examples
 
-### Example 1 — Regular task execution flow
+### Example 1 — Regular task execution with code-index exploration
 
 ```
 # Phase 1 — Setup
@@ -140,18 +153,33 @@ git: branch-create (branch: "task/add-validation")
 git: branch-switch (branch: "task/add-validation")
 planner: update-task (id: "abc-123", status: "started")
 
-# Phase 2 — Execution (step 1)
+# Phase 2 — Execution (step 1: understand context first)
 planner: update-step (id: "step-1", status: "started")
-filesystem: read-file (path: "./src/components/Form.tsx")
-filesystem: edit-file (path: "./src/components/Form.tsx", content: "...", startLine: 10, endLine: 25)
-git: add (files: ["./src/components/Form.tsx"])
+
+# Explore with code-index before editing
+code-index: show-file (path: "src/components/Form.tsx")
+# → exports: Form (class), methods: build, _onSubmit, _validate
+# → imports: react, ./validation.ts
+# → annotations: TODO "add email validation"
+
+code-index: dependents (path: "src/components/Form.tsx")
+# → 2 files import this: App.tsx, FormPage.tsx
+
+code-index: dependencies (path: "src/components/Form.tsx")
+# → internal: src/utils/validation.ts (indexed), external: react
+
+# Now read the specific file to make changes
+filesystem: read-file (path: "src/components/Form.tsx")
+filesystem: edit-file (path: "src/components/Form.tsx", content: "...", startLine: 10, endLine: 25)
+git: add (files: ["src/components/Form.tsx"])
 git: commit (message: "Add email validation to Form component")
 planner: update-step (id: "step-1", status: "done")
+planner: update-task-memory (id: "abc-123", memory: "Step 1 done: updated Form.tsx with validation. 2 dependents: App.tsx, FormPage.tsx — no changes needed there.")
 
 # Phase 2 — Execution (step 2)
 planner: update-step (id: "step-2", status: "started")
-filesystem: create-file (path: "./src/utils/validation.ts", content: "...")
-git: add (files: ["./src/utils/validation.ts"])
+filesystem: create-file (path: "src/utils/validation.ts", content: "...")
+git: add (files: ["src/utils/validation.ts"])
 git: commit (message: "Add validation utility functions")
 planner: update-step (id: "step-2", status: "done")
 

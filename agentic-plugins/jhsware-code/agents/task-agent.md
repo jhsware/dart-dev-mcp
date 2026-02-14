@@ -34,11 +34,27 @@ Commit changes after each meaningful step rather than accumulating one large com
 - If something goes wrong, it's easier to identify which change caused the issue.
 - Each commit should represent a logical, self-contained unit of work.
 
-## Code Exploration
+## Code Exploration with code-index
 
-Use code-index search as the primary tool for finding relevant code and understanding the codebase:
+Use code-index as the primary tool for understanding the codebase before making changes. Each operation serves a specific purpose:
 
-- Search for keywords, function names, or class names to locate relevant files.
-- Use filesystem read-file to examine specific files once you know which ones matter.
-- Fall back to filesystem search-text for regex-based searching when code-index doesn't find what you need.
-- Understand dependencies and patterns before making changes — don't modify code without understanding the context.
+- **`search`** (query, export_name, export_kind, file_type, path_pattern, import_pattern) — Primary discovery tool. Use FTS5 full-text queries to find relevant files, classes, functions, or variables. Start here when looking for code related to a step.
+- **`show-file`** (path) — Get a file's full indexed structure: exports (with parameters and descriptions), imports, variables, and annotations. Returns ~100-200 tokens vs ~500-5000+ for reading the full file. Use this BEFORE `filesystem read-file` to confirm a file is relevant and understand its structure.
+- **`dependents`** (path) — Find all files that import a given path. Check BEFORE modifying a file to understand what other files will be affected by the change.
+- **`dependencies`** (path) — Get all imports for a file, classified as internal (indexed) or external. Understand what a file relies on before changing it.
+- **`search-annotations`** (kind, path_pattern, message_pattern) — Find TODO/FIXME/HACK/NOTE/DEPRECATED annotations. Useful for finding related work items or known issues in the area you're modifying.
+- **`diff`** (directories, file_extensions) — Compare filesystem against index to find changed/added/deleted files. Use to verify changes or detect stale index entries.
+- **`stats`** — Get codebase overview: file counts by type, export counts by kind, top imports, annotation summary. Useful when starting on an unfamiliar codebase.
+
+### Exploration workflow for each step
+
+1. `search` to find relevant files for the step
+2. `show-file` on each candidate to understand structure without reading source
+3. `dependents` on files you plan to modify — check for impact
+4. `filesystem read-file` only on confirmed-relevant files
+5. Make changes and commit
+
+### Fallback
+
+- If `code-index search` returns no results, the index may be stale. Use `code-index diff` to check, then fall back to `filesystem search-text` for regex-based searching.
+- If `code-index show-file` returns nothing, the file isn't indexed. Use `filesystem read-file` directly.
