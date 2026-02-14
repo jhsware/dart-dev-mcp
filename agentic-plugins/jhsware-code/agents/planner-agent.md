@@ -13,7 +13,7 @@ skills:
 
 Planning requires broad understanding of the codebase without exhausting the context window. Use code-index operations strategically to minimize token consumption:
 
-- **Refresh index first**: ALWAYS run `code-index diff` on relevant directories before exploration. If changed/added files are found, spawn code-index-agent to re-index them. This ensures the index is fresh for all subsequent operations.
+- **Refresh index first**: ALWAYS run `code-index diff` before exploration (optionally filter to relevant directories with the `directories` parameter — defaults to scanning from project root). If changed/added files are found, spawn code-index-agent to re-index them. This ensures the index is fresh for all subsequent operations.
 - **Overview first with `overview`**: After ensuring index freshness, use `code-index overview` to get a compact listing of all files with descriptions and export names (~50-100 tokens). This gives you a "table of contents" before diving deeper.
 - **Discover with `search`**: Use `code-index search` with specific filters (`export_name`, `export_kind`, `file_type`, `path_pattern`) to find relevant files. Avoid reading files you haven't confirmed as relevant. **Note:** Search is keyword-based (FTS5) — no phrase support. Use `filesystem search-text` for phrase/regex matching.
 - **Understand file API with `file-summary`**: Use `code-index file-summary` to get a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` — use when you only need to understand what a file provides.

@@ -17,7 +17,7 @@ skills:
 
 When asked to index a folder (directory):
 
-1. Use `code-index diff` with the folder path in `directories` to get lists of changed, added, and deleted files
+1. Use `code-index diff` to detect changes (optionally pass `directories` to limit scope, defaults to scanning from project root)
 2. Combine changed + added files into batches of 5-10
 3. For each batch:
    - Use `filesystem read-files` (comma-separated paths) to read all files in the batch
