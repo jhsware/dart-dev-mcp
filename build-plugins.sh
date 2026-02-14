@@ -107,10 +107,15 @@ echo ""
 for dir in "$PLUGIN_BASE_DIR"/*/; do
   [ -d "$dir" ] || continue
   name=$(basename "$dir")
-  echo "Zipping: $name -> ${name}.zip"
-  rm -f "${name}.zip"
+
+  if [ -f "./${name}_${new_version}.zip" ]; then
+    echo "❌ Error: The file ${name}_${new_version}.zip already exists. Aborting!"
+    exit 1
+  fi
+
+  echo "Zipping: $name -> ${name}_${new_version}.zip"
   # Run zip from the plugin's parent directory to keep folder structure clean
-  (cd "$PLUGIN_BASE_DIR" && zip -r -q "../${name}.zip" "$name" -x "*.DS_Store*" "*.git*")
+  (cd "$PLUGIN_BASE_DIR" && zip -r -q "./${name}_${new_version}.zip" "$name" -x "*.DS_Store*" "*.git*")
 done
 
 echo ""
