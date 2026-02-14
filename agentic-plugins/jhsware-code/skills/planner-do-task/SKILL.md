@@ -36,8 +36,9 @@ Process each step in order:
 
 For each step:
 1. Change step status to `started`
-2. **Ensure index is fresh** (once per task, not per step) — Run `code-index diff` on relevant directories at the start of a task. If there are changed or added files, spawn a code-index-agent to re-index them before exploring.
-3. **Explore before editing** — Use code-index to understand context before making changes:
+2. **Read step details**: Call `planner` with operation `show-step` using the step's id to get the full detailed instructions. Read these carefully — they describe exactly what to change, which files to modify, and what the expected outcome is. Follow these instructions precisely.
+3. **Ensure index is fresh** (once per task, not per step) — Run `code-index diff` on relevant directories at the start of a task. If there are changed or added files, spawn a code-index-agent to re-index them before exploring.
+4. **Explore before editing** — Use code-index to understand context before making changes:
    - `code-index overview` — Get a compact listing of all indexed files with descriptions and exports. Use at the start to understand the codebase layout (~50-100 tokens).
    - `code-index search` — find files related to the step's work. Supports FTS5 queries with filters: `query`, `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`.
      > **Note:** `search` is keyword-based (FTS5). It works well for individual words and prefix matches but does NOT support phrase search. Multi-word queries are treated as independent keywords. For phrase or regex matching, use `filesystem search-text`.
@@ -46,14 +47,14 @@ For each step:
    - `code-index dependents` (path) — find all files that import a given path. Check this BEFORE modifying a file to understand impact on other files.
    - `code-index dependencies` (path) — get all imports for a file, classified as internal or external. Understand what a file relies on before changing it.
    - `code-index search-annotations` — find TODO/FIXME/HACK/NOTE/DEPRECATED annotations. Filter by `kind`, `path_pattern`, `message_pattern`, `file_type`.
-4. **Read and edit files**:
+5. **Read and edit files**:
    - `filesystem read-file` — read specific files after confirming relevance with show-file
    - `filesystem edit-file` — modify files (use startLine/endLine for targeted edits, or omit to overwrite)
    - `filesystem create-file` — create new files
    - `filesystem search-text` — regex-based search as fallback when code-index search isn't sufficient
-5. After completing the step work, commit changes to git (see Git Workflow below)
-6. Change step status to `done`
-7. Update task memory with a brief note about what was accomplished
+6. After completing the step work, commit changes to git (see Git Workflow below)
+7. Change step status to `done`
+8. Update task memory with a brief note about what was accomplished
 
 ### Ensuring code-index is available
 
@@ -166,6 +167,8 @@ code-index: overview (path_pattern: "src/components%")
 
 # Phase 2 — Execution (step 1: understand context first)
 planner: update-step (id: "step-1", status: "started")
+planner: show-step (id: "step-1")
+# → Read the step's detailed instructions: what to change, which files, expected outcome
 
 # Search for specific files related to this step
 code-index: search (query: "Form", export_kind: "class")
@@ -191,6 +194,8 @@ planner: update-task-memory (id: "abc-123", memory: "Step 1 done: updated Form.t
 
 # Phase 2 — Execution (step 2)
 planner: update-step (id: "step-2", status: "started")
+planner: show-step (id: "step-2")
+# → Read the step's detailed instructions
 filesystem: create-file (path: "src/utils/validation.ts", content: "...")
 git: add (files: ["src/utils/validation.ts"])
 git: commit (message: "Add validation utility functions")
