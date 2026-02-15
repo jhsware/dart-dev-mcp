@@ -16,6 +16,10 @@ class FileWriteOperations {
     required this.allowedPaths,
   });
 
+  /// Allowed paths formatted as relative paths for error messages.
+  late final String _allowedPathsHint =
+      formatAllowedPathsHint(workingDir, allowedPaths);
+
   /// Create a new directory.
   Future<CallToolResult> createDirectory(String path) async {
     final pathError = validateRelativePath(path);

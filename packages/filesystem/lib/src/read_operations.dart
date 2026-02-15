@@ -17,6 +17,10 @@ class FileReadOperations {
     required this.allowedPaths,
   });
 
+  /// Allowed paths formatted as relative paths for error messages.
+  late final String _allowedPathsHint =
+      formatAllowedPathsHint(workingDir, allowedPaths);
+
   /// List content recursively.
   Future<CallToolResult> listContent(String path) async {
     final pathError = validateRelativePath(path);

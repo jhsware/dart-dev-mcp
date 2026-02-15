@@ -55,3 +55,23 @@ String? validateRelativePath(String path) {
 
   return null;
 }
+
+/// Format allowed paths as relative paths for display in error messages.
+///
+/// Strips the [workingDir] prefix from each absolute allowed path to produce
+/// user-friendly relative paths. Returns the formatted hint string.
+String formatAllowedPathsHint(Directory workingDir, List<String> allowedPaths) {
+  final prefix = '${workingDir.path}/';
+  final relativePaths = getAllowedRelativePaths(workingDir, allowedPaths);
+  return 'Allowed paths: ${relativePaths.join(', ')}';
+}
+
+/// Compute relative allowed paths from absolute allowed paths and working directory.
+///
+/// Returns a list of relative path strings suitable for display in error messages.
+List<String> getAllowedRelativePaths(Directory workingDir, List<String> allowedPaths) {
+  final prefix = '${workingDir.path}/';
+  return allowedPaths.map((p) {
+    return p.startsWith(prefix) ? p.substring(prefix.length) : p;
+  }).toList();
+}
