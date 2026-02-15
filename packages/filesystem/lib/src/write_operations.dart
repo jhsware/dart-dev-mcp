@@ -24,7 +24,7 @@ class FileWriteOperations {
   Future<CallToolResult> createDirectory(String path) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final dirPath = getAbsolutePath(workingDir, path);
@@ -45,7 +45,7 @@ class FileWriteOperations {
   Future<CallToolResult> createFile(String path, String? content) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final filePath = getAbsolutePath(workingDir, path);
@@ -77,7 +77,7 @@ class FileWriteOperations {
   ) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final filePath = getAbsolutePath(workingDir, path);

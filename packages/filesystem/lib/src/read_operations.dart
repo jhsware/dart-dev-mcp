@@ -25,7 +25,7 @@ class FileReadOperations {
   Future<CallToolResult> listContent(String path) async {
     final pathError = validateRelativePath(path);
     if (pathError != null && path != '.') {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final dirPath = getAbsolutePath(workingDir, path);
@@ -69,7 +69,7 @@ class FileReadOperations {
   Future<CallToolResult> readFile(String path) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final filePath = getAbsolutePath(workingDir, path);
@@ -95,7 +95,7 @@ class FileReadOperations {
       final trimmedPath = path.trim();
       final pathError = validateRelativePath(trimmedPath);
       if (pathError != null) {
-        output.add('$trimmedPath: Error: $pathError');
+        output.add('$trimmedPath: Error: $pathError. $_allowedPathsHint');
         continue;
       }
 
@@ -132,7 +132,7 @@ class FileReadOperations {
 
     final pathError = validateRelativePath(path);
     if (pathError != null && path != '.') {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final dirPath = getAbsolutePath(workingDir, path);
