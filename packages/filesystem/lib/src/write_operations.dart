@@ -16,16 +16,20 @@ class FileWriteOperations {
     required this.allowedPaths,
   });
 
+  /// Allowed paths formatted as relative paths for error messages.
+  late final String _allowedPathsHint =
+      formatAllowedPathsHint(workingDir, allowedPaths);
+
   /// Create a new directory.
   Future<CallToolResult> createDirectory(String path) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final directory = Directory(dirPath);
@@ -41,12 +45,12 @@ class FileWriteOperations {
   Future<CallToolResult> createFile(String path, String? content) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);
@@ -73,12 +77,12 @@ class FileWriteOperations {
   ) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);

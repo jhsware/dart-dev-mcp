@@ -17,16 +17,20 @@ class FileReadOperations {
     required this.allowedPaths,
   });
 
+  /// Allowed paths formatted as relative paths for error messages.
+  late final String _allowedPathsHint =
+      formatAllowedPathsHint(workingDir, allowedPaths);
+
   /// List content recursively.
   Future<CallToolResult> listContent(String path) async {
     final pathError = validateRelativePath(path);
     if (pathError != null && path != '.') {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final directory = Directory(dirPath);
@@ -65,12 +69,12 @@ class FileReadOperations {
   Future<CallToolResult> readFile(String path) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);
@@ -91,13 +95,13 @@ class FileReadOperations {
       final trimmedPath = path.trim();
       final pathError = validateRelativePath(trimmedPath);
       if (pathError != null) {
-        output.add('$trimmedPath: Error: $pathError');
+        output.add('$trimmedPath: Error: $pathError. $_allowedPathsHint');
         continue;
       }
 
       final filePath = getAbsolutePath(workingDir, trimmedPath);
       if (!isAllowedPath(allowedPaths, filePath)) {
-        output.add('$trimmedPath: Error: Not allowed');
+        output.add('$trimmedPath: Error: Not allowed. $_allowedPathsHint');
         continue;
       }
 
@@ -128,12 +132,12 @@ class FileReadOperations {
 
     final pathError = validateRelativePath(path);
     if (pathError != null && path != '.') {
-      return validationError('path', pathError);
+      return validationError('path', '$pathError. $_allowedPathsHint');
     }
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final directory = Directory(dirPath);
