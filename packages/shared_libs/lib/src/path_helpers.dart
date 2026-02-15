@@ -61,7 +61,6 @@ String? validateRelativePath(String path) {
 /// Strips the [workingDir] prefix from each absolute allowed path to produce
 /// user-friendly relative paths. Returns the formatted hint string.
 String formatAllowedPathsHint(Directory workingDir, List<String> allowedPaths) {
-  final prefix = '${workingDir.path}/';
   final relativePaths = getAllowedRelativePaths(workingDir, allowedPaths);
   return 'Allowed paths: ${relativePaths.join(', ')}';
 }
