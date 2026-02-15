@@ -30,7 +30,7 @@ class FileReadOperations {
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final directory = Directory(dirPath);
@@ -74,7 +74,7 @@ class FileReadOperations {
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);
@@ -101,7 +101,7 @@ class FileReadOperations {
 
       final filePath = getAbsolutePath(workingDir, trimmedPath);
       if (!isAllowedPath(allowedPaths, filePath)) {
-        output.add('$trimmedPath: Error: Not allowed');
+        output.add('$trimmedPath: Error: Not allowed. $_allowedPathsHint');
         continue;
       }
 
@@ -137,7 +137,7 @@ class FileReadOperations {
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final directory = Directory(dirPath);

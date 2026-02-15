@@ -29,7 +29,7 @@ class FileWriteOperations {
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final directory = Directory(dirPath);
@@ -50,7 +50,7 @@ class FileWriteOperations {
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);
@@ -82,7 +82,7 @@ class FileWriteOperations {
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path');
+      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);
