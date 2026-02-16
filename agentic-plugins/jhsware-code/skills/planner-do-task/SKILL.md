@@ -32,6 +32,16 @@ If some steps already have status `done`:
 
 Process each step in order:
 
+### For parent tasks
+
+For each step:
+1. Change step status to `started`
+2. Call `planner` with operation `get-subtask-prompt` using the step's id — this fetches the linked sub-task details including its title, description, and steps
+3. Invoke the `/planner-do-task` skill with the sub-task id and details returned by `get-subtask-prompt`
+4. After the sub-task completes, change step status to `done`
+
+**IMPORTANT**: Use `get-subtask-prompt` (not `show-task`) to fetch sub-task details. This operation is specifically designed to retrieve the sub-task linked to a parent task step, and will return an error if the step has no linked sub-task.
+
 ### For regular tasks
 
 For each step:
@@ -62,16 +72,6 @@ If `code-index search` returns no results for queries you expect to match:
 - The index may be stale or empty. Use `code-index diff` with the relevant directories to check.
 - Fall back to `filesystem search-text` for the current step.
 - Note in task memory that the index needs updating.
-
-### For parent tasks
-
-For each step:
-1. Change step status to `started`
-2. Call `planner` with operation `get-subtask-prompt` using the step's id — this fetches the linked sub-task details including its title, description, and steps
-3. Invoke the `/planner-do-task` skill with the sub-task id and details returned by `get-subtask-prompt`
-4. After the sub-task completes, change step status to `done`
-
-**IMPORTANT**: Use `get-subtask-prompt` (not `show-task`) to fetch sub-task details. This operation is specifically designed to retrieve the sub-task linked to a parent task step, and will return an error if the step has no linked sub-task.
 
 ## Phase 3 — Verification (skip for parent tasks)
 
