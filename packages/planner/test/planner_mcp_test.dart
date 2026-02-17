@@ -453,7 +453,7 @@ void main() {
 
     group('Project Instructions', () {
       test('can read instructions file when it exists', () async {
-        final instructionsPath = p.join(aiToolDir.path, 'INSTRUCTIONS.md');
+        final instructionsPath = p.join(tempDir.path, 'AGENTS.md');
         final instructionsFile = File(instructionsPath);
         
         const content = '''# Project Instructions
@@ -472,7 +472,7 @@ This is a test project.
       });
 
       test('detects when instructions file is missing', () async {
-        final instructionsPath = p.join(aiToolDir.path, 'INSTRUCTIONS.md');
+        final instructionsPath = p.join(tempDir.path, 'AGENTS.md');
         final instructionsFile = File(instructionsPath);
         
         expect(await instructionsFile.exists(), isFalse);
