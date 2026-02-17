@@ -64,8 +64,10 @@ class GitLogOperations {
         'after': {
           'commit_hash': commitHash,
           'branch': branch,
-          ?'step_id': stepId,
-          ?'message': message,
+          // ignore: use_null_aware_elements
+          if (stepId != null) 'step_id': stepId,
+          // ignore: use_null_aware_elements
+          if (message != null) 'message': message,
           'type': 'commit',
         },
       },

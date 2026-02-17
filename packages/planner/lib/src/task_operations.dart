@@ -385,8 +385,10 @@ class TaskOperations {
       'tasks': tasks,
       'count': tasks.length,
       'filters': {
-        ?'project_id': projectId,
-        ?'status': status,
+        // ignore: use_null_aware_elements
+        if (projectId != null) 'project_id': projectId,
+        // ignore: use_null_aware_elements
+        if (status != null) 'status': status,
       },
     });
   }
