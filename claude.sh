@@ -448,7 +448,7 @@ build_mcp_config() {
     project_name=$(basename "$project_path")
 
     echo '    "dart-dev-mcp-code-index": {'
-    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/code_index.db"
+    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/code_index.db" "${abs_regular_paths[@]}"
     echo '    }'
   fi
 
