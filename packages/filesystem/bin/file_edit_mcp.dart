@@ -196,19 +196,19 @@ Future<CallToolResult> _handleFileSystem(
       case 'read-files':
         return await readOps.readFiles(path.split(','));
       case 'search-text':
-        final pattern = args?['pattern'] as String?;
-        final filePattern = args?['file-pattern'] as String?;
-        final caseSensitive = args?['case-sensitive'] as bool? ?? true;
+        final pattern = args['pattern'] as String?;
+        final filePattern = args['file-pattern'] as String?;
+        final caseSensitive = args['case-sensitive'] as bool? ?? true;
         return await readOps.searchText(path, pattern, filePattern, caseSensitive);
       case 'create-directory':
         return await writeOps.createDirectory(path);
       case 'create-file':
-        final content = args?['content'] as String?;
+        final content = args['content'] as String?;
         return await writeOps.createFile(path, content);
       case 'edit-file':
-        final content = args?['content'] as String?;
-        final startLine = args?['startLine'] as int?;
-        final endLine = args?['endLine'] as int?;
+        final content = args['content'] as String?;
+        final startLine = args['startLine'] as int?;
+        final endLine = args['endLine'] as int?;
         return await writeOps.editFile(path, content, startLine, endLine);
       default:
         return validationError('operation', 'Unknown operation: $operation');

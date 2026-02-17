@@ -182,7 +182,7 @@ Future<CallToolResult> _handleFlutterRunner(
         );
 
       case 'test':
-        final target = args?['target'] as String?;
+        final target = args['target'] as String?;
         return _startFlutterCommandWithProgress(
           extra,
           workingDir,
@@ -199,8 +199,8 @@ Future<CallToolResult> _handleFlutterRunner(
         );
 
       case 'run':
-        final device = args?['device'] as String?;
-        final flavor = args?['flavor'] as String?;
+        final device = args['device'] as String?;
+        final flavor = args['flavor'] as String?;
         return _startFlutterCommandWithProgress(
           extra,
           workingDir,
@@ -216,8 +216,8 @@ Future<CallToolResult> _handleFlutterRunner(
         );
 
       case 'build':
-        final target = args?['target'] as String? ?? 'apk';
-        final flavor = args?['flavor'] as String?;
+        final target = args['target'] as String? ?? 'apk';
+        final flavor = args['flavor'] as String?;
         return _startFlutterCommandWithProgress(
           extra,
           workingDir,
@@ -254,17 +254,17 @@ Future<CallToolResult> _handleFlutterRunner(
         );
 
       case 'get_output':
-        final sessionId = args?['session_id'] as String?;
-        final chunkIndex = (args?['chunk_index'] as num?)?.toInt() ?? 0;
+        final sessionId = args['session_id'] as String?;
+        final chunkIndex = (args['chunk_index'] as num?)?.toInt() ?? 0;
         final maxChunks =
-            ((args?['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
+            ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
         return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
 
       case 'list_sessions':
         return _listSessions(sessionManager);
 
       case 'cancel':
-        final sessionId = args?['session_id'] as String?;
+        final sessionId = args['session_id'] as String?;
         return await _cancelSession(sessionManager, sessionId);
 
       default:
