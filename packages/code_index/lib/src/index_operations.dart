@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:uuid/uuid.dart';
 
+import 'dart_parser.dart';
 import 'hash_utils.dart';
 
 final _uuid = Uuid();
@@ -197,6 +198,63 @@ class IndexOperations {
         'import_count': imports?.length ?? 0,
         'annotation_count': annotations?.length ?? 0,
       },
+    });
+  }
+
+  /// Automatically index a file by reading it and extracting metadata.
+  ///
+  /// For Dart files, uses [DartParser] to programmatically extract all
+  /// structural metadata (imports, exports, variables, annotations).
+  /// For non-Dart files, stores path, name, file_type, and the optional
+  /// LLM-provided description.
+  CallToolResult autoIndex(Map<String, dynamic>? args) {
+    final path = args?['path'] as String?;
+    final description = args?['description'] as String?;
+
+    if (requireString(path, 'path') case final error?) {
+      return error;
+    }
+
+    // Resolve and validate file
+    final absolutePath = p.normalize(p.join(workingDir.path, path!));
+    final file = File(absolutePath);
+    if (!file.existsSync()) {
+      return validationError('path', 'File not found: $path');
+    }
+
+    // Check allowed paths restriction
+    if (allowedPaths.isNotEmpty && !isAllowedPath(allowedPaths, absolutePath)) {
+      return validationError('path', 'Path not allowed: $path. ${formatAllowedPathsHint(workingDir, allowedPaths)}');
+    }
+
+    final name = p.basename(path);
+    final ext = p.extension(path).toLowerCase();
+    final fileType = ext.isNotEmpty ? ext.substring(1) : null;
+
+    List<Map<String, String?>> exports = [];
+    List<Map<String, String?>> variables = [];
+    List<String> imports = [];
+    List<Map<String, dynamic>> annotations = [];
+
+    if (fileType == 'dart') {
+      final source = file.readAsStringSync();
+      final result = DartParser.parse(source);
+      exports = result.exports;
+      variables = result.variables;
+      imports = result.imports;
+      annotations = result.annotations;
+    }
+
+    // Delegate to indexFile with the extracted data
+    return indexFile({
+      'path': path,
+      'name': name,
+      'description': description,
+      'file_type': fileType,
+      'exports': exports,
+      'variables': variables,
+      'imports': imports,
+      'annotations': annotations,
     });
   }
 }
