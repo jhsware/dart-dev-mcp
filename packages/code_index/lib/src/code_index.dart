@@ -8,6 +8,7 @@
 /// ```
 library;
 
+export 'dart_parser.dart';
 export 'database.dart';
 export 'diff_operations.dart';
 export 'hash_utils.dart';
