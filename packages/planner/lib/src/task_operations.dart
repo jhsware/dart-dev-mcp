@@ -385,8 +385,8 @@ class TaskOperations {
       'tasks': tasks,
       'count': tasks.length,
       'filters': {
-        if (projectId != null) 'project_id': projectId,
-        if (status != null) 'status': status,
+        ?'project_id': projectId,
+        ?'status': status,
       },
     });
   }

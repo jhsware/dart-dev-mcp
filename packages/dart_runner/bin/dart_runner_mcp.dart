@@ -167,7 +167,7 @@ Future<CallToolResult> _handleDartRunner(
           'test',
           [
             'test',
-            if (target != null) target,
+            ?target,
             ...?_getExtraArgs(args),
           ],
         );
@@ -181,7 +181,7 @@ Future<CallToolResult> _handleDartRunner(
           'run',
           [
             'run',
-            if (target != null) target,
+            ?target,
             ...?_getExtraArgs(args),
           ],
         );

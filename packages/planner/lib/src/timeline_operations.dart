@@ -72,10 +72,10 @@ class TimelineOperations {
       'timeline': timeline,
       'count': timeline.length,
       'filters': {
-        if (projectId != null) 'project_id': projectId,
-        if (entityTypeStr != null) 'entity_type': entityTypeStr,
-        if (beforeStr != null) 'before': beforeStr,
-        if (afterStr != null) 'after': afterStr,
+        ?'project_id': projectId,
+        ?'entity_type': entityTypeStr,
+        ?'before': beforeStr,
+        ?'after': afterStr,
         'limit': limit,
       },
     });

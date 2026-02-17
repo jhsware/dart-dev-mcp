@@ -193,7 +193,7 @@ Future<CallToolResult> _handleFlutterRunner(
             'test',
             '--reporter',
             'silent',
-            if (target != null) target,
+            ?target,
             ...?_getExtraArgs(args),
           ],
         );
