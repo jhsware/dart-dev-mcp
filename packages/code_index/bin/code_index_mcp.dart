@@ -115,6 +115,7 @@ void main(List<String> arguments) async {
 
 Operations:
 - index-file: Add or update a file entry in the code index
+- auto-index: Automatically read and index a file, extracting all metadata (imports, exports, variables, annotations) programmatically for Dart files
 - search: Search the index for files matching criteria
 - show-file: Show full indexed information for a specific file
 - dependents: Find all files that import a given path
@@ -241,7 +242,7 @@ void _printUsage() {
   stderr.writeln('  allowed_paths       Paths that can be indexed (relative to project-dir)');
 }
 
-const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff', 'overview', 'file-summary'];
+const _validOperations = ['index-file', 'auto-index', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff', 'overview', 'file-summary'];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
@@ -261,6 +262,8 @@ Future<CallToolResult> _handleCodeIndex(
     switch (operation) {
       case 'index-file':
         return indexOps.indexFile(args);
+      case 'auto-index':
+        return indexOps.autoIndex(args);
       case 'search':
         return searchOps.search(args);
       case 'show-file':

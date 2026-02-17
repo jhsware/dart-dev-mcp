@@ -1378,4 +1378,267 @@ void main() {
     });
   });
 
+  group('Auto-index operation', () {
+    late IndexOperations indexOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database);
+
+      // Create a Dart file with rich content for auto-indexing
+      File(p.join(tempDir.path, 'lib', 'sample.dart'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'dart:io';
+import 'package:path/path.dart';
+
+/// A sample class for testing.
+class SampleService {
+  final String name;
+
+  SampleService(this.name);
+
+  /// Processes the input data.
+  String process(String input) {
+    return input.toUpperCase();
+  }
+
+  /// Gets the status.
+  bool get isActive => true;
+}
+
+/// Top-level helper function.
+void runService(SampleService service) {
+  service.process('test');
+}
+
+// TODO: Add error handling here
+const appVersion = '1.0.0';
+final debugMode = false;
+
+enum Status { active, inactive, pending }
+''');
+
+      // Create a non-Dart file
+      File(p.join(tempDir.path, 'lib', 'config.yaml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('name: test_project\nversion: 1.0.0');
+    });
+
+    test('auto-indexes a Dart file with full metadata', () {
+      final result = indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"success": true'));
+      expect(text, contains('"name": "sample.dart"'));
+
+      // Verify file was indexed in the database
+      final files = database.select(
+          "SELECT * FROM files WHERE path = 'lib/sample.dart'");
+      expect(files.length, 1);
+      expect(files.first['name'], 'sample.dart');
+      expect(files.first['file_type'], 'dart');
+
+      // Verify exports were extracted
+      final fileId = files.first['id'] as String;
+      final exports = database.select(
+          'SELECT * FROM exports WHERE file_id = ? ORDER BY name', [fileId]);
+
+      // Should have: SampleService (class), Status (enum),
+      //   isActive (class_member), process (method), runService (function),
+      //   SampleService constructor (method)
+      final exportNames = exports.map((e) => e['name'] as String).toList();
+      expect(exportNames, contains('SampleService'));
+      expect(exportNames, contains('Status'));
+      expect(exportNames, contains('process'));
+      expect(exportNames, contains('runService'));
+      expect(exportNames, contains('isActive'));
+
+      // Verify methods have parent_name
+      final processExport = exports.firstWhere((e) => e['name'] == 'process');
+      expect(processExport['parent_name'], 'SampleService');
+      expect(processExport['kind'], 'method');
+
+      // Verify class
+      final classExport = exports.firstWhere((e) => e['name'] == 'SampleService' && e['kind'] == 'class');
+      expect(classExport['kind'], 'class');
+
+      // Verify enum
+      final enumExport = exports.firstWhere((e) => e['name'] == 'Status');
+      expect(enumExport['kind'], 'enum');
+
+      // Verify top-level function
+      final funcExport = exports.firstWhere((e) => e['name'] == 'runService');
+      expect(funcExport['kind'], 'function');
+      expect(funcExport['parent_name'], isNull);
+
+      // Verify imports
+      final imports = database.select(
+          'SELECT * FROM imports WHERE file_id = ?', [fileId]);
+      final importPaths = imports.map((i) => i['import_path'] as String).toList();
+      expect(importPaths, contains('dart:io'));
+      expect(importPaths, contains('package:path/path.dart'));
+
+      // Verify variables
+      final variables = database.select(
+          'SELECT * FROM variables WHERE file_id = ?', [fileId]);
+      final varNames = variables.map((v) => v['name'] as String).toList();
+      expect(varNames, contains('appVersion'));
+      expect(varNames, contains('debugMode'));
+
+      // Verify annotations
+      final annotations = database.select(
+          'SELECT * FROM annotations WHERE file_id = ?', [fileId]);
+      expect(annotations.length, 1);
+      expect(annotations.first['kind'], 'TODO');
+      expect(annotations.first['message'], contains('Add error handling'));
+    });
+
+    test('auto-indexes with LLM-provided description', () {
+      final result = indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+        'description': 'A sample service module for processing data',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"success": true'));
+
+      // Verify description is stored
+      final files = database.select(
+          "SELECT * FROM files WHERE path = 'lib/sample.dart'");
+      expect(files.first['description'],
+          'A sample service module for processing data');
+
+      // Verify exports were still extracted (not affected by description)
+      final fileId = files.first['id'] as String;
+      final exports = database.select(
+          'SELECT * FROM exports WHERE file_id = ?', [fileId]);
+      expect(exports.length, greaterThan(0));
+    });
+
+    test('auto-indexes a non-Dart file with basic metadata', () {
+      final result = indexOps.autoIndex({
+        'path': 'lib/config.yaml',
+        'description': 'Project configuration',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"success": true'));
+      expect(text, contains('"name": "config.yaml"'));
+
+      // Verify file metadata
+      final files = database.select(
+          "SELECT * FROM files WHERE path = 'lib/config.yaml'");
+      expect(files.length, 1);
+      expect(files.first['file_type'], 'yaml');
+      expect(files.first['description'], 'Project configuration');
+
+      // Non-Dart files should have no exports, imports, variables, annotations
+      final fileId = files.first['id'] as String;
+      final exports = database.select(
+          'SELECT * FROM exports WHERE file_id = ?', [fileId]);
+      expect(exports.length, 0);
+
+      final imports = database.select(
+          'SELECT * FROM imports WHERE file_id = ?', [fileId]);
+      expect(imports.length, 0);
+
+      final variables = database.select(
+          'SELECT * FROM variables WHERE file_id = ?', [fileId]);
+      expect(variables.length, 0);
+
+      final annotations = database.select(
+          'SELECT * FROM annotations WHERE file_id = ?', [fileId]);
+      expect(annotations.length, 0);
+    });
+
+    test('returns error for missing path', () {
+      final result = indexOps.autoIndex({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('path is required'));
+    });
+
+    test('returns error for non-existent file', () {
+      final result = indexOps.autoIndex({
+        'path': 'lib/nonexistent.dart',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('File not found'));
+    });
+
+    test('updates existing entry on re-index', () {
+      // First auto-index
+      indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+        'description': 'Original description',
+      });
+
+      // Verify initial state
+      final filesBefore = database.select(
+          "SELECT * FROM files WHERE path = 'lib/sample.dart'");
+      expect(filesBefore.length, 1);
+      final originalId = filesBefore.first['id'] as String;
+
+      // Re-index with different description
+      final result = indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+        'description': 'Updated description',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"File index updated"'));
+
+      // Should still be one file (upsert, not duplicate)
+      final filesAfter = database.select(
+          "SELECT * FROM files WHERE path = 'lib/sample.dart'");
+      expect(filesAfter.length, 1);
+      expect(filesAfter.first['id'], originalId);
+      expect(filesAfter.first['description'], 'Updated description');
+    });
+
+    test('auto-index respects allowed paths', () {
+      final restrictedOps = IndexOperations(
+        database: database,
+        workingDir: workingDir,
+        allowedPaths: [p.join(tempDir.path, 'lib')],
+      );
+
+      // File inside allowed path should work
+      final result = restrictedOps.autoIndex({
+        'path': 'lib/sample.dart',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"success": true'));
+
+      // File outside allowed path should fail
+      final result2 = restrictedOps.autoIndex({
+        'path': 'pubspec.yaml',
+      });
+      final text2 = result2.content.first.toJson()['text'] as String;
+      expect(text2, contains('not allowed'));
+    });
+
+    test('auto-indexed file is searchable via FTS', () {
+      indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+        'description': 'Sample service module',
+      });
+
+      // Search by export name
+      final result = searchOps.search({'query': 'SampleService'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('lib/sample.dart'));
+
+      // Search by description
+      final result2 = searchOps.search({'query': 'Sample service'});
+      final text2 = result2.content.first.toJson()['text'] as String;
+      expect(text2, contains('lib/sample.dart'));
+    });
+  });
+
 }

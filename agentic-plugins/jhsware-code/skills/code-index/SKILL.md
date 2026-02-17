@@ -41,46 +41,57 @@ For each file that needs indexing (changed + added from diff), read the source:
 filesystem: read-file (path: "lib/src/my_class.dart")
 ```
 
+For Dart files, you only need to understand the file well enough to write a one-line description. All structural metadata (exports, imports, variables, annotations) is extracted automatically by `auto-index`. For non-Dart files, you still need to extract all metadata manually.
+
 For large batches (>10 files), spawn code-index-agent sub-agents with batches of 5-10 file paths each to avoid exhausting context.
 
 ### Step 3 — Index each file
 
-Use `code-index index-file` to add/update each file in the index:
+**Dart files (recommended: use `auto-index`):**
+
+```
+code-index: auto-index
+  path: "lib/src/models/user.dart"
+  description: "User model with authentication and profile data"
+```
+
+The `auto-index` operation reads the file, programmatically extracts all structural metadata (imports, exports, variables, annotations), and stores everything in the index. You only need to provide the `path` and an optional `description`.
+
+**Non-Dart files (use `index-file` with manual extraction):**
 
 ```
 code-index: index-file
-  path: "lib/src/models/user.dart"
-  name: "user.dart"
-  description: "User model with authentication properties"
-  file_type: "dart"
-  exports:
-    - name: "User"
-      kind: "class"
-      description: "Represents an authenticated user"
-      parameters: "({required String id, required String email, String? name})"
-    - name: "fromJson"
-      kind: "method"
-      parent_name: "User"
-      description: "Create User from JSON map"
-      parameters: "(Map<String, dynamic> json)"
-    - name: "toJson"
-      kind: "method"
-      parent_name: "User"
-      description: "Convert User to JSON map"
-  variables:
-    - name: "defaultAvatarUrl"
-      description: "Default avatar URL for users without profile pictures"
-  imports:
-    - "dart:convert"
-    - "package:my_app/src/utils/json_helpers.dart"
-  annotations:
-    - kind: "TODO"
-      message: "Add email validation"
-      line: 42
-    - kind: "DEPRECATED"
-      message: "Use User.fromJson instead"
-      line: 15
+  path: "pubspec.yaml"
+  name: "pubspec.yaml"
+  description: "Package configuration"
+  file_type: "yaml"
 ```
+
+For non-Dart files, `auto-index` still works but only stores path, name, file_type, and description. If you want to add exports/imports metadata for non-Dart files, use `index-file` with manually extracted properties.
+
+## auto-index operation (recommended for Dart files)
+
+Automatically reads a Dart source file and extracts all metadata programmatically:
+- Imports, exports (classes, functions, methods, enums, typedefs, extensions, mixins)
+- Variables (top-level const/final/var)
+- Annotations (TODO/FIXME/HACK/NOTE/DEPRECATED)
+- File type and name auto-detected from path
+
+Parameters:
+
+| Parameter | Required | Description |
+|---|---|---|
+| `path` | Yes | Relative path from project root |
+| `description` | No | One-line summary of what the file does (LLM-provided) |
+
+Example:
+```
+code-index: auto-index
+  path: "lib/src/models/user.dart"
+  description: "User model with authentication and profile data"
+```
+
+The agent only needs to read the file to write a description — all structural extraction is handled automatically. This is more reliable than manual extraction because it uses deterministic parsing rather than LLM interpretation.
 
 ### index-file parameter reference
 
@@ -101,9 +112,9 @@ code-index: index-file
 
 **Annotation object properties:** `kind` (required: TODO, FIXME, HACK, NOTE, DEPRECATED), `message` (optional), `line` (optional)
 
-## Analysis Guidelines
+## Analysis Guidelines (for manual `index-file` — non-Dart files)
 
-When analyzing a source file to extract index properties:
+When manually analyzing a source file to extract index properties (not needed for Dart files using `auto-index`):
 
 1. **Exports**: Identify all public classes, functions, methods, enums, typedefs, extensions, and mixins. For methods, set `parent_name` to the containing class. Include parameter signatures.
 2. **Variables**: Identify top-level constants and variables (not local or class members — those go as exports with kind `class_member`).
