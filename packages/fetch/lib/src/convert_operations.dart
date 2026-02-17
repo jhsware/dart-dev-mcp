@@ -30,34 +30,34 @@ Future<CallToolResult> handleConvert(
   try {
     switch (operation) {
       case 'html-to-markdown':
-        final html = args?['html'] as String?;
+        final html = args['html'] as String?;
         if (requireString(html, 'html') case final error?) {
           return error;
         }
-        final includeLinks = args?['include-links'] as bool? ?? true;
-        final includeImages = args?['include-images'] as bool? ?? true;
+        final includeLinks = args['include-links'] as bool? ?? true;
+        final includeImages = args['include-images'] as bool? ?? true;
         return textResult(
             convertHtmlToMarkdown(html!, includeLinks, includeImages));
 
       case 'fetch-to-markdown':
-        final url = args?['url'] as String?;
+        final url = args['url'] as String?;
         if (requireString(url, 'url') case final error?) {
           return error;
         }
-        final includeLinks = args?['include-links'] as bool? ?? true;
-        final includeImages = args?['include-images'] as bool? ?? true;
+        final includeLinks = args['include-links'] as bool? ?? true;
+        final includeImages = args['include-images'] as bool? ?? true;
         return await convertUrl(url!, includeLinks, includeImages, httpConfig);
 
       case 'html-to-plaintext':
-        final html = args?['html'] as String?;
+        final html = args['html'] as String?;
         if (requireString(html, 'html') case final error?) {
           return error;
         }
         return textResult(extractText(html!));
 
       case 'html-to-links':
-        final url = args?['url'] as String?;
-        final html = args?['html'] as String?;
+        final url = args['url'] as String?;
+        final html = args['html'] as String?;
         if (url != null && url.isNotEmpty) {
           return await extractLinksFromUrl(url, httpConfig);
         } else if (html != null && html.isNotEmpty) {

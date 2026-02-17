@@ -83,6 +83,7 @@ void main(List<String> arguments) async {
     allowedPaths: allowedPaths,
   );
   final searchOps = SearchOperations(database: database);
+  final browseOps = BrowseOperations(database: database);
   final diffOps = DiffOperations(
     database: database,
     workingDir: workingDir,
@@ -219,7 +220,7 @@ Operations:
       },
     ),
     callback: (args, extra) =>
-        _handleCodeIndex(args, database, indexOps, searchOps, diffOps),
+        _handleCodeIndex(args, database, indexOps, searchOps, browseOps, diffOps),
   );
 
   final transport = StdioServerTransport();
@@ -249,6 +250,7 @@ Future<CallToolResult> _handleCodeIndex(
   Database database,
   IndexOperations indexOps,
   SearchOperations searchOps,
+  BrowseOperations browseOps,
   DiffOperations diffOps,
 ) async {
   final operation = args['operation'] as String?;
@@ -267,7 +269,7 @@ Future<CallToolResult> _handleCodeIndex(
       case 'search':
         return searchOps.search(args);
       case 'show-file':
-        return searchOps.showFile(args);
+        return browseOps.showFile(args);
       case 'dependents':
         return searchOps.dependents(args);
       case 'dependencies':
@@ -279,9 +281,9 @@ Future<CallToolResult> _handleCodeIndex(
       case 'diff':
         return diffOps.diff(args);
       case 'overview':
-        return searchOps.overview(args);
+        return browseOps.overview(args);
       case 'file-summary':
-        return searchOps.fileSummary(args);
+        return browseOps.fileSummary(args);
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }

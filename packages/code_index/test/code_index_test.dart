@@ -391,11 +391,12 @@ void main() {
 
   group('ShowFile operation', () {
     late IndexOperations indexOps;
-    late SearchOperations searchOps;
+    late BrowseOperations browseOps;
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      browseOps = BrowseOperations(database: database);
+
 
       // Index a file with full metadata
       indexOps.indexFile({
@@ -431,7 +432,7 @@ void main() {
     });
 
     test('returns full file metadata', () {
-      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.showFile({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"path": "lib/main.dart"'));
@@ -444,7 +445,7 @@ void main() {
     });
 
     test('returns all exports with full details', () {
-      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.showFile({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"main"'));
@@ -457,7 +458,7 @@ void main() {
     });
 
     test('returns all variables', () {
-      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.showFile({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"appVersion"'));
@@ -465,7 +466,7 @@ void main() {
     });
 
     test('returns all imports', () {
-      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.showFile({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('dart:io'));
@@ -473,7 +474,7 @@ void main() {
     });
 
     test('returns not found for unindexed file', () {
-      final result = searchOps.showFile({'path': 'lib/nonexistent.dart'});
+      final result = browseOps.showFile({'path': 'lib/nonexistent.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('not found'));
@@ -481,7 +482,7 @@ void main() {
     });
 
     test('returns error when path is missing', () {
-      final result = searchOps.showFile({});
+      final result = browseOps.showFile({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('path is required'));
@@ -629,10 +630,13 @@ void main() {
   group('Annotation tracking', () {
     late IndexOperations indexOps;
     late SearchOperations searchOps;
+    late BrowseOperations browseOps;
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
       searchOps = SearchOperations(database: database);
+      browseOps = BrowseOperations(database: database);
+
 
       // Index files with annotations
       indexOps.indexFile({
@@ -694,7 +698,7 @@ void main() {
     });
 
     test('showFile includes annotations', () {
-      final result = searchOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.showFile({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"annotations"'));
@@ -705,7 +709,7 @@ void main() {
     });
 
     test('showFile returns empty annotations for file without annotations', () {
-      final result = searchOps.showFile({'path': 'pubspec.yaml'});
+      final result = browseOps.showFile({'path': 'pubspec.yaml'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"annotations": []'));
@@ -1063,11 +1067,12 @@ void main() {
   });
   group('Overview operation', () {
     late IndexOperations indexOps;
-    late SearchOperations searchOps;
+    late BrowseOperations browseOps;
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      browseOps = BrowseOperations(database: database);
+
 
       // Index test files with varied metadata
       indexOps.indexFile({
@@ -1101,7 +1106,7 @@ void main() {
     });
 
     test('returns all indexed files with descriptions and exports', () {
-      final result = searchOps.overview({});
+      final result = browseOps.overview({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"count": 3'));
@@ -1113,7 +1118,7 @@ void main() {
     });
 
     test('exports are formatted as "name (kind)" strings', () {
-      final result = searchOps.overview({});
+      final result = browseOps.overview({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('App (class)'));
@@ -1123,7 +1128,7 @@ void main() {
     });
 
     test('files are sorted by path', () {
-      final result = searchOps.overview({});
+      final result = browseOps.overview({});
       final text = result.content.first.toJson()['text'] as String;
 
       // lib/main.dart should appear before lib/utils.dart before pubspec.yaml
@@ -1135,7 +1140,7 @@ void main() {
     });
 
     test('filters by path_pattern', () {
-      final result = searchOps.overview({'path_pattern': 'lib/'});
+      final result = browseOps.overview({'path_pattern': 'lib/'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"count": 2'));
@@ -1145,7 +1150,7 @@ void main() {
     });
 
     test('filters by file_type', () {
-      final result = searchOps.overview({'file_type': 'yaml'});
+      final result = browseOps.overview({'file_type': 'yaml'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"count": 1'));
@@ -1155,9 +1160,9 @@ void main() {
 
     test('returns empty for empty index', () {
       final freshDb = initializeDatabase(':memory:');
-      final freshSearchOps = SearchOperations(database: freshDb);
+      final freshBrowseOps = BrowseOperations(database: freshDb);
 
-      final result = freshSearchOps.overview({});
+      final result = freshBrowseOps.overview({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"count": 0'));
@@ -1167,11 +1172,11 @@ void main() {
 
   group('File-summary operation', () {
     late IndexOperations indexOps;
-    late SearchOperations searchOps;
+    late BrowseOperations browseOps;
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      browseOps = BrowseOperations(database: database);
 
       // Index a file with classes, methods, variables, imports, and annotations
       indexOps.indexFile({
@@ -1217,7 +1222,7 @@ void main() {
     });
 
     test('returns exports grouped by parent', () {
-      final result = searchOps.fileSummary({'path': 'lib/main.dart'});
+      final result = browseOps.fileSummary({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       // Top-level exports
@@ -1234,7 +1239,7 @@ void main() {
     });
 
     test('returns variables', () {
-      final result = searchOps.fileSummary({'path': 'lib/main.dart'});
+      final result = browseOps.fileSummary({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"appVersion"'));
@@ -1243,7 +1248,7 @@ void main() {
     });
 
     test('excludes imports and annotations', () {
-      final result = searchOps.fileSummary({'path': 'lib/main.dart'});
+      final result = browseOps.fileSummary({'path': 'lib/main.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       // Should NOT contain import or annotation data
@@ -1258,7 +1263,7 @@ void main() {
     });
 
     test('returns not found for unindexed file', () {
-      final result = searchOps.fileSummary({'path': 'lib/nonexistent.dart'});
+      final result = browseOps.fileSummary({'path': 'lib/nonexistent.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('not found'));
@@ -1266,7 +1271,7 @@ void main() {
     });
 
     test('returns error when path is missing', () {
-      final result = searchOps.fileSummary({});
+      final result = browseOps.fileSummary({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('path is required'));

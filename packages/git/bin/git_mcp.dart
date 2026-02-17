@@ -76,10 +76,14 @@ void main(List<String> arguments) async {
   }
   logInfo('git', 'Allowed paths: ${allowedPaths.join(", ")}');
 
-  // Create git operations handler
+  // Create git operations handlers
   final gitOps = GitOperations(
     workingDir: workingDir,
     allowedPaths: allowedPaths,
+  );
+
+  final commitOps = CommitOperations(
+    workingDir: workingDir,
     signingInfo: signingInfo,
   );
 
@@ -157,7 +161,7 @@ Operations:
         ),
       },
     ),
-    callback: (args, extra) => _handleGit(args, gitOps, workingDir, signingInfo),
+    callback: (args, extra) => _handleGit(args, gitOps, commitOps, workingDir, signingInfo),
   );
 
   final transport = StdioServerTransport();
@@ -198,6 +202,7 @@ const _validOperations = [
 Future<CallToolResult> _handleGit(
   Map<String, dynamic> args,
   GitOperations gitOps,
+  CommitOperations commitOps,
   Directory workingDir,
   SigningInfo signingInfo,
 ) async {
@@ -223,31 +228,31 @@ Future<CallToolResult> _handleGit(
       case 'status':
         return gitOps.status();
       case 'branch-create':
-        return gitOps.branchCreate(args?['branch'] as String?, args?['from'] as String?);
+        return gitOps.branchCreate(args['branch'] as String?, args['from'] as String?);
       case 'branch-list':
         return gitOps.branchList();
       case 'branch-switch':
-        return gitOps.branchSwitch(args?['branch'] as String?);
+        return gitOps.branchSwitch(args['branch'] as String?);
       case 'merge':
-        return gitOps.merge(args?['branch'] as String?);
+        return gitOps.merge(args['branch'] as String?);
       case 'add':
-        return gitOps.add(getFilesArg(args), all: args?['all'] as bool? ?? false);
+        return gitOps.add(getFilesArg(args), all: args['all'] as bool? ?? false);
       case 'commit':
-        return gitOps.commit(args?['message'] as String?, sign: args?['sign'] as String? ?? 'auto');
+        return commitOps.commit(args['message'] as String?, sign: args['sign'] as String? ?? 'auto');
       case 'stash':
-        return gitOps.stash(args?['message'] as String?, includeUntracked: args?['include_untracked'] as bool? ?? false);
+        return commitOps.stash(args['message'] as String?, includeUntracked: args['include_untracked'] as bool? ?? false);
       case 'stash-list':
-        return gitOps.stashList();
+        return commitOps.stashList();
       case 'stash-apply':
-        return gitOps.stashApply((args?['stash_index'] as num?)?.toInt() ?? 0, pop: false);
+        return commitOps.stashApply((args['stash_index'] as num?)?.toInt() ?? 0, pop: false);
       case 'stash-pop':
-        return gitOps.stashApply((args?['stash_index'] as num?)?.toInt() ?? 0, pop: true);
+        return commitOps.stashApply((args['stash_index'] as num?)?.toInt() ?? 0, pop: true);
       case 'tag-create':
-        return gitOps.tagCreate(args?['tag'] as String?, args?['message'] as String?, args?['annotated'] as bool? ?? false);
+        return gitOps.tagCreate(args['tag'] as String?, args['message'] as String?, args['annotated'] as bool? ?? false);
       case 'tag-list':
         return gitOps.tagList();
       case 'log':
-        return gitOps.log((args?['max_count'] as num?)?.toInt() ?? 10);
+        return gitOps.log((args['max_count'] as num?)?.toInt() ?? 10);
       case 'diff':
         return gitOps.diff();
       case 'signing-status':

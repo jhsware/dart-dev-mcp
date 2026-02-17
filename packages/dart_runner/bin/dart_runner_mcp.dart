@@ -159,7 +159,7 @@ Future<CallToolResult> _handleDartRunner(
         );
 
       case 'test':
-        final target = args?['target'] as String?;
+        final target = args['target'] as String?;
         return _startDartCommandWithProgress(
           extra,
           workingDir,
@@ -167,13 +167,13 @@ Future<CallToolResult> _handleDartRunner(
           'test',
           [
             'test',
-            if (target != null) target,
+            ?target,
             ...?_getExtraArgs(args),
           ],
         );
 
       case 'run':
-        final target = args?['target'] as String?;
+        final target = args['target'] as String?;
         return _startDartCommandWithProgress(
           extra,
           workingDir,
@@ -181,12 +181,12 @@ Future<CallToolResult> _handleDartRunner(
           'run',
           [
             'run',
-            if (target != null) target,
+            ?target,
             ...?_getExtraArgs(args),
           ],
         );
       case 'format':
-        final target = args?['target'] as String? ?? '.';
+        final target = args['target'] as String? ?? '.';
         return await _runDartCommandSync(
           workingDir,
           ['format', target, ...?_getExtraArgs(args)],
@@ -199,17 +199,17 @@ Future<CallToolResult> _handleDartRunner(
         );
 
       case 'get_output':
-        final sessionId = args?['session_id'] as String?;
-        final chunkIndex = (args?['chunk_index'] as num?)?.toInt() ?? 0;
+        final sessionId = args['session_id'] as String?;
+        final chunkIndex = (args['chunk_index'] as num?)?.toInt() ?? 0;
         final maxChunks =
-            ((args?['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
+            ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
         return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
 
       case 'list_sessions':
         return _listSessions(sessionManager);
 
       case 'cancel':
-        final sessionId = args?['session_id'] as String?;
+        final sessionId = args['session_id'] as String?;
         return await _cancelSession(sessionManager, sessionId);
 
       default:
