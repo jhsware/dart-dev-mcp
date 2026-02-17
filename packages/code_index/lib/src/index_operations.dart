@@ -14,8 +14,9 @@ final _uuid = Uuid();
 class IndexOperations {
   final Database database;
   final Directory workingDir;
+  final List<String> allowedPaths;
 
-  IndexOperations({required this.database, required this.workingDir});
+  IndexOperations({required this.database, required this.workingDir, this.allowedPaths = const []});
 
   /// Add or update a file entry in the code index.
   CallToolResult indexFile(Map<String, dynamic>? args) {
@@ -37,10 +38,15 @@ class IndexOperations {
     }
 
     // Resolve absolute path and read file content for hashing
-    final absolutePath = p.join(workingDir.path, path!);
+    final absolutePath = p.normalize(p.join(workingDir.path, path!));
     final file = File(absolutePath);
     if (!file.existsSync()) {
       return validationError('path', 'File not found: $path');
+    }
+
+    // Check allowed paths restriction
+    if (allowedPaths.isNotEmpty && !isAllowedPath(allowedPaths, absolutePath)) {
+      return validationError('path', 'Path not allowed: $path. ${formatAllowedPathsHint(workingDir, allowedPaths)}');
     }
 
     final fileHash = computeFileHash(file);

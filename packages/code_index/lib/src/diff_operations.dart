@@ -11,8 +11,9 @@ import 'hash_utils.dart';
 class DiffOperations {
   final Database database;
   final Directory workingDir;
+  final List<String> allowedPaths;
 
-  DiffOperations({required this.database, required this.workingDir});
+  DiffOperations({required this.database, required this.workingDir, this.allowedPaths = const []});
 
   /// Scan directories and report changed/added/deleted files compared to the index.
   CallToolResult diff(Map<String, dynamic>? args) {
@@ -44,6 +45,11 @@ class DiffOperations {
 
         // Skip hidden files/dirs
         if (isHiddenPath(relativePath)) continue;
+
+        // Filter by allowed paths if specified
+        if (allowedPaths.isNotEmpty) {
+          if (!isAllowedPath(allowedPaths, entity.path)) continue;
+        }
 
         // Filter by extension if specified
         if (extensionSet != null) {
