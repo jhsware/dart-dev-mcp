@@ -48,7 +48,9 @@ class DartParser {
       RegExp(r'^extension\s+(\w+)\s+on\s+');
   static final _extensionTypeRegex =
       RegExp(r'^(?:final\s+|base\s+|interface\s+)*extension\s+type\s+(\w+)');
-  static final _typedefRegex = RegExp(r'^typedef\s+(\w+)');
+  // New-style: typedef Name = ...; Old-style: typedef ReturnType Name(...)
+  static final _typedefNewRegex = RegExp(r'^typedef\s+(\w+)\s*[<=]');
+  static final _typedefOldRegex = RegExp(r'^typedef\s+\w[\w<>,?\s]*\s+(\w+)\s*\(');
 
   // Top-level variable patterns
   static final _constFinalVarRegex = RegExp(
@@ -107,7 +109,6 @@ class DartParser {
     var braceDepth = 0;
     String? currentClassName;
     var inBlockComment = false;
-    var inString = false;
 
     for (var i = 0; i < lines.length; i++) {
       final lineNumber = i + 1;
@@ -117,18 +118,17 @@ class DartParser {
       // ── Annotations (scan regardless of depth) ──────────────────────
       _extractAnnotations(trimmed, lineNumber, annotations);
 
-      // ── Process braces and declarations ─────────────────────────────
-      // We need to handle strings and comments to avoid false brace counts
-      var j = 0;
-      final chars = rawLine.codeUnits;
-      var declarationProcessed = false;
+      // ── Record starting depth for this line ─────────────────────────
+      final startingDepth = braceDepth;
 
-      while (j < chars.length) {
+      // ── Count braces on this line (handling strings/comments) ───────
+      var j = 0;
+      while (j < rawLine.length) {
         final ch = rawLine[j];
 
         // Handle block comments
         if (inBlockComment) {
-          if (ch == '*' && j + 1 < chars.length && rawLine[j + 1] == '/') {
+          if (ch == '*' && j + 1 < rawLine.length && rawLine[j + 1] == '/') {
             inBlockComment = false;
             j += 2;
             continue;
@@ -138,41 +138,37 @@ class DartParser {
         }
 
         // Start of block comment
-        if (ch == '/' && j + 1 < chars.length && rawLine[j + 1] == '*') {
+        if (ch == '/' && j + 1 < rawLine.length && rawLine[j + 1] == '*') {
           inBlockComment = true;
           j += 2;
           continue;
         }
 
         // Line comment — skip rest of line
-        if (ch == '/' && j + 1 < chars.length && rawLine[j + 1] == '/') {
+        if (ch == '/' && j + 1 < rawLine.length && rawLine[j + 1] == '/') {
           break;
         }
 
         // String literals — skip contents
         if (ch == "'" || ch == '"') {
           // Check for triple quotes
-          final isTriple = j + 2 < chars.length &&
+          final isTriple = j + 2 < rawLine.length &&
               rawLine[j + 1] == ch &&
               rawLine[j + 2] == ch;
           if (isTriple) {
-            // Find matching triple-quote on this line or skip to end
             final endIdx = rawLine.indexOf(ch * 3, j + 3);
             if (endIdx >= 0) {
               j = endIdx + 3;
             } else {
-              // Multi-line string — skip rest of line
-              // We'll simplify by not tracking multi-line strings across lines
-              // since brace counting in string literals is an edge case
-              break;
+              break; // Multi-line string, skip rest
             }
             continue;
           }
-          // Single-line string — skip to matching quote
+          // Single-line string
           j++;
-          while (j < chars.length) {
+          while (j < rawLine.length) {
             if (rawLine[j] == '\\') {
-              j += 2; // skip escaped char
+              j += 2;
               continue;
             }
             if (rawLine[j] == ch) {
@@ -186,17 +182,6 @@ class DartParser {
 
         // Brace counting
         if (ch == '{') {
-          if (!declarationProcessed && braceDepth == 0) {
-            // Try to match a declaration on this line BEFORE incrementing depth
-            _processTopLevelDeclaration(
-                trimmed, exports, variables, currentClassName);
-            declarationProcessed = true;
-            // If we matched a class-like declaration, set currentClassName
-            final className = _matchClassName(trimmed);
-            if (className != null) {
-              currentClassName = className;
-            }
-          }
           braceDepth++;
         } else if (ch == '}') {
           braceDepth--;
@@ -207,22 +192,16 @@ class DartParser {
         j++;
       }
 
-      // Process declarations for lines that don't contain braces
-      if (!declarationProcessed) {
-        if (braceDepth == 0) {
-          _processTopLevelDeclaration(
-              trimmed, exports, variables, currentClassName);
-          // Check if this line starts a class-like declaration (body may be on next line)
-          final className = _matchClassName(trimmed);
-          if (className != null) {
-            currentClassName = className;
-          }
-        } else if (braceDepth == 1 && currentClassName != null) {
-          _processClassMember(trimmed, exports, currentClassName);
+      // ── Process declarations based on STARTING depth ────────────────
+      if (startingDepth == 0) {
+        _processTopLevelDeclaration(trimmed, exports, variables);
+        // Track class-like declarations that open a body
+        final className = _matchClassName(trimmed);
+        if (className != null) {
+          currentClassName = className;
         }
-      } else if (braceDepth == 1 && currentClassName != null && !_isClassLikeDeclaration(trimmed)) {
-        // The line had a brace but was inside a class body (e.g., method with body on same line)
-        // We already processed it as top-level if braceDepth was 0 when we hit the brace
+      } else if (startingDepth == 1 && currentClassName != null) {
+        _processClassMember(trimmed, exports, currentClassName);
       }
     }
 
@@ -290,21 +269,11 @@ class DartParser {
     return null;
   }
 
-  /// Whether this line is a class/enum/mixin/extension declaration.
-  static bool _isClassLikeDeclaration(String trimmed) {
-    return _classRegex.hasMatch(trimmed) ||
-        _enumRegex.hasMatch(trimmed) ||
-        _mixinRegex.hasMatch(trimmed) ||
-        _extensionRegex.hasMatch(trimmed) ||
-        _extensionTypeRegex.hasMatch(trimmed);
-  }
-
   /// Process a top-level line (braceDepth == 0).
   static void _processTopLevelDeclaration(
     String trimmed,
     List<Map<String, String?>> exports,
     List<Map<String, String?>> variables,
-    String? currentClassName,
   ) {
     if (trimmed.isEmpty || trimmed.startsWith('//') || trimmed.startsWith('/*')
         || trimmed.startsWith('*') || trimmed.startsWith('import ')
@@ -363,10 +332,18 @@ class DartParser {
       return;
     }
 
-    // Typedef declarations
-    final typedefMatch = _typedefRegex.firstMatch(trimmed);
-    if (typedefMatch != null) {
-      final name = typedefMatch.group(1)!;
+    // Typedef declarations (new-style first, then old-style)
+    final typedefNewMatch = _typedefNewRegex.firstMatch(trimmed);
+    if (typedefNewMatch != null) {
+      final name = typedefNewMatch.group(1)!;
+      if (!name.startsWith('_')) {
+        exports.add({'name': name, 'kind': 'typedef', 'parameters': null, 'description': null, 'parent_name': null});
+      }
+      return;
+    }
+    final typedefOldMatch = _typedefOldRegex.firstMatch(trimmed);
+    if (typedefOldMatch != null) {
+      final name = typedefOldMatch.group(1)!;
       if (!name.startsWith('_')) {
         exports.add({'name': name, 'kind': 'typedef', 'parameters': null, 'description': null, 'parent_name': null});
       }
