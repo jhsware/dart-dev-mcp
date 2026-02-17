@@ -104,7 +104,7 @@ void main(List<String> arguments) async {
     description: '''Task and step management for AI-assisted development.
 
 Operations:
-- get-project-instructions: Read project instructions from .ai_coding_tool/INSTRUCTIONS.md
+- get-project-instructions: Read project instructions from AGENTS.md
 - add-task: Create a new task
 - show-task: Show task details with list of steps
 - update-task: Update task properties
@@ -223,7 +223,7 @@ void _printUsage() {
   stderr.writeln('');
   stderr.writeln('The planner stores data in .ai_coding_tool/db.sqlite');
   stderr.writeln(
-      'Project instructions are read from .ai_coding_tool/INSTRUCTIONS.md');
+      'Project instructions are read from AGENTS.md');
 }
 
 const _validOperations = [
@@ -321,12 +321,12 @@ Future<CallToolResult> _handlePlanner(
 
 Future<CallToolResult> _getProjectInstructions(Directory workingDir) async {
   final instructionsPath =
-      p.join(workingDir.path, '.ai_coding_tool', 'INSTRUCTIONS.md');
+      p.join(workingDir.path, 'AGENTS.md');
   final file = File(instructionsPath);
 
   if (!await file.exists()) {
     return textResult('No project instructions found.\n'
-        'Create a file at: .ai_coding_tool/INSTRUCTIONS.md');
+        'Create a file at: AGENTS.md');
   }
 
   final content = await file.readAsString();
