@@ -11,10 +11,11 @@ import 'package:sqlite3/sqlite3.dart';
 /// Maintains a searchable index of programming code files in a project.
 /// Stores data in a SQLite database and allows quick file discovery.
 ///
-/// Usage: `dart run bin/code_index_mcp.dart --db-path=PATH --project-dir=PATH`
+/// Usage: `dart run bin/code_index_mcp.dart --db-path=PATH --project-dir=PATH [allowed_path1] [allowed_path2] ...`
 void main(List<String> arguments) async {
   String? dbPath;
   String? projectDir;
+  final allowedPathArgs = <String>[];
 
   // Parse arguments
   for (final arg in arguments) {
@@ -25,6 +26,8 @@ void main(List<String> arguments) async {
     } else if (arg == '--help' || arg == '-h') {
       _printUsage();
       exit(0);
+    } else if (!arg.startsWith('-')) {
+      allowedPathArgs.add(arg);
     }
   }
 
@@ -50,6 +53,26 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
+  // Convert allowed paths to absolute paths
+  final allowedPaths = <String>[];
+  for (final arg in allowedPathArgs) {
+    final absolutePath = p.isAbsolute(arg)
+        ? p.normalize(arg)
+        : p.normalize(p.join(workingDir.path, arg));
+
+    final dir = Directory(absolutePath);
+    final file = File(absolutePath);
+
+    final dirExists = await dir.exists();
+    final fileExists = await file.exists();
+
+    if (!dirExists && !fileExists) {
+      logWarning('code-index', 'Path does not exist: $arg');
+    }
+
+    allowedPaths.add(absolutePath);
+  }
+
   // Initialize database
   final database = initializeDatabase(dbPath);
 
@@ -57,16 +80,21 @@ void main(List<String> arguments) async {
   final indexOps = IndexOperations(
     database: database,
     workingDir: workingDir,
+    allowedPaths: allowedPaths,
   );
   final searchOps = SearchOperations(database: database);
   final diffOps = DiffOperations(
     database: database,
     workingDir: workingDir,
+    allowedPaths: allowedPaths,
   );
 
   logInfo('code-index', 'Code Index MCP Server starting...');
   logInfo('code-index', 'Project path: ${workingDir.path}');
   logInfo('code-index', 'Database: $dbPath');
+  if (allowedPaths.isNotEmpty) {
+    logInfo('code-index', 'Allowed paths: ${allowedPaths.join(", ")}');
+  }
 
   // Set up graceful shutdown to close database
   setupShutdownHandlers(database);
@@ -200,7 +228,7 @@ Operations:
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: code_index_mcp --db-path=PATH --project-dir=PATH');
+      'Usage: code_index_mcp --db-path=PATH --project-dir=PATH [allowed_path1] [allowed_path2] ...');
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
@@ -208,6 +236,9 @@ void _printUsage() {
   stderr.writeln(
       '  --project-dir=PATH  Path to the project directory (required)');
   stderr.writeln('  --help, -h          Show this help message');
+  stderr.writeln('');
+  stderr.writeln('Arguments:');
+  stderr.writeln('  allowed_paths       Paths that can be indexed (relative to project-dir)');
 }
 
 const _validOperations = ['index-file', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff', 'overview', 'file-summary'];

@@ -1273,4 +1273,109 @@ void main() {
     });
   });
 
+  group('IndexOperations with allowed paths', () {
+    late IndexOperations indexOps;
+
+    setUp(() {
+      indexOps = IndexOperations(
+        database: database,
+        workingDir: workingDir,
+        allowedPaths: [p.join(tempDir.path, 'lib')],
+      );
+    });
+
+    test('rejects indexing a file outside allowed paths', () {
+      final result = indexOps.indexFile({
+        'path': 'pubspec.yaml',
+        'name': 'pubspec.yaml',
+        'file_type': 'yaml',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('not allowed'));
+      expect(text, contains('pubspec.yaml'));
+    });
+
+    test('allows indexing a file within allowed paths', () {
+      final result = indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'file_type': 'dart',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"success": true'));
+    });
+
+    test('allows all paths when allowedPaths is empty', () {
+      final unrestrictedOps = IndexOperations(
+        database: database,
+        workingDir: workingDir,
+      );
+      final result = unrestrictedOps.indexFile({
+        'path': 'pubspec.yaml',
+        'name': 'pubspec.yaml',
+        'file_type': 'yaml',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"success": true'));
+    });
+  });
+
+  group('DiffOperations with allowed paths', () {
+    late IndexOperations indexOps;
+
+    setUp(() {
+      // Use unrestricted indexOps for setup
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+
+      // Index lib files
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'file_type': 'dart',
+      });
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'file_type': 'dart',
+      });
+    });
+
+    test('diff only scans files within allowed paths', () {
+      final diffOps = DiffOperations(
+        database: database,
+        workingDir: workingDir,
+        allowedPaths: [p.join(tempDir.path, 'lib')],
+      );
+
+      final result = diffOps.diff({
+        'directories': ['.'],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      // pubspec.yaml should NOT appear (outside allowed paths)
+      expect(text, isNot(contains('pubspec.yaml')));
+
+      // lib/models.dart should appear as added (inside allowed paths, not indexed)
+      expect(text, contains('lib/models.dart'));
+    });
+
+    test('diff with empty allowedPaths scans all files', () {
+      final diffOps = DiffOperations(
+        database: database,
+        workingDir: workingDir,
+      );
+
+      final result = diffOps.diff({
+        'directories': ['.'],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      // pubspec.yaml should appear (no restrictions)
+      expect(text, contains('pubspec.yaml'));
+    });
+  });
+
 }
