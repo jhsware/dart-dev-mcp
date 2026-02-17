@@ -140,7 +140,7 @@ After creating all tasks:
 
 ## Error Handling
 
-- **project_id mismatch**: If `get-project-instructions` returns nothing or the project_id convention is unclear, ask the user to clarify or check the `.ai_coding_tool/INSTRUCTIONS.md` file.
+- **project_id mismatch**: If `get-project-instructions` returns nothing or the project_id convention is unclear, ask the user to clarify or check the `AGENTS.md` file in the project root.
 - **Task creation fails**: Check that required fields (title, project_id) are provided. Retry once, then report the error to the user.
 - **Duplicate task found**: If `list-tasks` shows a similar task already exists, inform the user and ask whether to update the existing task or create a new one.
 - **code-index returns no results**: The index may be stale — use `code-index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
