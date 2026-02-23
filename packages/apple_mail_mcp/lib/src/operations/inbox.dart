@@ -3,6 +3,8 @@
 // Ported from Python apple-mail-mcp/apple_mail_mcp/tools/inbox.py.
 // All operations are read-only.
 
+import 'dart:convert';
+
 import 'package:mcp_dart/mcp_dart.dart';
 
 import '../constants.dart';
@@ -319,6 +321,194 @@ end tell
     );
   }
 }
+
+
+/// Handles the get-email-by-id operation.
+///
+/// Fetches a specific email by its Apple Mail message ID, searching across
+/// all accounts and mailboxes (or a specific account). Returns full details.
+Future<CallToolResult> handleGetEmailById(Map<String, dynamic> args) async {
+  final messageId = args['message_id'] as String?;
+  if (messageId == null || messageId.isEmpty) {
+    return actionableError(
+      'message_id parameter is required for get-email-by-id.',
+      'Provide the message ID from a previous list-emails or search operation.',
+    );
+  }
+
+  final account = args['account'] as String?;
+  final maxContentLength = args['max_content_length'] as int? ?? 5000;
+
+  final escapedMessageId = escapeAppleScript(messageId);
+
+  // Build account loop
+  String accountLoopStart;
+  String accountLoopEnd;
+  if (account != null) {
+    final escapedAccount = escapeAppleScript(account);
+    accountLoopStart = '''
+        try
+            set anAccount to account "$escapedAccount"
+        on error
+            return "ERROR:Account \\"$escapedAccount\\" not found. Use list-accounts to see available accounts."
+        end try
+        set accountName to name of anAccount
+        repeat 1 times
+''';
+    accountLoopEnd = '''
+        end repeat
+''';
+  } else {
+    accountLoopStart = '''
+        set allAccounts to every account
+        repeat with anAccount in allAccounts
+            if foundMessage then exit repeat
+            set accountName to name of anAccount
+''';
+    accountLoopEnd = '''
+        end repeat
+''';
+  }
+
+  final script = '''
+tell application "Mail"
+    set foundMessage to false
+    set outputText to ""
+
+    $accountLoopStart
+
+            set accountMailboxes to every mailbox of anAccount
+            repeat with aMailbox in accountMailboxes
+                if foundMessage then exit repeat
+
+                try
+                    set mailboxName to name of aMailbox
+                    set mailboxMessages to every message of aMailbox
+
+                    repeat with aMessage in mailboxMessages
+                        if foundMessage then exit repeat
+
+                        try
+                            set msgId to message id of aMessage
+                            if msgId is "$escapedMessageId" then
+                                set foundMessage to true
+                                set outputText to "FOUND" & linefeed
+                                set outputText to outputText & "ID: " & msgId & linefeed
+                                set outputText to outputText & "Subject: " & subject of aMessage & linefeed
+                                set outputText to outputText & "From: " & sender of aMessage & linefeed
+                                set outputText to outputText & "Date: " & (date received of aMessage as string) & linefeed
+
+                                if read status of aMessage then
+                                    set outputText to outputText & "ReadStatus: read" & linefeed
+                                else
+                                    set outputText to outputText & "ReadStatus: unread" & linefeed
+                                end if
+
+                                set outputText to outputText & "Account: " & accountName & linefeed
+                                set outputText to outputText & "Mailbox: " & mailboxName & linefeed
+
+                                try
+                                    set msgContent to content of aMessage
+                                    set AppleScript's text item delimiters to {return, linefeed}
+                                    set contentParts to text items of msgContent
+                                    set AppleScript's text item delimiters to " "
+                                    set cleanText to contentParts as string
+                                    set AppleScript's text item delimiters to ""
+                                    if $maxContentLength > 0 and length of cleanText > $maxContentLength then
+                                        set cleanText to text 1 thru $maxContentLength of cleanText & "..."
+                                    end if
+                                    set outputText to outputText & "Content: " & cleanText & linefeed
+                                on error
+                                    set outputText to outputText & "Content: [Not available]" & linefeed
+                                end try
+
+                                try
+                                    set attachCount to count of mail attachments of aMessage
+                                    if attachCount > 0 then
+                                        set attachNames to {}
+                                        repeat with anAttach in mail attachments of aMessage
+                                            set end of attachNames to name of anAttach
+                                        end repeat
+                                        set AppleScript's text item delimiters to ", "
+                                        set attachStr to attachNames as string
+                                        set AppleScript's text item delimiters to ""
+                                        set outputText to outputText & "Attachments: " & attachCount & " (" & attachStr & ")" & linefeed
+                                    else
+                                        set outputText to outputText & "Attachments: 0" & linefeed
+                                    end if
+                                on error
+                                    set outputText to outputText & "Attachments: [Error]" & linefeed
+                                end try
+                            end if
+                        end try
+                    end repeat
+                end try
+            end repeat
+
+    $accountLoopEnd
+
+    if not foundMessage then
+        return "NOT_FOUND"
+    end if
+
+    return outputText
+end tell
+''';
+
+  try {
+    final result = await runAppleScript(script);
+
+    // Check for account error
+    if (result.startsWith('ERROR:')) {
+      final errorMsg = result.substring(6);
+      return actionableError(errorMsg, '');
+    }
+
+    // Check for not found
+    if (result == 'NOT_FOUND') {
+      return actionableError(
+        'No email found with message ID "$messageId".',
+        'The message may have been moved or deleted. Use list-emails or search-emails to find current emails.',
+      );
+    }
+
+    // Parse the output into a JSON object
+    final email = <String, String>{};
+    for (final line in result.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed == 'FOUND') continue;
+
+      if (trimmed.startsWith('ID: ')) {
+        email['message_id'] = trimmed.substring(4).trim();
+      } else if (trimmed.startsWith('Subject: ')) {
+        email['subject'] = trimmed.substring(9).trim();
+      } else if (trimmed.startsWith('From: ')) {
+        email['sender'] = trimmed.substring(6).trim();
+      } else if (trimmed.startsWith('Date: ')) {
+        email['date'] = trimmed.substring(6).trim();
+      } else if (trimmed.startsWith('ReadStatus: ')) {
+        email['read_status'] = trimmed.substring(12).trim();
+      } else if (trimmed.startsWith('Account: ')) {
+        email['account'] = trimmed.substring(9).trim();
+      } else if (trimmed.startsWith('Mailbox: ')) {
+        email['mailbox'] = trimmed.substring(9).trim();
+      } else if (trimmed.startsWith('Content: ')) {
+        email['content'] = trimmed.substring(9).trim();
+      } else if (trimmed.startsWith('Attachments: ')) {
+        email['attachments'] = trimmed.substring(13).trim();
+      }
+    }
+
+    final jsonOutput = const JsonEncoder.withIndent('  ').convert(email);
+    return CallToolResult.fromContent([TextContent(text: jsonOutput)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to fetch email by ID: $e',
+      'Check that Apple Mail is running.',
+    );
+  }
+}
+
 
 /// Handles the list-inbox-emails operation.
 ///
@@ -820,6 +1010,7 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
     getInboxOperations() {
   return {
     'list-emails': handleListEmails,
+    'get-email-by-id': handleGetEmailById,
     'list-inbox-emails': handleListInboxEmails,
     'get-unread-count': handleGetUnreadCount,
     'list-accounts': handleListAccounts,
