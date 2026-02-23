@@ -5,6 +5,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:mcp_dart/mcp_dart.dart';
+
 /// Runs an AppleScript snippet via `osascript -` on stdin.
 ///
 /// Returns the stdout output. Throws on non-zero exit or timeout.
@@ -47,7 +49,8 @@ String escapeAppleScript(String value) {
 }
 
 /// Parses the pipe-delimited email list output from AppleScript into
-/// a list of maps with keys like 'account', 'subject', 'sender', 'date'.
+/// a list of maps with keys like 'account', 'subject', 'sender', 'date',
+/// 'message_id'.
 List<Map<String, String>> parseEmailList(String output) {
   if (output.trim().isEmpty) return [];
 
@@ -74,6 +77,8 @@ List<Map<String, String>> parseEmailList(String output) {
         current['account'] = trimmed.substring(9).trim();
       } else if (trimmed.startsWith('Mailbox: ')) {
         current['mailbox'] = trimmed.substring(9).trim();
+      } else if (trimmed.startsWith('ID: ')) {
+        current['message_id'] = trimmed.substring(4).trim();
       } else if (trimmed.startsWith('Preview: ') ||
           trimmed.startsWith('Content: ')) {
         current['preview'] = trimmed.substring(trimmed.indexOf(' ') + 1).trim();
@@ -83,6 +88,38 @@ List<Map<String, String>> parseEmailList(String output) {
 
   if (current != null) results.add(current);
   return results;
+}
+
+/// Builds a JSON string with a list of emails and pagination metadata.
+///
+/// Used by the `list-emails` operation to return structured output.
+String buildJsonEmailOutput({
+  required List<Map<String, String>> emails,
+  required int offset,
+  required int limit,
+  required int totalAvailable,
+}) {
+  final hasMore = offset + limit < totalAvailable;
+  final result = {
+    'emails': emails,
+    'pagination': {
+      'offset': offset,
+      'limit': limit,
+      'total_available': totalAvailable,
+      'has_more': hasMore,
+    },
+  };
+  return const JsonEncoder.withIndent('  ').convert(result);
+}
+
+/// Returns an actionable error as a [CallToolResult].
+///
+/// Formats the error with both the problem description and a suggestion
+/// for how to fix it, making it easier for callers to recover.
+CallToolResult actionableError(String message, String suggestion) {
+  return CallToolResult.fromContent(
+    [TextContent(text: 'Error: $message\nSuggestion: $suggestion')],
+  );
 }
 
 // ──────────────────────────── Template helpers ────────────────────────────

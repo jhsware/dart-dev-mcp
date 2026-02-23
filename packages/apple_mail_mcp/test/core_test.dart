@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:apple_mail_mcp/src/core.dart';
+import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -80,6 +83,121 @@ void main() {
       expect(result.length, equals(1));
       expect(result[0]['account'], equals('TestAccount'));
       expect(result[0]['mailbox'], equals('INBOX'));
+    });
+
+    test('parses ID field into message_id', () {
+      const output = '''
+✉ Email With ID
+   From: sender@test.example
+   Date: 2025-01-15 10:30:00
+   ID: abc-123@mail.example.com
+''';
+      final result = parseEmailList(output);
+      expect(result.length, equals(1));
+      expect(result[0]['message_id'], equals('abc-123@mail.example.com'));
+    });
+
+    test('parses multiple emails with IDs', () {
+      const output = '''
+✉ First
+   From: a@example.test
+   ID: id-1@example.test
+
+✓ Second
+   From: b@example.test
+   ID: id-2@example.test
+''';
+      final result = parseEmailList(output);
+      expect(result.length, equals(2));
+      expect(result[0]['message_id'], equals('id-1@example.test'));
+      expect(result[1]['message_id'], equals('id-2@example.test'));
+    });
+  });
+
+  group('buildJsonEmailOutput', () {
+    test('produces valid JSON with correct structure', () {
+      final emails = [
+        {'sender': 'a@test.com', 'subject': 'Hello'},
+        {'sender': 'b@test.com', 'subject': 'World'},
+      ];
+      final output = buildJsonEmailOutput(
+        emails: emails,
+        offset: 0,
+        limit: 20,
+        totalAvailable: 50,
+      );
+
+      final parsed = jsonDecode(output) as Map<String, dynamic>;
+      expect(parsed.containsKey('emails'), isTrue);
+      expect(parsed.containsKey('pagination'), isTrue);
+
+      final emailList = parsed['emails'] as List;
+      expect(emailList.length, equals(2));
+
+      final pagination = parsed['pagination'] as Map<String, dynamic>;
+      expect(pagination['offset'], equals(0));
+      expect(pagination['limit'], equals(20));
+      expect(pagination['total_available'], equals(50));
+      expect(pagination['has_more'], isTrue);
+    });
+
+    test('has_more is false when all results returned', () {
+      final output = buildJsonEmailOutput(
+        emails: [{'subject': 'Only'}],
+        offset: 0,
+        limit: 20,
+        totalAvailable: 1,
+      );
+
+      final parsed = jsonDecode(output) as Map<String, dynamic>;
+      final pagination = parsed['pagination'] as Map<String, dynamic>;
+      expect(pagination['has_more'], isFalse);
+    });
+
+    test('has_more is false when offset + limit equals total', () {
+      final output = buildJsonEmailOutput(
+        emails: [],
+        offset: 20,
+        limit: 20,
+        totalAvailable: 40,
+      );
+
+      final parsed = jsonDecode(output) as Map<String, dynamic>;
+      final pagination = parsed['pagination'] as Map<String, dynamic>;
+      expect(pagination['has_more'], isFalse);
+    });
+
+    test('handles empty emails list', () {
+      final output = buildJsonEmailOutput(
+        emails: [],
+        offset: 0,
+        limit: 20,
+        totalAvailable: 0,
+      );
+
+      final parsed = jsonDecode(output) as Map<String, dynamic>;
+      final emailList = parsed['emails'] as List;
+      expect(emailList, isEmpty);
+    });
+  });
+
+  group('actionableError', () {
+    test('produces correct format', () {
+      final result = actionableError(
+        'Account "foo" not found.',
+        'Use list-accounts to see available accounts.',
+      );
+
+      final content = result.content.first;
+      expect(content, isA<TextContent>());
+      final text = (content as TextContent).text;
+      expect(text, contains('Error: Account "foo" not found.'));
+      expect(
+        text,
+        contains(
+          'Suggestion: Use list-accounts to see available accounts.',
+        ),
+      );
     });
   });
 
