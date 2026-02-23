@@ -158,7 +158,11 @@ McpServer createAppleMailServer() {
         ),
         'search_field': JsonSchema.string(
           description:
-              'Which fields to search: for search-emails: "all" (default), "subject", "sender". For search-email-content: "all" (default), "subject", "body".',
+              'Which fields to search: for search-emails/multi-search: "all" (default), "subject", "sender". For search-email-content: "all" (default), "subject", "body".',
+        ),
+        'queries': JsonSchema.string(
+          description:
+              'Comma-separated query groups for multi-search. Each group contains space-separated keywords (OR within group). Results are deduplicated and tagged with matched groups. Example: "invoice faktura, receipt kvitto, payment betalning".',
         ),
       },
       required: ['operation'],

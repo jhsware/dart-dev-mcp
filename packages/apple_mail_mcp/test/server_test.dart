@@ -30,9 +30,9 @@ void main() {
   });
 
   group('getSearchOperations', () {
-    test('returns a map with exactly 8 entries', () {
+    test('returns a map with exactly 9 entries', () {
       final ops = getSearchOperations();
-      expect(ops.length, equals(8));
+      expect(ops.length, equals(9));
     });
 
     test('contains all expected search operation keys', () {
@@ -45,6 +45,7 @@ void main() {
       expect(ops.containsKey('get-recent-from-sender'), isTrue);
       expect(ops.containsKey('get-email-thread'), isTrue);
       expect(ops.containsKey('search-all-accounts'), isTrue);
+      expect(ops.containsKey('multi-search'), isTrue);
     });
   });
 
@@ -64,8 +65,8 @@ void main() {
   });
 
   group('allOperations', () {
-    test('contains exactly 20 operations', () {
-      expect(allOperations.length, equals(20));
+    test('contains exactly 21 operations', () {
+      expect(allOperations.length, equals(21));
     });
 
     test('contains all inbox operations', () {
