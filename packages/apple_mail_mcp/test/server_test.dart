@@ -3,9 +3,9 @@ import 'package:apple_mail_mcp/apple_mail_mcp.dart';
 
 void main() {
   group('getInboxOperations', () {
-    test('returns a map with exactly 6 entries', () {
+    test('returns a map with exactly 8 entries', () {
       final ops = getInboxOperations();
-      expect(ops.length, equals(6));
+      expect(ops.length, equals(8));
     });
 
     test('contains all expected inbox operation keys', () {
@@ -16,6 +16,8 @@ void main() {
       expect(ops.containsKey('get-recent-emails'), isTrue);
       expect(ops.containsKey('list-mailboxes'), isTrue);
       expect(ops.containsKey('get-inbox-overview'), isTrue);
+      expect(ops.containsKey('list-emails'), isTrue);
+      expect(ops.containsKey('get-email-by-id'), isTrue);
     });
 
     test('all values are non-null functions', () {
@@ -62,14 +64,16 @@ void main() {
   });
 
   group('allOperations', () {
-    test('contains exactly 18 operations', () {
-      expect(allOperations.length, equals(18));
+    test('contains exactly 20 operations', () {
+      expect(allOperations.length, equals(20));
     });
 
     test('contains all inbox operations', () {
       expect(allOperations, contains('list-inbox-emails'));
       expect(allOperations, contains('get-unread-count'));
       expect(allOperations, contains('list-accounts'));
+      expect(allOperations, contains('list-emails'));
+      expect(allOperations, contains('get-email-by-id'));
     });
 
     test('contains all search operations', () {

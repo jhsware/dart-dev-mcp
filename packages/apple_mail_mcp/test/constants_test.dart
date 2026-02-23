@@ -74,4 +74,28 @@ void main() {
       expect(threadPrefixes, contains('Fw: '));
     });
   });
+
+  group('email field constants', () {
+    test('defaultEmailFields contains expected fields', () {
+      expect(defaultEmailFields, contains('sender'));
+      expect(defaultEmailFields, contains('subject'));
+      expect(defaultEmailFields, contains('date'));
+      expect(defaultEmailFields, contains('message_id'));
+    });
+
+    test('allEmailFields is a superset of defaultEmailFields', () {
+      for (final field in defaultEmailFields) {
+        expect(allEmailFields, contains(field),
+            reason: 'allEmailFields should contain default field "$field"');
+      }
+    });
+
+    test('allEmailFields contains extended fields', () {
+      expect(allEmailFields, contains('read_status'));
+      expect(allEmailFields, contains('mailbox'));
+      expect(allEmailFields, contains('account'));
+      expect(allEmailFields, contains('content'));
+      expect(allEmailFields, contains('attachments'));
+    });
+  });
 }

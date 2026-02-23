@@ -27,17 +27,17 @@ Future<CallToolResult> handleSaveEmailAttachment(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for save-email-attachment.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final subjectKeyword = args['subject_keyword'] as String?;
   if (subjectKeyword == null) {
-    return CallToolResult.fromContent(
-      [
-        TextContent(text: 'Error: subject_keyword parameter is required')
-      ],
+    return actionableError(
+      'subject_keyword parameter is required for save-email-attachment.',
+      'Provide a keyword to match the email subject containing the attachment.',
     );
   }
 
@@ -114,17 +114,17 @@ Future<CallToolResult> handleListEmailAttachments(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for list-email-attachments.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final subjectKeyword = args['subject_keyword'] as String?;
   if (subjectKeyword == null) {
-    return CallToolResult.fromContent(
-      [
-        TextContent(text: 'Error: subject_keyword parameter is required')
-      ],
+    return actionableError(
+      'subject_keyword parameter is required for list-email-attachments.',
+      'Provide a keyword to match the email subject.',
     );
   }
 
@@ -206,8 +206,9 @@ Future<CallToolResult> handleGetStatistics(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for get-statistics.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
@@ -350,12 +351,9 @@ end tell
 ''';
   } else if (scope == 'sender_stats') {
     if (escapedSender == null) {
-      return CallToolResult.fromContent(
-        [
-          TextContent(
-              text:
-                  "Error: 'sender' parameter required for sender_stats scope")
-        ],
+      return actionableError(
+        'sender parameter is required for get-statistics with sender_stats scope.',
+        'Provide a sender name or email address.',
       );
     }
 
@@ -446,12 +444,9 @@ tell application "Mail"
 end tell
 ''';
   } else {
-    return CallToolResult.fromContent(
-      [
-        TextContent(
-            text:
-                "Error: Invalid scope '$scope'. Use: account_overview, sender_stats, mailbox_breakdown")
-      ],
+    return actionableError(
+      "Invalid scope '$scope' for get-statistics.",
+      'Use one of: account_overview, sender_stats, mailbox_breakdown.',
     );
   }
 
@@ -466,15 +461,17 @@ Future<CallToolResult> handleExportEmails(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for export-emails.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final scope = args['scope'] as String?;
   if (scope == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: scope parameter is required')],
+    return actionableError(
+      'scope parameter is required for export-emails.',
+      'Use single_email or entire_mailbox.',
     );
   }
 
@@ -493,12 +490,9 @@ Future<CallToolResult> handleExportEmails(
 
   if (scope == 'single_email') {
     if (subjectKeyword == null) {
-      return CallToolResult.fromContent(
-        [
-          TextContent(
-              text:
-                  "Error: 'subject_keyword' required for single_email scope")
-        ],
+      return actionableError(
+        "subject_keyword parameter is required for export-emails with single_email scope.",
+        "Provide a keyword to match the email subject to export.",
       );
     }
 
@@ -667,12 +661,9 @@ tell application "Mail"
 end tell
 ''';
   } else {
-    return CallToolResult.fromContent(
-      [
-        TextContent(
-            text:
-                "Error: Invalid scope '$scope'. Use: single_email, entire_mailbox")
-      ],
+    return actionableError(
+      "Invalid scope '$scope' for export-emails.",
+      'Use one of: single_email, entire_mailbox.',
     );
   }
 

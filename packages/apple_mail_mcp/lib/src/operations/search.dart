@@ -15,17 +15,17 @@ Future<CallToolResult> handleGetEmailWithContent(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for get-email-with-content.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final subjectKeyword = args['subject_keyword'] as String?;
   if (subjectKeyword == null) {
-    return CallToolResult.fromContent(
-      [
-        TextContent(text: 'Error: subject_keyword parameter is required')
-      ],
+    return actionableError(
+      'subject_keyword parameter is required for get-email-with-content.',
+      'Provide a keyword to search in email subjects.',
     );
   }
 
@@ -146,17 +146,21 @@ end tell
 
 /// Handles the search-emails operation.
 ///
-/// Unified advanced search with multiple filter criteria.
+/// Unified advanced search with multiple filter criteria. When a `query`
+/// parameter is provided with multiple space-separated keywords, emails
+/// matching ANY keyword are returned (OR logic).
 Future<CallToolResult> handleSearchEmails(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for search-emails.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
+  final query = args['query'] as String?;
   final subjectKeyword = args['subject_keyword'] as String?;
   final sender = args['sender'] as String?;
   final hasAttachments = args['has_attachments'] as bool?;
@@ -164,33 +168,64 @@ Future<CallToolResult> handleSearchEmails(
   final includeContent = args['include_content'] as bool? ?? false;
   final maxResults = args['max_results'] as int? ?? 20;
 
+  // Validate query if provided
+  if (query != null && query.trim().isEmpty) {
+    return actionableError(
+      'Empty query provided.',
+      'Provide one or more search keywords separated by spaces.',
+    );
+  }
+
   final escapedAccount = escapeAppleScript(account);
   final escapedMailbox = escapeAppleScript(mailbox);
 
-  // Build AppleScript search conditions
-  final conditions = <String>[];
+  // Build OR-based query condition when query is provided
+  String queryCondition = '';
+  if (query != null) {
+    final keywords =
+        query.split(' ').where((k) => k.trim().isNotEmpty).toList();
+    final orParts = <String>[];
+    for (final keyword in keywords) {
+      final escaped = escapeAppleScript(keyword.toLowerCase());
+      orParts.add('lowerSubject contains "$escaped"');
+      orParts.add('lowerSender contains "$escaped"');
+    }
+    queryCondition = orParts.join(' or ');
+  }
+
+  // Build AND conditions from other filters
+  final andConditions = <String>[];
   if (subjectKeyword != null) {
-    conditions
-        .add('messageSubject contains "${escapeAppleScript(subjectKeyword)}"');
+    andConditions
+        .add('lowerSubject contains "${escapeAppleScript(subjectKeyword.toLowerCase())}"');
   }
   if (sender != null) {
-    conditions.add('messageSender contains "${escapeAppleScript(sender)}"');
+    andConditions.add('lowerSender contains "${escapeAppleScript(sender.toLowerCase())}"');
   }
   if (hasAttachments != null) {
     if (hasAttachments) {
-      conditions.add('(count of mail attachments of aMessage) > 0');
+      andConditions.add('(count of mail attachments of aMessage) > 0');
     } else {
-      conditions.add('(count of mail attachments of aMessage) = 0');
+      andConditions.add('(count of mail attachments of aMessage) = 0');
     }
   }
   if (readStatus == 'read') {
-    conditions.add('messageRead is true');
+    andConditions.add('messageRead is true');
   } else if (readStatus == 'unread') {
-    conditions.add('messageRead is false');
+    andConditions.add('messageRead is false');
   }
 
-  final conditionStr =
-      conditions.isNotEmpty ? conditions.join(' and ') : 'true';
+  // Combine: (OR query) AND (other filters)
+  String conditionStr;
+  if (queryCondition.isNotEmpty && andConditions.isNotEmpty) {
+    conditionStr = '($queryCondition) and ${andConditions.join(' and ')}';
+  } else if (queryCondition.isNotEmpty) {
+    conditionStr = queryCondition;
+  } else if (andConditions.isNotEmpty) {
+    conditionStr = andConditions.join(' and ');
+  } else {
+    conditionStr = 'true';
+  }
 
   final contentScript = includeContent
       ? '''
@@ -227,7 +262,7 @@ Future<CallToolResult> handleSearchEmails(
                 if "$escapedMailbox" is "INBOX" then
                     set searchMailbox to mailbox "Inbox" of targetAccount
                 else
-                    error "Mailbox not found: $escapedMailbox"
+                    return "ERROR:Mailbox \\"$escapedMailbox\\" not found. Use list-mailboxes to see available mailboxes."
                 end if
             end try
             set searchMailboxes to {searchMailbox}
@@ -235,6 +270,8 @@ Future<CallToolResult> handleSearchEmails(
   }
 
   final script = '''
+$lowercaseHandler
+
 tell application "Mail"
     set outputText to "SEARCH RESULTS" & return & return
     set outputText to outputText & "Searching in: $escapedMailbox" & return
@@ -269,6 +306,8 @@ tell application "Mail"
                             set messageSender to sender of aMessage
                             set messageDate to date received of aMessage
                             set messageRead to read status of aMessage
+                            set lowerSubject to my lowercase(messageSubject)
+                            set lowerSender to my lowercase(messageSender)
 
                             if $conditionStr then
                                 set readIndicator to "✉"
@@ -299,15 +338,26 @@ tell application "Mail"
         set outputText to outputText & "========================================" & return
 
     on error errMsg
-        return "Error: " & errMsg
+        return "ERROR:" & errMsg
     end try
 
     return outputText
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    if (result.startsWith('ERROR:')) {
+      final errorMsg = result.substring(6);
+      return actionableError(errorMsg, '');
+    }
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to search emails: $e',
+      'Check that Apple Mail is running and the account exists.',
+    );
+  }
 }
 
 /// Handles the search-by-sender operation.
@@ -317,8 +367,9 @@ Future<CallToolResult> handleSearchBySender(
     Map<String, dynamic> args) async {
   final sender = args['sender'] as String?;
   if (sender == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: sender parameter is required')],
+    return actionableError(
+      'sender parameter is required for search-by-sender.',
+      'Provide a sender name or email address to search for.',
     );
   }
 
@@ -488,20 +539,24 @@ end tell
 
 /// Handles the search-email-content operation.
 ///
-/// Full-text body content search (slower).
+/// Full-text body content search (slower). When multiple keywords are
+/// provided (space-separated), emails matching ANY keyword are returned
+/// (OR logic).
 Future<CallToolResult> handleSearchEmailContent(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for search-email-content.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final query = args['query'] as String?;
-  if (query == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: query parameter is required')],
+  if (query == null || query.trim().isEmpty) {
+    return actionableError(
+      'query parameter is required for search-email-content.',
+      'Provide one or more search keywords separated by spaces.',
     );
   }
 
@@ -510,17 +565,23 @@ Future<CallToolResult> handleSearchEmailContent(
   final maxResults = args['max_results'] as int? ?? 10;
   final maxContentLength = args['max_content_length'] as int? ?? 600;
 
-  final escapedSearch = escapeAppleScript(query.toLowerCase());
   final escapedAccount = escapeAppleScript(account);
   final escapedMailbox = escapeAppleScript(mailbox);
 
-  // Build search conditions
-  final searchConditions = <String>[];
-  searchConditions.add('lowerSubject contains "$escapedSearch"');
-  if (searchBody) {
-    searchConditions.add('lowerContent contains "$escapedSearch"');
+  // Build OR-based search conditions for multiple keywords
+  final keywords =
+      query.split(' ').where((k) => k.trim().isNotEmpty).toList();
+  final searchParts = <String>[];
+  for (final keyword in keywords) {
+    final escaped = escapeAppleScript(keyword.toLowerCase());
+    searchParts.add('lowerSubject contains "$escaped"');
+    if (searchBody) {
+      searchParts.add('lowerContent contains "$escaped"');
+    }
   }
-  final searchCondition = searchConditions.join(' or ');
+  final searchCondition = searchParts.join(' or ');
+
+  final escapedSearch = escapeAppleScript(query.toLowerCase());
 
   final script = '''
 $lowercaseHandler
@@ -538,7 +599,7 @@ tell application "Mail"
             if "$escapedMailbox" is "INBOX" then
                 set targetMailbox to mailbox "Inbox" of targetAccount
             else
-                error "Mailbox not found: $escapedMailbox"
+                return "ERROR:Mailbox \\"$escapedMailbox\\" not found. Use list-mailboxes to see available mailboxes."
             end if
         end try
         set mailboxMessages to every message of targetMailbox
@@ -589,14 +650,25 @@ tell application "Mail"
         set outputText to outputText & "FOUND: " & resultCount & " email(s) matching \\"$escapedSearch\\"" & return
         set outputText to outputText & "========================================" & return
     on error errMsg
-        return "Error: " & errMsg
+        return "ERROR:" & errMsg
     end try
     return outputText
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    if (result.startsWith('ERROR:')) {
+      final errorMsg = result.substring(6);
+      return actionableError(errorMsg, '');
+    }
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to search email content: $e',
+      'Check that Apple Mail is running and the account exists.',
+    );
+  }
 }
 
 /// Handles the get-newsletters operation.
@@ -728,8 +800,9 @@ Future<CallToolResult> handleGetRecentFromSender(
     Map<String, dynamic> args) async {
   final sender = args['sender'] as String?;
   if (sender == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: sender parameter is required')],
+    return actionableError(
+      'sender parameter is required for get-recent-from-sender.',
+      'Provide a sender name or email address to search for.',
     );
   }
 
@@ -910,17 +983,17 @@ Future<CallToolResult> handleGetEmailThread(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for get-email-thread.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final subjectKeyword = args['subject_keyword'] as String?;
   if (subjectKeyword == null) {
-    return CallToolResult.fromContent(
-      [
-        TextContent(text: 'Error: subject_keyword parameter is required')
-      ],
+    return actionableError(
+      'subject_keyword parameter is required for get-email-thread.',
+      'Provide a keyword to search for in email subject lines.',
     );
   }
 

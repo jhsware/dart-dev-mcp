@@ -65,3 +65,24 @@ const Map<String, int> timeRanges = {
   'year': 365,
   'all': 0,
 };
+
+/// Default fields returned by the list-emails operation.
+const List<String> defaultEmailFields = [
+  'sender',
+  'subject',
+  'date',
+  'message_id',
+];
+
+/// All available fields that can be requested from list-emails.
+const List<String> allEmailFields = [
+  'sender',
+  'subject',
+  'date',
+  'message_id',
+  'read_status',
+  'mailbox',
+  'account',
+  'content',
+  'attachments',
+];
