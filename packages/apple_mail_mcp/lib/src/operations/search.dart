@@ -595,6 +595,252 @@ end tell
   }
 }
 
+/// Handles the multi-search operation.
+///
+/// Accepts multiple comma-separated query groups, runs a single-pass search
+/// with all keywords, and returns deduplicated results tagged with which
+/// query groups matched. Natural dedup since it's a single pass.
+Future<CallToolResult> handleMultiSearch(
+    Map<String, dynamic> args) async {
+  final account = args['account'] as String?;
+  if (account == null) {
+    return actionableError(
+      'account parameter is required for multi-search.',
+      'Use list-accounts to see available accounts.',
+    );
+  }
+
+  final queries = args['queries'] as String?;
+  if (queries == null || queries.trim().isEmpty) {
+    return actionableError(
+      'queries parameter is required for multi-search.',
+      'Provide comma-separated query groups, e.g. "invoice faktura, receipt kvitto, payment".',
+    );
+  }
+
+  final mailbox = args['mailbox'] as String? ?? 'INBOX';
+  final maxResults = args['max_results'] as int? ?? 30;
+  final offset = args['offset'] as int? ?? 0;
+  final daysBack = args['days_back'] as int? ?? 0;
+  final searchField = args['search_field'] as String? ?? 'all';
+
+  // Validate search_field
+  if (!['all', 'subject', 'sender'].contains(searchField)) {
+    return actionableError(
+      'Invalid search_field "$searchField".',
+      'Use "all", "subject", or "sender".',
+    );
+  }
+
+  final escapedAccount = escapeAppleScript(account);
+  final escapedMailbox = escapeAppleScript(mailbox);
+
+  // Build date filter
+  final dateFilter = _buildDateFilter(daysBack: daysBack);
+
+  // Parse query groups: "invoice faktura, receipt kvitto, payment" ->
+  // [["invoice", "faktura"], ["receipt", "kvitto"], ["payment"]]
+  final groups = queries
+      .split(',')
+      .map((g) =>
+          g.trim().split(' ').where((k) => k.trim().isNotEmpty).toList())
+      .where((g) => g.isNotEmpty)
+      .toList();
+
+  if (groups.isEmpty) {
+    return actionableError(
+      'No valid query groups found in "$queries".',
+      'Provide comma-separated query groups, e.g. "invoice faktura, receipt kvitto".',
+    );
+  }
+
+  // Determine which AppleScript fields to search
+  final useSubject = searchField == 'all' || searchField == 'subject';
+  final useSender = searchField == 'all' || searchField == 'sender';
+
+  // Build per-group condition checks in AppleScript
+  // Each group uses OR within keywords, and we tag which groups matched
+  final groupCheckScript = StringBuffer();
+  final groupTagScript = StringBuffer();
+  final anyGroupConditions = <String>[];
+
+  for (var i = 0; i < groups.length; i++) {
+    final group = groups[i];
+    final groupLabel = group.join(' ');
+    final escapedLabel = escapeAppleScript(groupLabel);
+
+    // Build OR condition for this group's keywords
+    final keywordChecks = <String>[];
+    for (final keyword in group) {
+      final escaped = escapeAppleScript(keyword.toLowerCase());
+      if (useSubject) {
+        keywordChecks.add('lowerSubject contains "$escaped"');
+      }
+      if (useSender) {
+        keywordChecks.add('lowerSender contains "$escaped"');
+      }
+    }
+    final groupCondition = keywordChecks.join(' or ');
+
+    groupCheckScript.writeln(
+        '                            set group${i}Match to false');
+    groupCheckScript.writeln(
+        '                            if $groupCondition then');
+    groupCheckScript.writeln(
+        '                                set group${i}Match to true');
+    groupCheckScript.writeln(
+        '                            end if');
+
+    groupTagScript.writeln(
+        '                                    if group${i}Match then');
+    groupTagScript.writeln(
+        '                                        set matchedGroups to matchedGroups & "[$escapedLabel] "');
+    groupTagScript.writeln(
+        '                                    end if');
+
+    anyGroupConditions.add('group${i}Match');
+  }
+
+  final anyGroupMatched = anyGroupConditions.join(' or ');
+
+  // Build mailbox script
+  String mailboxScript;
+  if (mailbox == 'All') {
+    mailboxScript = '''
+            set allMailboxes to every mailbox of targetAccount
+            set searchMailboxes to allMailboxes
+''';
+  } else {
+    mailboxScript = '''
+            try
+                set searchMailbox to mailbox "$escapedMailbox" of targetAccount
+            on error
+                if "$escapedMailbox" is "INBOX" then
+                    set searchMailbox to mailbox "Inbox" of targetAccount
+                else
+                    return "ERROR:Mailbox \\"$escapedMailbox\\" not found. Use list-mailboxes to see available mailboxes."
+                end if
+            end try
+            set searchMailboxes to {searchMailbox}
+''';
+  }
+
+  // Build date check
+  final dateCheckScript = dateFilter.check.isNotEmpty
+      ? '''
+                            -- date filtering
+                            if not (${dateFilter.check}) then
+                                set skipMessage to true
+                            end if'''
+      : '';
+
+  final script = '''
+$lowercaseHandler
+
+tell application "Mail"
+    set outputText to "MULTI-SEARCH RESULTS" & return
+    set outputText to outputText & "Query groups: $queries" & return
+    set outputText to outputText & "Account: $escapedAccount" & return
+    set outputText to outputText & "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" & return & return
+    set matchedCount to 0
+    set resultCount to 0
+
+    ${dateFilter.setup}
+
+    try
+        set targetAccount to account "$escapedAccount"
+        $mailboxScript
+
+        repeat with currentMailbox in searchMailboxes
+            try
+                set mailboxName to name of currentMailbox
+
+                set skipFoldersList to {"Trash", "Junk", "Junk Email", "Deleted Items", "Sent", "Sent Items", "Sent Messages", "Drafts", "Spam", "Deleted Messages"}
+                set shouldSkip to false
+                repeat with skipFolder in skipFoldersList
+                    if mailboxName is skipFolder then
+                        set shouldSkip to true
+                        exit repeat
+                    end if
+                end repeat
+
+                if not shouldSkip then
+                    set mailboxMessages to every message of currentMailbox
+
+                    repeat with aMessage in mailboxMessages
+                        if resultCount >= $maxResults then exit repeat
+
+                        try
+                            set skipMessage to false
+                            set messageSubject to subject of aMessage
+                            set messageSender to sender of aMessage
+                            set messageDate to date received of aMessage
+                            set messageRead to read status of aMessage
+                            set lowerSubject to my lowercase(messageSubject)
+                            set lowerSender to my lowercase(messageSender)
+
+                            $dateCheckScript
+
+                            if not skipMessage then
+                                -- Check each group
+$groupCheckScript
+                                if $anyGroupMatched then
+                                    set matchedCount to matchedCount + 1
+                                    if matchedCount > $offset then
+                                        set matchedGroups to ""
+$groupTagScript
+
+                                        set readIndicator to "✉"
+                                        if messageRead then
+                                            set readIndicator to "✓"
+                                        end if
+
+                                        set outputText to outputText & readIndicator & " " & messageSubject & return
+                                        set outputText to outputText & "   From: " & messageSender & return
+                                        set outputText to outputText & "   Date: " & (messageDate as string) & return
+                                        set outputText to outputText & "   Mailbox: " & mailboxName & return
+                                        set outputText to outputText & "   Matched: " & matchedGroups & return
+                                        set outputText to outputText & return
+                                        set resultCount to resultCount + 1
+                                    end if
+                                end if
+                            end if
+                        end try
+                    end repeat
+                end if
+            on error
+                -- Skip mailboxes that throw errors
+            end try
+        end repeat
+
+        set outputText to outputText & "========================================" & return
+        set outputText to outputText & "FOUND: " & matchedCount & " matching email(s), showing " & resultCount & " (offset: $offset)" & return
+        set outputText to outputText & "Query groups searched: ${groups.length}" & return
+        set outputText to outputText & "========================================" & return
+
+    on error errMsg
+        return "ERROR:" & errMsg
+    end try
+
+    return outputText
+end tell
+''';
+
+  try {
+    final result = await runAppleScript(script);
+    if (result.startsWith('ERROR:')) {
+      final errorMsg = result.substring(6);
+      return actionableError(errorMsg, '');
+    }
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to run multi-search: $e',
+      'Check that Apple Mail is running and the account exists.',
+    );
+  }
+}
+
 /// Returns the dispatch map for all search operations.
 ///
 /// Merges core, sender, and advanced search operations into a single map.
@@ -603,6 +849,7 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
   return {
     'search-emails': handleSearchEmails,
     'search-email-content': handleSearchEmailContent,
+    'multi-search': handleMultiSearch,
     ...getSenderSearchOperations(),
     ...getAdvancedSearchOperations(),
   };
