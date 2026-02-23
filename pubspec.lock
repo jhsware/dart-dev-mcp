@@ -33,6 +33,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.0"
+  bm25:
+    dependency: transitive
+    description:
+      name: bm25
+      sha256: "75f9f627fcdb884db420510d34906fb5e7ec7caef9d9cbdc35be17317b637f7b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
   boolean_selector:
     dependency: transitive
     description:

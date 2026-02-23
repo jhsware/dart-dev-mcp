@@ -25,7 +25,7 @@ List<String> get allOperations => _buildOperationHandlers().keys.toList();
 
 /// Creates and configures the Apple Mail MCP server.
 ///
-/// Registers a single `apple-mail` tool with all 20 read-only operations.
+/// Registers a single `apple-mail` tool with all 22 read-only operations.
 McpServer createAppleMailServer() {
   final operationHandlers = _buildOperationHandlers();
   final operations = operationHandlers.keys.toList();
@@ -98,7 +98,7 @@ McpServer createAppleMailServer() {
         ),
         'days_back': JsonSchema.integer(
           description:
-              'Number of days to look back (for search-emails, search-email-content, search-by-sender, get-newsletters, get-statistics, search-all-accounts). Default: 30 for search-by-sender, 0 (disabled) for search-emails/search-email-content.',
+              'Number of days to look back (for search-emails, search-email-content, classify-emails, search-by-sender, get-newsletters, get-statistics, search-all-accounts). Default: 30 for search-by-sender/classify-emails, 0 (disabled) for search-emails/search-email-content.',
         ),
         'has_attachments': JsonSchema.boolean(
           description:
@@ -158,11 +158,23 @@ McpServer createAppleMailServer() {
         ),
         'search_field': JsonSchema.string(
           description:
-              'Which fields to search: for search-emails/multi-search: "all" (default), "subject", "sender". For search-email-content: "all" (default), "subject", "body".',
+              'Which fields to search: for search-emails/multi-search/classify-emails: "all" (default), "subject", "sender". For search-email-content: "all" (default), "subject", "body".',
         ),
         'queries': JsonSchema.string(
           description:
               'Comma-separated query groups for multi-search. Each group contains space-separated keywords (OR within group). Results are deduplicated and tagged with matched groups. Example: "invoice faktura, receipt kvitto, payment betalning".',
+        ),
+        'classifiers': JsonSchema.string(
+          description:
+              'JSON object mapping category names to arrays of search terms for classify-emails. The MCP uses BM25 ranking to score each email against each category. Example: {"invoice": ["invoice", "faktura", "bill"], "receipt": ["receipt", "kvitto"]}.',
+        ),
+        'min_score': JsonSchema.number(
+          description:
+              'Minimum BM25 relevance score threshold for classify-emails. Emails scoring below this for a category are excluded from that category. Default: 0.0',
+        ),
+        'include_unmatched': JsonSchema.boolean(
+          description:
+              'Whether to include emails that did not match any category in classify-emails results. Default: true',
         ),
       },
       required: ['operation'],
