@@ -11,6 +11,8 @@ resolution: workspace
 dependencies:
   mcp_dart: ^1.2.2
   bm25: ^2.2.3
+  jhsware_code_shared_libs:
+    path: ../shared_libs
 
 dev_dependencies:
   lints: ^6.0.0
