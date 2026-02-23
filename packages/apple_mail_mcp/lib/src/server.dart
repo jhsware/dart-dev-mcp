@@ -2,13 +2,18 @@
 //
 // Registers a single `apple-mail` tool with an `operation` enum parameter
 // that dispatches to the appropriate read-only operation handler.
+// Long-running operations are wrapped with progress notifications and
+// session tracking for polling support.
 
 import 'package:mcp_dart/mcp_dart.dart';
+import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
 import 'core.dart';
 import 'operations/inbox.dart';
 import 'operations/search.dart';
 import 'operations/attachments.dart';
+import 'progress_wrapper.dart';
+import 'session_operations.dart';
 
 /// Builds the merged dispatch map from all operation modules.
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
@@ -21,14 +26,21 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
 }
 
 /// All supported operation names for the apple-mail tool.
-List<String> get allOperations => _buildOperationHandlers().keys.toList();
+List<String> get allOperations => [
+      ..._buildOperationHandlers().keys,
+      'get_output',
+      'list_sessions',
+      'cancel',
+    ];
 
 /// Creates and configures the Apple Mail MCP server.
 ///
-/// Registers a single `apple-mail` tool with all 22 read-only operations.
+/// Registers a single `apple-mail` tool with all read-only operations
+/// plus session management operations for long-running operation support.
 McpServer createAppleMailServer() {
   final operationHandlers = _buildOperationHandlers();
-  final operations = operationHandlers.keys.toList();
+  final operations = allOperations;
+  final sessionManager = SessionManager();
 
   final server = McpServer(
     Implementation(name: 'apple-mail-mcp', version: '0.1.0'),
@@ -37,7 +49,11 @@ McpServer createAppleMailServer() {
   server.registerTool(
     'apple-mail',
     description:
-        'Read-only Apple Mail operations for listing, searching, and exporting emails.',
+        'Read-only Apple Mail operations for listing, searching, and exporting emails.\n\n'
+        'For long-running operations (search-email-content, classify-emails, etc.), '
+        'progress notifications are sent during execution. Results are also stored in '
+        'sessions that can be retrieved with get_output, listed with list_sessions, '
+        'or cancelled with cancel.',
     inputSchema: ToolInputSchema(
       properties: {
         'operation': JsonSchema.string(
@@ -176,6 +192,18 @@ McpServer createAppleMailServer() {
           description:
               'Whether to include emails that did not match any category in classify-emails results. Default: true',
         ),
+        'session_id': JsonSchema.string(
+          description:
+              'Session ID returned from long-running operations (required for get_output and cancel)',
+        ),
+        'chunk_index': JsonSchema.integer(
+          description:
+              'Starting chunk index for get_output (default: 0). Use to paginate through output.',
+        ),
+        'max_chunks': JsonSchema.integer(
+          description:
+              'Maximum number of chunks to return in get_output (default: 50, max: 200)',
+        ),
       },
       required: ['operation'],
     ),
@@ -188,6 +216,17 @@ McpServer createAppleMailServer() {
         );
       }
 
+      // Handle session management operations
+      if (operation == 'get_output') {
+        return handleGetOutput(args, sessionManager);
+      }
+      if (operation == 'list_sessions') {
+        return handleListSessions(sessionManager);
+      }
+      if (operation == 'cancel') {
+        return await handleCancelSession(args, sessionManager);
+      }
+
       final handler = operationHandlers[operation];
       if (handler == null) {
         return actionableError(
@@ -197,6 +236,16 @@ McpServer createAppleMailServer() {
       }
 
       try {
+        // Wrap slow operations with progress + session tracking
+        if (slowOperations.contains(operation)) {
+          return await runWithProgress(
+            extra: extra,
+            operation: operation,
+            args: args,
+            handler: handler,
+            sessionManager: sessionManager,
+          );
+        }
         return await handler(args);
       } catch (e) {
         return actionableError(
