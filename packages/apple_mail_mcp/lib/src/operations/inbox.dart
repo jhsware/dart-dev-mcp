@@ -5,7 +5,320 @@
 
 import 'package:mcp_dart/mcp_dart.dart';
 
+import '../constants.dart';
 import '../core.dart';
+
+/// Handles the list-emails operation.
+///
+/// Batch-fetches emails with pagination (limit/offset), optional date
+/// filtering, configurable field selection, and structured JSON output.
+Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
+  final account = args['account'] as String?;
+  final mailbox = args['mailbox'] as String? ?? 'INBOX';
+  final limit = args['limit'] as int? ?? 20;
+  final offset = args['offset'] as int? ?? 0;
+  final startDate = args['start_date'] as String?;
+  final fieldsStr = args['fields'] as String?;
+
+  // Validate and parse fields
+  final requestedFields = fieldsStr != null
+      ? fieldsStr.split(',').map((f) => f.trim()).toList()
+      : defaultEmailFields;
+
+  for (final field in requestedFields) {
+    if (!allEmailFields.contains(field)) {
+      return actionableError(
+        'Unknown field "$field".',
+        'Valid fields: ${allEmailFields.join(", ")}',
+      );
+    }
+  }
+
+  // Validate start_date format if provided
+  if (startDate != null) {
+    final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+    if (!dateRegex.hasMatch(startDate)) {
+      return actionableError(
+        'Invalid start_date "$startDate".',
+        'Use ISO format: YYYY-MM-DD',
+      );
+    }
+  }
+
+  final escapedMailbox = escapeAppleScript(mailbox);
+
+  // Build field extraction AppleScript snippets
+  final fieldExtractions = <String>[];
+  for (final field in requestedFields) {
+    switch (field) {
+      case 'sender':
+        fieldExtractions.add(
+            'set emailRecord to emailRecord & "From: " & sender of aMessage & linefeed');
+      case 'subject':
+        fieldExtractions.add(
+            'set emailRecord to emailRecord & "Subject: " & subject of aMessage & linefeed');
+      case 'date':
+        fieldExtractions.add(
+            'set emailRecord to emailRecord & "Date: " & (date received of aMessage as string) & linefeed');
+      case 'message_id':
+        fieldExtractions.add(
+            'set emailRecord to emailRecord & "ID: " & message id of aMessage & linefeed');
+      case 'read_status':
+        fieldExtractions.add('''
+                        if read status of aMessage then
+                            set emailRecord to emailRecord & "ReadStatus: read" & linefeed
+                        else
+                            set emailRecord to emailRecord & "ReadStatus: unread" & linefeed
+                        end if''');
+      case 'mailbox':
+        fieldExtractions
+            .add('set emailRecord to emailRecord & "Mailbox: " & mailboxName & linefeed');
+      case 'account':
+        fieldExtractions.add(
+            'set emailRecord to emailRecord & "Account: " & accountName & linefeed');
+      case 'content':
+        fieldExtractions.add('''
+                        try
+                            set msgContent to content of aMessage
+                            set AppleScript's text item delimiters to {return, linefeed}
+                            set contentParts to text items of msgContent
+                            set AppleScript's text item delimiters to " "
+                            set cleanText to contentParts as string
+                            set AppleScript's text item delimiters to ""
+                            if length of cleanText > 500 then
+                                set cleanText to text 1 thru 500 of cleanText & "..."
+                            end if
+                            set emailRecord to emailRecord & "Content: " & cleanText & linefeed
+                        on error
+                            set emailRecord to emailRecord & "Content: [Not available]" & linefeed
+                        end try''');
+      case 'attachments':
+        fieldExtractions.add('''
+                        try
+                            set attachCount to count of mail attachments of aMessage
+                            if attachCount > 0 then
+                                set attachNames to {}
+                                repeat with anAttach in mail attachments of aMessage
+                                    set end of attachNames to name of anAttach
+                                end repeat
+                                set AppleScript's text item delimiters to ", "
+                                set attachStr to attachNames as string
+                                set AppleScript's text item delimiters to ""
+                                set emailRecord to emailRecord & "Attachments: " & attachCount & " (" & attachStr & ")" & linefeed
+                            else
+                                set emailRecord to emailRecord & "Attachments: 0" & linefeed
+                            end if
+                        on error
+                            set emailRecord to emailRecord & "Attachments: [Error]" & linefeed
+                        end try''');
+    }
+  }
+
+  final fieldExtractionsScript = fieldExtractions.join('\n');
+
+  // Build date filter
+  String dateFilterSetup = '';
+  String dateCheck = '';
+  if (startDate != null) {
+    // Parse YYYY-MM-DD in AppleScript
+    dateFilterSetup = '''
+    set startDateStr to "$startDate"
+    set startYear to text 1 thru 4 of startDateStr as integer
+    set startMonth to text 6 thru 7 of startDateStr as integer
+    set startDay to text 9 thru 10 of startDateStr as integer
+    set filterDate to current date
+    set year of filterDate to startYear
+    set month of filterDate to startMonth
+    set day of filterDate to startDay
+    set time of filterDate to 86399
+''';
+    dateCheck = '''
+                        set msgDate to date received of aMessage
+                        if msgDate > filterDate then
+                            set skipMsg to true
+                        end if''';
+  }
+
+  // Build account loop
+  String accountLoopStart;
+  String accountLoopEnd;
+  if (account != null) {
+    final escapedAccount = escapeAppleScript(account);
+    accountLoopStart = '''
+        try
+            set anAccount to account "$escapedAccount"
+        on error
+            return "ERROR:Account \\"$escapedAccount\\" not found. Use list-accounts to see available accounts."
+        end try
+        set accountName to name of anAccount
+        repeat 1 times
+''';
+    accountLoopEnd = '''
+        end repeat
+''';
+  } else {
+    accountLoopStart = '''
+        set allAccounts to every account
+        repeat with anAccount in allAccounts
+            set accountName to name of anAccount
+''';
+    accountLoopEnd = '''
+            if collectedCount >= totalLimit then exit repeat
+        end repeat
+''';
+  }
+
+  // Build mailbox resolution
+  String mailboxResolution;
+  if (mailbox == 'INBOX') {
+    mailboxResolution = '''
+            try
+                set targetMailbox to mailbox "INBOX" of anAccount
+            on error
+                try
+                    set targetMailbox to mailbox "Inbox" of anAccount
+                on error
+                    set outputText to outputText & "ERROR_MAILBOX:Could not find INBOX for account " & accountName & linefeed
+                    set skipAccount to true
+                end try
+            end try''';
+  } else {
+    mailboxResolution = '''
+            try
+                set targetMailbox to mailbox "$escapedMailbox" of anAccount
+            on error
+                set outputText to outputText & "ERROR_MAILBOX:Mailbox \\"$escapedMailbox\\" not found in account " & accountName & ". Use list-mailboxes to see available mailboxes." & linefeed
+                set skipAccount to true
+            end try''';
+  }
+
+  final totalLimit = offset + limit;
+
+  final script = '''
+tell application "Mail"
+    set outputText to ""
+    set collectedCount to 0
+    set skippedCount to 0
+    set totalAvailable to 0
+    set totalLimit to $totalLimit
+
+    $dateFilterSetup
+
+    $accountLoopStart
+
+            set skipAccount to false
+            $mailboxResolution
+
+            if not skipAccount then
+                set mailboxName to name of targetMailbox
+                set mailboxMsgCount to count of messages of targetMailbox
+                set totalAvailable to totalAvailable + mailboxMsgCount
+                set mailboxMessages to every message of targetMailbox
+
+                repeat with aMessage in mailboxMessages
+                    if collectedCount >= totalLimit then exit repeat
+
+                    try
+                        set skipMsg to false
+                        $dateCheck
+
+                        if not skipMsg then
+                            set skippedCount to skippedCount + 1
+                            if skippedCount > $offset then
+                                set emailRecord to "✉ " & subject of aMessage & linefeed
+                                $fieldExtractionsScript
+                                set emailRecord to emailRecord & "---END---" & linefeed
+                                set outputText to outputText & emailRecord
+                                set collectedCount to collectedCount + 1
+                            end if
+                        end if
+                    end try
+                end repeat
+            end if
+
+    $accountLoopEnd
+
+    set outputText to outputText & "TOTAL_AVAILABLE:" & totalAvailable & linefeed
+    return outputText
+end tell
+''';
+
+  try {
+    final result = await runAppleScript(script);
+
+    // Check for account-level errors
+    if (result.startsWith('ERROR:')) {
+      final errorMsg = result.substring(6);
+      return actionableError(errorMsg, '');
+    }
+
+    // Parse AppleScript output into email maps
+    final emails = <Map<String, String>>[];
+    var totalAvailable = 0;
+
+    // Extract total available from last line
+    final lines = result.split('\n');
+    for (final line in lines) {
+      if (line.startsWith('TOTAL_AVAILABLE:')) {
+        totalAvailable = int.tryParse(line.substring(16).trim()) ?? 0;
+      }
+    }
+
+    // Parse email blocks
+    Map<String, String>? current;
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      if (trimmed.startsWith('TOTAL_AVAILABLE:')) continue;
+      if (trimmed.startsWith('ERROR_MAILBOX:')) continue;
+
+      if (trimmed == '---END---') {
+        if (current != null) {
+          emails.add(current);
+          current = null;
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith('✉') || trimmed.startsWith('✓')) {
+        current = {'subject': trimmed.substring(2).trim()};
+      } else if (current != null) {
+        if (trimmed.startsWith('From: ')) {
+          current['sender'] = trimmed.substring(6).trim();
+        } else if (trimmed.startsWith('Subject: ')) {
+          current['subject'] = trimmed.substring(9).trim();
+        } else if (trimmed.startsWith('Date: ')) {
+          current['date'] = trimmed.substring(6).trim();
+        } else if (trimmed.startsWith('ID: ')) {
+          current['message_id'] = trimmed.substring(4).trim();
+        } else if (trimmed.startsWith('ReadStatus: ')) {
+          current['read_status'] = trimmed.substring(12).trim();
+        } else if (trimmed.startsWith('Mailbox: ')) {
+          current['mailbox'] = trimmed.substring(9).trim();
+        } else if (trimmed.startsWith('Account: ')) {
+          current['account'] = trimmed.substring(9).trim();
+        } else if (trimmed.startsWith('Content: ')) {
+          current['content'] = trimmed.substring(9).trim();
+        } else if (trimmed.startsWith('Attachments: ')) {
+          current['attachments'] = trimmed.substring(13).trim();
+        }
+      }
+    }
+
+    final jsonOutput = buildJsonEmailOutput(
+      emails: emails,
+      offset: offset,
+      limit: limit,
+      totalAvailable: totalAvailable,
+    );
+    return CallToolResult.fromContent([TextContent(text: jsonOutput)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to list emails: $e',
+      'Check that Apple Mail is running and the account/mailbox exists.',
+    );
+  }
+}
 
 /// Handles the list-inbox-emails operation.
 ///
@@ -173,8 +486,9 @@ Future<CallToolResult> handleGetRecentEmails(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for get-recent-emails.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
@@ -505,6 +819,7 @@ end tell
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
     getInboxOperations() {
   return {
+    'list-emails': handleListEmails,
     'list-inbox-emails': handleListInboxEmails,
     'get-unread-count': handleGetUnreadCount,
     'list-accounts': handleListAccounts,
