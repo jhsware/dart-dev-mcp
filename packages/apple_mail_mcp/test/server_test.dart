@@ -66,8 +66,8 @@ void main() {
   });
 
   group('allOperations', () {
-    test('contains exactly 22 operations', () {
-      expect(allOperations.length, equals(22));
+    test('contains exactly 25 operations (22 mail + 3 session)', () {
+      expect(allOperations.length, equals(25));
     });
 
     test('contains all inbox operations', () {
@@ -88,6 +88,12 @@ void main() {
       expect(allOperations, contains('save-email-attachment'));
       expect(allOperations, contains('get-statistics'));
       expect(allOperations, contains('export-emails'));
+    });
+
+    test('contains session management operations', () {
+      expect(allOperations, contains('get_output'));
+      expect(allOperations, contains('list_sessions'));
+      expect(allOperations, contains('cancel'));
     });
   });
 }
