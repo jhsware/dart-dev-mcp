@@ -41,6 +41,7 @@ Servers (comma-separated):
   git         Git version control (branch, merge, commit, stash, tag)
   planner     Task and step management with SQLite storage
   code-index  Code file index for efficient search
+  apple-mail  Apple Mail read-only operations (list, search, export)
   all         Enable all servers
 
 Options:
@@ -295,6 +296,7 @@ output_server_cmd() {
     git_mcp.dart) package_dir="git" ;;
     planner_mcp.dart) package_dir="planner" ;;
     code_index_mcp.dart) package_dir="code_index" ;;
+    apple_mail_mcp.dart) package_dir="apple_mail_mcp" ;;
   esac
 
   local binary_src_path=""
@@ -373,7 +375,7 @@ build_mcp_config() {
   
   # Check for 'all' keyword
   if [[ "$servers" == *"all"* ]]; then
-    servers="fs,fetch,dart,flutter,git,planner,code-index"
+    servers="fs,fetch,dart,flutter,git,planner,code-index,apple-mail"
   fi
   
   # File System Server - uses --project-dir and regular paths only (not git-only)
@@ -436,7 +438,7 @@ build_mcp_config() {
     project_name=$(basename "$project_path")
     
     echo '    "dart-dev-mcp-planner": {'
-    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/planner.db"
+    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/se.urbantalk.planner-app/projects/$project_name/db/planner.db"
     echo '    }'
   fi
 
@@ -448,7 +450,17 @@ build_mcp_config() {
     project_name=$(basename "$project_path")
 
     echo '    "dart-dev-mcp-code-index": {'
-    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/com.example.dartDevMcpPlannerViewer/projects/$project_name/db/code_index.db" "${abs_regular_paths[@]}"
+    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/se.urbantalk.planner-app/projects/$project_name/db/code_index.db" "${abs_regular_paths[@]}"
+    echo '    }'
+  fi
+
+  # Apple Mail MCP Server - standalone, no project-dir needed
+  if [[ "$servers" == *"apple-mail"* ]]; then
+    if [ "$first" != true ]; then echo ','; fi
+    first=false
+
+    echo '    "apple-mail-mcp": {'
+    output_server_cmd "apple-mail-mcp" "apple_mail_mcp.dart" "null"
     echo '    }'
   fi
 

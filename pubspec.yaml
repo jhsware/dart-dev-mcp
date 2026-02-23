@@ -22,6 +22,7 @@ dev_dependencies:
   test: ^1.25.6
 
 workspace:
+  - packages/apple_mail_mcp
   - packages/code_index
   - packages/dart_runner
   - packages/fetch
