@@ -8,9 +8,10 @@
 
 import 'package:mcp_dart/mcp_dart.dart';
 
+
 import '../core.dart';
-import '../constants.dart';
 import 'search_sender.dart';
+
 import 'search_advanced.dart';
 
 /// Handles the search-emails operation.
