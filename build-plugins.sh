@@ -46,7 +46,8 @@ fi
 
 for dir in "$PLUGIN_BASE_DIR"/*/; do
   [ -d "$dir" ] || continue
-  plugin_json="${dir}.claude-plugin/plugin.json"
+  plugin_json="${dir}/.claude-plugin/plugin.json"
+  echo "plugin: $plugin_json" 
   [ -f "$plugin_json" ] || continue
 
   # Extract folder name for messaging (e.g., "my-plugin" from "agentic-plugins/my-plugin/")
