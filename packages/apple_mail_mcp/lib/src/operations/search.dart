@@ -11,6 +11,7 @@ import 'package:mcp_dart/mcp_dart.dart';
 import '../core.dart';
 import 'search_sender.dart';
 import 'search_advanced.dart';
+import 'classify.dart';
 
 /// Builds AppleScript date setup and condition fragments for date filtering.
 ///
@@ -852,5 +853,6 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
     'multi-search': handleMultiSearch,
     ...getSenderSearchOperations(),
     ...getAdvancedSearchOperations(),
+    ...getClassifyOperations(),
   };
 }
