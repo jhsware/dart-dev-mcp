@@ -8,11 +8,79 @@
 
 import 'package:mcp_dart/mcp_dart.dart';
 
-
 import '../core.dart';
 import 'search_sender.dart';
-
 import 'search_advanced.dart';
+
+/// Builds AppleScript date setup and condition fragments for date filtering.
+///
+/// Returns a record with `setup` (AppleScript lines before the loop) and
+/// `check` (condition fragment to use inside the loop).
+({String setup, String check}) _buildDateFilter({
+  required int daysBack,
+  String? startDate,
+  String? endDate,
+}) {
+  final setupParts = <String>[];
+  final checkParts = <String>[];
+
+  if (daysBack > 0) {
+    setupParts.add('set cutoffDate to (current date) - ($daysBack * days)');
+    checkParts.add('messageDate > cutoffDate');
+  }
+
+  if (startDate != null) {
+    // Parse YYYY-MM-DD and build AppleScript date
+    final parts = startDate.split('-');
+    final year = parts[0];
+    final month = parts[1];
+    final day = parts[2];
+    setupParts.add('''
+            set startDateObj to current date
+            set year of startDateObj to $year
+            set month of startDateObj to $month
+            set day of startDateObj to $day
+            set hours of startDateObj to 0
+            set minutes of startDateObj to 0
+            set seconds of startDateObj to 0''');
+    checkParts.add('messageDate >= startDateObj');
+  }
+
+  if (endDate != null) {
+    final parts = endDate.split('-');
+    final year = parts[0];
+    final month = parts[1];
+    final day = parts[2];
+    setupParts.add('''
+            set endDateObj to current date
+            set year of endDateObj to $year
+            set month of endDateObj to $month
+            set day of endDateObj to $day
+            set hours of endDateObj to 23
+            set minutes of endDateObj to 59
+            set seconds of endDateObj to 59''');
+    checkParts.add('messageDate <= endDateObj');
+  }
+
+  return (
+    setup: setupParts.join('\n'),
+    check: checkParts.isEmpty ? '' : checkParts.join(' and '),
+  );
+}
+
+/// Validates a date string is in YYYY-MM-DD format.
+/// Returns an error [CallToolResult] if invalid, or null if valid.
+CallToolResult? _validateDateParam(String? value, String paramName) {
+  if (value == null) return null;
+  final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  if (!dateRegex.hasMatch(value)) {
+    return actionableError(
+      'Invalid $paramName "$value".',
+      'Use ISO format: YYYY-MM-DD',
+    );
+  }
+  return null;
+}
 
 /// Handles the search-emails operation.
 ///
@@ -37,6 +105,10 @@ Future<CallToolResult> handleSearchEmails(
   final readStatus = args['read_status'] as String? ?? 'all';
   final includeContent = args['include_content'] as bool? ?? false;
   final maxResults = args['max_results'] as int? ?? 20;
+  final offset = args['offset'] as int? ?? 0;
+  final daysBack = args['days_back'] as int? ?? 0;
+  final startDate = args['start_date'] as String?;
+  final endDate = args['end_date'] as String?;
 
   // Validate query if provided
   if (query != null && query.trim().isEmpty) {
@@ -46,8 +118,21 @@ Future<CallToolResult> handleSearchEmails(
     );
   }
 
+  // Validate date parameters
+  final startDateErr = _validateDateParam(startDate, 'start_date');
+  if (startDateErr != null) return startDateErr;
+  final endDateErr = _validateDateParam(endDate, 'end_date');
+  if (endDateErr != null) return endDateErr;
+
   final escapedAccount = escapeAppleScript(account);
   final escapedMailbox = escapeAppleScript(mailbox);
+
+  // Build date filter
+  final dateFilter = _buildDateFilter(
+    daysBack: daysBack,
+    startDate: startDate,
+    endDate: endDate,
+  );
 
   // Build OR-based query condition when query is provided
   String queryCondition = '';
@@ -139,6 +224,15 @@ Future<CallToolResult> handleSearchEmails(
 ''';
   }
 
+  // Build date check condition for inside the loop
+  final dateCheckScript = dateFilter.check.isNotEmpty
+      ? '''
+                            -- date filtering
+                            if not (${dateFilter.check}) then
+                                set skipMessage to true
+                            end if'''
+      : '';
+
   final script = '''
 $lowercaseHandler
 
@@ -146,7 +240,10 @@ tell application "Mail"
     set outputText to "SEARCH RESULTS" & return & return
     set outputText to outputText & "Searching in: $escapedMailbox" & return
     set outputText to outputText & "Account: $escapedAccount" & return & return
+    set matchedCount to 0
     set resultCount to 0
+
+    ${dateFilter.setup}
 
     try
         set targetAccount to account "$escapedAccount"
@@ -172,6 +269,7 @@ tell application "Mail"
                         if resultCount >= $maxResults then exit repeat
 
                         try
+                            set skipMessage to false
                             set messageSubject to subject of aMessage
                             set messageSender to sender of aMessage
                             set messageDate to date received of aMessage
@@ -179,21 +277,26 @@ tell application "Mail"
                             set lowerSubject to my lowercase(messageSubject)
                             set lowerSender to my lowercase(messageSender)
 
-                            if $conditionStr then
-                                set readIndicator to "✉"
-                                if messageRead then
-                                    set readIndicator to "✓"
+                            $dateCheckScript
+
+                            if not skipMessage and ($conditionStr) then
+                                set matchedCount to matchedCount + 1
+                                if matchedCount > $offset then
+                                    set readIndicator to "✉"
+                                    if messageRead then
+                                        set readIndicator to "✓"
+                                    end if
+
+                                    set outputText to outputText & readIndicator & " " & messageSubject & return
+                                    set outputText to outputText & "   From: " & messageSender & return
+                                    set outputText to outputText & "   Date: " & (messageDate as string) & return
+                                    set outputText to outputText & "   Mailbox: " & mailboxName & return
+
+                                    $contentScript
+
+                                    set outputText to outputText & return
+                                    set resultCount to resultCount + 1
                                 end if
-
-                                set outputText to outputText & readIndicator & " " & messageSubject & return
-                                set outputText to outputText & "   From: " & messageSender & return
-                                set outputText to outputText & "   Date: " & (messageDate as string) & return
-                                set outputText to outputText & "   Mailbox: " & mailboxName & return
-
-                                $contentScript
-
-                                set outputText to outputText & return
-                                set resultCount to resultCount + 1
                             end if
                         end try
                     end repeat
@@ -204,7 +307,7 @@ tell application "Mail"
         end repeat
 
         set outputText to outputText & "========================================" & return
-        set outputText to outputText & "FOUND: " & resultCount & " matching email(s)" & return
+        set outputText to outputText & "FOUND: " & matchedCount & " matching email(s), showing " & resultCount & " (offset: $offset)" & return
         set outputText to outputText & "========================================" & return
 
     on error errMsg
@@ -257,9 +360,26 @@ Future<CallToolResult> handleSearchEmailContent(
   final searchBody = args['search_body'] as bool? ?? true;
   final maxResults = args['max_results'] as int? ?? 10;
   final maxContentLength = args['max_content_length'] as int? ?? 600;
+  final offset = args['offset'] as int? ?? 0;
+  final daysBack = args['days_back'] as int? ?? 0;
+  final startDate = args['start_date'] as String?;
+  final endDate = args['end_date'] as String?;
+
+  // Validate date parameters
+  final startDateErr = _validateDateParam(startDate, 'start_date');
+  if (startDateErr != null) return startDateErr;
+  final endDateErr = _validateDateParam(endDate, 'end_date');
+  if (endDateErr != null) return endDateErr;
 
   final escapedAccount = escapeAppleScript(account);
   final escapedMailbox = escapeAppleScript(mailbox);
+
+  // Build date filter
+  final dateFilter = _buildDateFilter(
+    daysBack: daysBack,
+    startDate: startDate,
+    endDate: endDate,
+  );
 
   // Build OR-based search conditions for multiple keywords
   final keywords =
@@ -276,6 +396,15 @@ Future<CallToolResult> handleSearchEmailContent(
 
   final escapedSearch = escapeAppleScript(query.toLowerCase());
 
+  // Build date check condition for inside the loop
+  final dateCheckScript = dateFilter.check.isNotEmpty
+      ? '''
+                -- date filtering
+                if not (${dateFilter.check}) then
+                    set skipMessage to true
+                end if'''
+      : '';
+
   final script = '''
 $lowercaseHandler
 
@@ -283,7 +412,11 @@ tell application "Mail"
     set outputText to "🔎 CONTENT SEARCH: $escapedSearch" & return
     set outputText to outputText & "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" & return
     set outputText to outputText & "⚠ Note: Body search is slower - searching $maxResults results max" & return & return
+    set matchedCount to 0
     set resultCount to 0
+
+    ${dateFilter.setup}
+
     try
         set targetAccount to account "$escapedAccount"
         try
@@ -299,48 +432,57 @@ tell application "Mail"
         repeat with aMessage in mailboxMessages
             if resultCount >= $maxResults then exit repeat
             try
-                set messageSubject to subject of aMessage
-                set msgContent to ""
-                try
-                    set msgContent to content of aMessage
-                end try
-                set lowerSubject to my lowercase(messageSubject)
-                set lowerContent to my lowercase(msgContent)
-                if $searchCondition then
-                    set messageSender to sender of aMessage
-                    set messageDate to date received of aMessage
-                    set messageRead to read status of aMessage
-                    if messageRead then
-                        set readIndicator to "✓"
-                    else
-                        set readIndicator to "✉"
-                    end if
-                    set outputText to outputText & readIndicator & " " & messageSubject & return
-                    set outputText to outputText & "   From: " & messageSender & return
-                    set outputText to outputText & "   Date: " & (messageDate as string) & return
-                    set outputText to outputText & "   Mailbox: $escapedMailbox" & return
+                set skipMessage to false
+                set messageDate to date received of aMessage
+
+                $dateCheckScript
+
+                if not skipMessage then
+                    set messageSubject to subject of aMessage
+                    set msgContent to ""
                     try
-                        set AppleScript's text item delimiters to {return, linefeed}
-                        set contentParts to text items of msgContent
-                        set AppleScript's text item delimiters to " "
-                        set cleanText to contentParts as string
-                        set AppleScript's text item delimiters to ""
-                        if length of cleanText > $maxContentLength then
-                            set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                        else
-                            set contentPreview to cleanText
-                        end if
-                        set outputText to outputText & "   Content: " & contentPreview & return
-                    on error
-                        set outputText to outputText & "   Content: [Not available]" & return
+                        set msgContent to content of aMessage
                     end try
-                    set outputText to outputText & return
-                    set resultCount to resultCount + 1
+                    set lowerSubject to my lowercase(messageSubject)
+                    set lowerContent to my lowercase(msgContent)
+                    if $searchCondition then
+                        set matchedCount to matchedCount + 1
+                        if matchedCount > $offset then
+                            set messageSender to sender of aMessage
+                            set messageRead to read status of aMessage
+                            if messageRead then
+                                set readIndicator to "✓"
+                            else
+                                set readIndicator to "✉"
+                            end if
+                            set outputText to outputText & readIndicator & " " & messageSubject & return
+                            set outputText to outputText & "   From: " & messageSender & return
+                            set outputText to outputText & "   Date: " & (messageDate as string) & return
+                            set outputText to outputText & "   Mailbox: $escapedMailbox" & return
+                            try
+                                set AppleScript's text item delimiters to {return, linefeed}
+                                set contentParts to text items of msgContent
+                                set AppleScript's text item delimiters to " "
+                                set cleanText to contentParts as string
+                                set AppleScript's text item delimiters to ""
+                                if length of cleanText > $maxContentLength then
+                                    set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
+                                else
+                                    set contentPreview to cleanText
+                                end if
+                                set outputText to outputText & "   Content: " & contentPreview & return
+                            on error
+                                set outputText to outputText & "   Content: [Not available]" & return
+                            end try
+                            set outputText to outputText & return
+                            set resultCount to resultCount + 1
+                        end if
+                    end if
                 end if
             end try
         end repeat
         set outputText to outputText & "========================================" & return
-        set outputText to outputText & "FOUND: " & resultCount & " email(s) matching \\"$escapedSearch\\"" & return
+        set outputText to outputText & "FOUND: " & matchedCount & " email(s) matching \\"$escapedSearch\\", showing " & resultCount & " (offset: $offset)" & return
         set outputText to outputText & "========================================" & return
     on error errMsg
         return "ERROR:" & errMsg

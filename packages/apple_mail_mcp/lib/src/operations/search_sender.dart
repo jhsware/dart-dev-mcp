@@ -26,6 +26,8 @@ Future<CallToolResult> handleSearchBySender(
   final includeContent = args['include_content'] as bool? ?? true;
   final maxContentLength = args['max_content_length'] as int? ?? 500;
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
+  final offset = args['offset'] as int? ?? 0;
+
 
   final escapedSender = escapeAppleScript(sender);
   final escapedMailbox = escapeAppleScript(mailbox);
@@ -119,7 +121,9 @@ $lowercaseHandler
 tell application "Mail"
     set outputText to "EMAILS FROM SENDER: $escapedSender" & return
     set outputText to outputText & "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" & return & return
+    set matchedCount to 0
     set resultCount to 0
+
 
     $dateFilterScript
 
@@ -141,25 +145,29 @@ tell application "Mail"
                             set lowerSearch to my lowercase("$escapedSender")
 
                             if lowerSender contains lowerSearch $dateCheck then
-                                set messageSubject to subject of aMessage
-                                set messageRead to read status of aMessage
+                                set matchedCount to matchedCount + 1
+                                if matchedCount > $offset then
+                                    set messageSubject to subject of aMessage
+                                    set messageRead to read status of aMessage
 
-                                if messageRead then
-                                    set readIndicator to "✓"
-                                else
-                                    set readIndicator to "✉"
+                                    if messageRead then
+                                        set readIndicator to "✓"
+                                    else
+                                        set readIndicator to "✉"
+                                    end if
+
+                                    set outputText to outputText & readIndicator & " " & messageSubject & return
+                                    set outputText to outputText & "   From: " & messageSender & return
+                                    set outputText to outputText & "   Date: " & (messageDate as string) & return
+                                    set outputText to outputText & "   Account: " & accountName & return
+                                    set outputText to outputText & "   Mailbox: " & mailboxName & return
+
+                                    $contentScript
+
+                                    set outputText to outputText & return
+                                    set resultCount to resultCount + 1
                                 end if
 
-                                set outputText to outputText & readIndicator & " " & messageSubject & return
-                                set outputText to outputText & "   From: " & messageSender & return
-                                set outputText to outputText & "   Date: " & (messageDate as string) & return
-                                set outputText to outputText & "   Account: " & accountName & return
-                                set outputText to outputText & "   Mailbox: " & mailboxName & return
-
-                                $contentScript
-
-                                set outputText to outputText & return
-                                set resultCount to resultCount + 1
                             end if
                         end try
                     end repeat
@@ -173,7 +181,7 @@ tell application "Mail"
     $accountLoopEnd
 
     set outputText to outputText & "========================================" & return
-    set outputText to outputText & "FOUND: " & resultCount & " email(s) from sender" & return
+    set outputText to outputText & "FOUND: " & matchedCount & " matching email(s) from sender, showing " & resultCount & " (offset: $offset)" & return
     set outputText to outputText & "========================================" & return
 
     return outputText

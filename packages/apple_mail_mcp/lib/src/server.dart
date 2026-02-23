@@ -98,7 +98,7 @@ McpServer createAppleMailServer() {
         ),
         'days_back': JsonSchema.integer(
           description:
-              'Number of days to look back (for search-by-sender, get-newsletters, get-statistics, search-all-accounts). Default: 30',
+              'Number of days to look back (for search-emails, search-email-content, search-by-sender, get-newsletters, get-statistics, search-all-accounts). Default: 30 for search-by-sender, 0 (disabled) for search-emails/search-email-content.',
         ),
         'has_attachments': JsonSchema.boolean(
           description:
@@ -134,11 +134,15 @@ McpServer createAppleMailServer() {
         ),
         'offset': JsonSchema.integer(
           description:
-              'Number of emails to skip for pagination (for list-emails). Default: 0',
+              'Number of emails to skip for pagination (for list-emails, search-emails, search-email-content, search-by-sender). Default: 0',
         ),
         'start_date': JsonSchema.string(
           description:
-              'Only return emails on or before this date, ISO format YYYY-MM-DD (for list-emails). Traverses backwards in time from this date.',
+              'Start date filter in ISO format YYYY-MM-DD (for list-emails, search-emails, search-email-content). For list-emails: traverses backwards from this date.',
+        ),
+        'end_date': JsonSchema.string(
+          description:
+              'End date filter in ISO format YYYY-MM-DD (for search-emails, search-email-content). Used with start_date to define a date range.',
         ),
         'fields': JsonSchema.string(
           description:
