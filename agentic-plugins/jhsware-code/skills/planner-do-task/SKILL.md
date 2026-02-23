@@ -34,13 +34,15 @@ Process each step in order:
 
 ### For parent tasks
 
-For each step:
+A task is a parent task when its title starts with "Parent:". Parent task steps reference sub-tasks via `sub_task_id`. For each parent task step:
 1. Change step status to `started`
-2. Call `planner` with operation `get-subtask-prompt` using the step's id — this fetches the linked sub-task details including its title, description, and steps
-3. Invoke the `/planner-do-task` skill with the sub-task id and details returned by `get-subtask-prompt`
-4. After the sub-task completes, change step status to `done`
+2. Call `planner` with operation `get-subtask-prompt` using the step's id
+3. This returns the sub-task's full details (title, description, steps)
+4. Invoke `/planner-do-task` skill with the sub-task id
+5. After the sub-task completes, change step status to `done`
 
-**IMPORTANT**: Use `get-subtask-prompt` (not `show-task`) to fetch sub-task details. This operation is specifically designed to retrieve the sub-task linked to a parent task step, and will return an error if the step has no linked sub-task.
+**IMPORTANT**: Use `get-subtask-prompt` (not `show-task`) to fetch sub-task details. This operation is specifically designed to retrieve the sub-task linked to a parent task step. This operation is specifically designed to retrieve the sub-task linked to a parent task step, and will return an error if the step has no linked sub-task.
+**IMPORTANT**: Do not perform any work on the parent task, it is an orchestration task that makes sure we perform the sub-tasks in the correct order.
 
 ### For regular tasks
 
