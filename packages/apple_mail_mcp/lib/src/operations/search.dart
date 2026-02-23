@@ -15,17 +15,17 @@ Future<CallToolResult> handleGetEmailWithContent(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for get-email-with-content.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final subjectKeyword = args['subject_keyword'] as String?;
   if (subjectKeyword == null) {
-    return CallToolResult.fromContent(
-      [
-        TextContent(text: 'Error: subject_keyword parameter is required')
-      ],
+    return actionableError(
+      'subject_keyword parameter is required for get-email-with-content.',
+      'Provide a keyword to search in email subjects.',
     );
   }
 
@@ -367,8 +367,9 @@ Future<CallToolResult> handleSearchBySender(
     Map<String, dynamic> args) async {
   final sender = args['sender'] as String?;
   if (sender == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: sender parameter is required')],
+    return actionableError(
+      'sender parameter is required for search-by-sender.',
+      'Provide a sender name or email address to search for.',
     );
   }
 
@@ -799,8 +800,9 @@ Future<CallToolResult> handleGetRecentFromSender(
     Map<String, dynamic> args) async {
   final sender = args['sender'] as String?;
   if (sender == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: sender parameter is required')],
+    return actionableError(
+      'sender parameter is required for get-recent-from-sender.',
+      'Provide a sender name or email address to search for.',
     );
   }
 
@@ -981,17 +983,17 @@ Future<CallToolResult> handleGetEmailThread(
     Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
-    return CallToolResult.fromContent(
-      [TextContent(text: 'Error: account parameter is required')],
+    return actionableError(
+      'account parameter is required for get-email-thread.',
+      'Use list-accounts to see available accounts.',
     );
   }
 
   final subjectKeyword = args['subject_keyword'] as String?;
   if (subjectKeyword == null) {
-    return CallToolResult.fromContent(
-      [
-        TextContent(text: 'Error: subject_keyword parameter is required')
-      ],
+    return actionableError(
+      'subject_keyword parameter is required for get-email-thread.',
+      'Provide a keyword to search for in email subject lines.',
     );
   }
 
