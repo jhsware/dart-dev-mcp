@@ -74,7 +74,7 @@ McpServer createAppleMailServer() {
         ),
         'query': JsonSchema.string(
           description:
-              'Search query — multiple space-separated keywords use OR logic, matching if ANY keyword appears (for search-emails, search-email-content)',
+              'Search query — multiple space-separated keywords combined using search_operator logic (for search-emails, search-email-content)',
         ),
         'sender': JsonSchema.string(
           description:
@@ -151,6 +151,14 @@ McpServer createAppleMailServer() {
         'message_id': JsonSchema.string(
           description:
               'Apple Mail message ID for fetching a specific email (for get-email-by-id). Get this from list-emails or search results.',
+        ),
+        'search_operator': JsonSchema.string(
+          description:
+              'How to combine multiple keywords: "or" matches ANY keyword (default), "and" requires ALL keywords (for search-emails, search-email-content).',
+        ),
+        'search_field': JsonSchema.string(
+          description:
+              'Which fields to search: for search-emails: "all" (default), "subject", "sender". For search-email-content: "all" (default), "subject", "body".',
         ),
       },
       required: ['operation'],

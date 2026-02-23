@@ -82,6 +82,49 @@ CallToolResult? _validateDateParam(String? value, String paramName) {
   return null;
 }
 
+/// Builds an AppleScript condition for keyword search across fields.
+///
+/// [keywords] are the search terms.
+/// [fields] maps descriptive names to AppleScript variable names
+/// (e.g., `{'subject': 'lowerSubject', 'sender': 'lowerSender'}`).
+/// [searchOperator] is `'and'` or `'or'`.
+///
+/// For AND: each keyword must appear in at least one selected field.
+/// For OR: any keyword in any selected field matches (current default).
+String _buildQueryCondition({
+  required List<String> keywords,
+  required Map<String, String> fields,
+  required String searchOperator,
+}) {
+  if (keywords.isEmpty || fields.isEmpty) return '';
+
+  if (searchOperator == 'and') {
+    // AND: each keyword must appear in at least one of the selected fields
+    final andParts = <String>[];
+    for (final keyword in keywords) {
+      final escaped = escapeAppleScript(keyword.toLowerCase());
+      final fieldChecks =
+          fields.values.map((v) => '$v contains "$escaped"').toList();
+      if (fieldChecks.length == 1) {
+        andParts.add(fieldChecks.first);
+      } else {
+        andParts.add('(${fieldChecks.join(' or ')})');
+      }
+    }
+    return andParts.join(' and ');
+  } else {
+    // OR: any keyword in any field matches
+    final orParts = <String>[];
+    for (final keyword in keywords) {
+      final escaped = escapeAppleScript(keyword.toLowerCase());
+      for (final v in fields.values) {
+        orParts.add('$v contains "$escaped"');
+      }
+    }
+    return orParts.join(' or ');
+  }
+}
+
 /// Handles the search-emails operation.
 ///
 /// Unified advanced search with multiple filter criteria. When a `query`
@@ -109,12 +152,30 @@ Future<CallToolResult> handleSearchEmails(
   final daysBack = args['days_back'] as int? ?? 0;
   final startDate = args['start_date'] as String?;
   final endDate = args['end_date'] as String?;
+  final searchOperator = args['search_operator'] as String? ?? 'or';
+  final searchField = args['search_field'] as String? ?? 'all';
 
   // Validate query if provided
   if (query != null && query.trim().isEmpty) {
     return actionableError(
       'Empty query provided.',
       'Provide one or more search keywords separated by spaces.',
+    );
+  }
+
+  // Validate search_operator
+  if (searchOperator != 'and' && searchOperator != 'or') {
+    return actionableError(
+      'Invalid search_operator "$searchOperator".',
+      'Use "and" or "or".',
+    );
+  }
+
+  // Validate search_field
+  if (!['all', 'subject', 'sender'].contains(searchField)) {
+    return actionableError(
+      'Invalid search_field "$searchField".',
+      'Use "all", "subject", or "sender".',
     );
   }
 
@@ -134,18 +195,24 @@ Future<CallToolResult> handleSearchEmails(
     endDate: endDate,
   );
 
-  // Build OR-based query condition when query is provided
+  // Build query condition using search_operator and search_field
   String queryCondition = '';
   if (query != null) {
     final keywords =
         query.split(' ').where((k) => k.trim().isNotEmpty).toList();
-    final orParts = <String>[];
-    for (final keyword in keywords) {
-      final escaped = escapeAppleScript(keyword.toLowerCase());
-      orParts.add('lowerSubject contains "$escaped"');
-      orParts.add('lowerSender contains "$escaped"');
+    // Select fields based on search_field
+    final fields = <String, String>{};
+    if (searchField == 'all' || searchField == 'subject') {
+      fields['subject'] = 'lowerSubject';
     }
-    queryCondition = orParts.join(' or ');
+    if (searchField == 'all' || searchField == 'sender') {
+      fields['sender'] = 'lowerSender';
+    }
+    queryCondition = _buildQueryCondition(
+      keywords: keywords,
+      fields: fields,
+      searchOperator: searchOperator,
+    );
   }
 
   // Build AND conditions from other filters
@@ -364,6 +431,24 @@ Future<CallToolResult> handleSearchEmailContent(
   final daysBack = args['days_back'] as int? ?? 0;
   final startDate = args['start_date'] as String?;
   final endDate = args['end_date'] as String?;
+  final searchOperator = args['search_operator'] as String? ?? 'or';
+  final searchField = args['search_field'] as String? ?? 'all';
+
+  // Validate search_operator
+  if (searchOperator != 'and' && searchOperator != 'or') {
+    return actionableError(
+      'Invalid search_operator "$searchOperator".',
+      'Use "and" or "or".',
+    );
+  }
+
+  // Validate search_field
+  if (!['all', 'subject', 'body'].contains(searchField)) {
+    return actionableError(
+      'Invalid search_field "$searchField".',
+      'Use "all", "subject", or "body".',
+    );
+  }
 
   // Validate date parameters
   final startDateErr = _validateDateParam(startDate, 'start_date');
@@ -381,18 +466,22 @@ Future<CallToolResult> handleSearchEmailContent(
     endDate: endDate,
   );
 
-  // Build OR-based search conditions for multiple keywords
+  // Build search condition using search_operator and search_field
   final keywords =
       query.split(' ').where((k) => k.trim().isNotEmpty).toList();
-  final searchParts = <String>[];
-  for (final keyword in keywords) {
-    final escaped = escapeAppleScript(keyword.toLowerCase());
-    searchParts.add('lowerSubject contains "$escaped"');
-    if (searchBody) {
-      searchParts.add('lowerContent contains "$escaped"');
-    }
+  // Select fields based on search_field (and search_body for body)
+  final fields = <String, String>{};
+  if (searchField == 'all' || searchField == 'subject') {
+    fields['subject'] = 'lowerSubject';
   }
-  final searchCondition = searchParts.join(' or ');
+  if ((searchField == 'all' || searchField == 'body') && searchBody) {
+    fields['body'] = 'lowerContent';
+  }
+  final searchCondition = _buildQueryCondition(
+    keywords: keywords,
+    fields: fields,
+    searchOperator: searchOperator,
+  );
 
   final escapedSearch = escapeAppleScript(query.toLowerCase());
 
