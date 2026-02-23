@@ -5,6 +5,7 @@
 
 import 'package:mcp_dart/mcp_dart.dart';
 
+import 'core.dart';
 import 'operations/inbox.dart';
 import 'operations/search.dart';
 import 'operations/attachments.dart';
@@ -24,7 +25,7 @@ List<String> get allOperations => _buildOperationHandlers().keys.toList();
 
 /// Creates and configures the Apple Mail MCP server.
 ///
-/// Registers a single `apple-mail` tool with all 18 read-only operations.
+/// Registers a single `apple-mail` tool with all 20 read-only operations.
 McpServer createAppleMailServer() {
   final operationHandlers = _buildOperationHandlers();
   final operations = operationHandlers.keys.toList();
@@ -45,7 +46,7 @@ McpServer createAppleMailServer() {
         ),
         'account': JsonSchema.string(
           description:
-              'Account name to filter by (for list-inbox-emails, get-recent-emails, list-mailboxes, search-emails, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, get-email-thread, get-statistics, export-emails)',
+              'Account name to filter by (for list-inbox-emails, get-recent-emails, list-mailboxes, search-emails, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, get-email-thread, get-statistics, export-emails, list-emails)',
         ),
         'max_emails': JsonSchema.integer(
           description:
@@ -73,7 +74,7 @@ McpServer createAppleMailServer() {
         ),
         'query': JsonSchema.string(
           description:
-              'Search query (for search-emails, search-email-content)',
+              'Search query — multiple space-separated keywords use OR logic, matching if ANY keyword appears (for search-emails, search-email-content)',
         ),
         'sender': JsonSchema.string(
           description:
@@ -127,32 +128,52 @@ McpServer createAppleMailServer() {
           description:
               'Export format: txt, html (for export-emails). Default: txt',
         ),
+        'limit': JsonSchema.integer(
+          description:
+              'Maximum number of emails to return per batch (for list-emails). Default: 20',
+        ),
+        'offset': JsonSchema.integer(
+          description:
+              'Number of emails to skip for pagination (for list-emails). Default: 0',
+        ),
+        'start_date': JsonSchema.string(
+          description:
+              'Only return emails on or before this date, ISO format YYYY-MM-DD (for list-emails). Traverses backwards in time from this date.',
+        ),
+        'fields': JsonSchema.string(
+          description:
+              'Comma-separated list of fields to return (for list-emails). Valid: sender, subject, date, message_id, read_status, mailbox, account, content, attachments. Default: "sender,subject,date,message_id"',
+        ),
+        'message_id': JsonSchema.string(
+          description:
+              'Apple Mail message ID for fetching a specific email (for get-email-by-id). Get this from list-emails or search results.',
+        ),
       },
       required: ['operation'],
     ),
     callback: (args, extra) async {
       final operation = args['operation'] as String?;
       if (operation == null) {
-        return CallToolResult.fromContent(
-          [TextContent(text: 'Error: operation parameter is required')],
+        return actionableError(
+          'operation parameter is required.',
+          'Provide one of: ${operations.join(", ")}',
         );
       }
 
       final handler = operationHandlers[operation];
       if (handler == null) {
-        return CallToolResult.fromContent([
-          TextContent(
-            text:
-                'Error: Unknown operation "$operation". Valid operations: ${operations.join(", ")}',
-          ),
-        ]);
+        return actionableError(
+          'Unknown operation "$operation".',
+          'Valid operations: ${operations.join(", ")}',
+        );
       }
 
       try {
         return await handler(args);
       } catch (e) {
-        return CallToolResult.fromContent(
-          [TextContent(text: 'Error executing $operation: $e')],
+        return actionableError(
+          'Error executing $operation: $e',
+          'If this persists, try list-accounts to verify account names, or list-mailboxes to verify mailbox names.',
         );
       }
     },
