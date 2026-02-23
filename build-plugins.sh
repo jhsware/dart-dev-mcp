@@ -30,7 +30,10 @@ echo ""
 
 # --- 2. Define cross-platform sed ---
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed_cmd() { sed -i '' "$@"; }
+  sed_cmd() {
+    local file="${!#}"
+    sed -i.bak "$@" && rm -f "${file}.bak"
+  }
 else
   sed_cmd() { sed -i "$@"; }
 fi
