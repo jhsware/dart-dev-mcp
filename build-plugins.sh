@@ -30,9 +30,9 @@ echo ""
 
 # --- 2. Define cross-platform sed ---
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed_cmd=(sed -i '')
+  sed_cmd() { sed -i '' "$@"; }
 else
-  sed_cmd=(sed -i)
+  sed_cmd() { sed -i "$@"; }
 fi
 
 # --- 3. Bump minor version, commit and tag each plugin ---
@@ -46,8 +46,7 @@ fi
 
 for dir in "$PLUGIN_BASE_DIR"/*/; do
   [ -d "$dir" ] || continue
-  plugin_json="${dir}/.claude-plugin/plugin.json"
-  echo "plugin: $plugin_json" 
+  plugin_json="${dir}.claude-plugin/plugin.json"
   [ -f "$plugin_json" ] || continue
 
   # Extract folder name for messaging (e.g., "my-plugin" from "agentic-plugins/my-plugin/")
@@ -71,7 +70,8 @@ for dir in "$PLUGIN_BASE_DIR"/*/; do
   new_version="${major}.${new_minor}${patch:+.0}"
 
   # Update version in plugin.json
-  "${sed_cmd[@]}" "s/\"version\"\([[:space:]]*\):\([[:space:]]*\)\"${current_version}\"/\"version\"\1:\2\"${new_version}\"/" "$plugin_json"
+  escaped_current=$(printf '%s' "$current_version" | sed 's/\./\\./g')
+  sed_cmd "s/\"version\"\([[:space:]]*\):\([[:space:]]*\)\"${escaped_current}\"/\"version\"\1:\2\"${new_version}\"/" "$plugin_json"
 
   # Only commit if the file actually changed
   if git diff --quiet "$plugin_json"; then
