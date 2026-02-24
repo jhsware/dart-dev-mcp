@@ -3,7 +3,8 @@
 // Registers a single `apple-mail` tool with an `operation` enum parameter
 // that dispatches to the appropriate read-only operation handler.
 // Long-running operations are wrapped with progress notifications and
-// session tracking for polling support.
+// session tracking for polling support. Batched operations use progressive
+// chunk-based output for incremental results.
 
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
@@ -11,6 +12,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'core.dart';
 import 'operations/inbox.dart';
 import 'operations/search.dart';
+import 'operations/search_content_batched.dart';
 import 'operations/attachments.dart';
 import 'progress_wrapper.dart';
 import 'session_operations.dart';
@@ -226,7 +228,52 @@ McpServer createAppleMailServer() {
         return await handleCancelSession(args, sessionManager);
       }
 
+      // Batched handlers need validation before dispatch since they bypass
+      // the standard handler's parameter checks
+      if (batchedOperations.contains(operation)) {
+        // Validate required parameters for search-email-content
+        if (operation == 'search-email-content') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for search-email-content.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
+          final query = args['query'] as String?;
+          if (query == null || query.trim().isEmpty) {
+            return actionableError(
+              'query parameter is required for search-email-content.',
+              'Provide one or more search keywords separated by spaces.',
+            );
+          }
+          final searchOperator = args['search_operator'] as String? ?? 'or';
+          if (searchOperator != 'and' && searchOperator != 'or') {
+            return actionableError(
+              'Invalid search_operator "$searchOperator".',
+              'Use "and" or "or".',
+            );
+          }
+          final searchField = args['search_field'] as String? ?? 'all';
+          if (!['all', 'subject', 'body'].contains(searchField)) {
+            return actionableError(
+              'Invalid search_field "$searchField".',
+              'Use "all", "subject", or "body".',
+            );
+          }
+        }
+
+        return runBatchedInBackground(
+          extra: extra,
+          operation: operation,
+          args: args,
+          handler: runBatchedSearchEmailContent,
+          sessionManager: sessionManager,
+        );
+      }
+
       final handler = operationHandlers[operation];
+
       if (handler == null) {
         return actionableError(
           'Unknown operation "$operation".',

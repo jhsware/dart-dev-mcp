@@ -7,7 +7,17 @@ library;
 export 'src/server.dart' show createAppleMailServer, allOperations;
 export 'src/operations/inbox.dart' show getInboxOperations;
 export 'src/operations/search.dart' show getSearchOperations;
+export 'src/operations/search_content_batched.dart'
+    show runBatchedSearchEmailContent;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
+export 'src/batch_helpers.dart' show batchList, fetchMessageIds, buildMessageIdSet;
+export 'src/progress_wrapper.dart'
+    show
+        slowOperations,
+        batchedOperations,
+        runInBackground,
+        runBatchedInBackground,
+        BatchedHandler;
 export 'src/core.dart'
     show
         runAppleScript,
