@@ -68,7 +68,7 @@ McpServer createAppleMailServer() {
         ),
         'account': JsonSchema.string(
           description:
-              'Account name to filter by (for list-inbox-emails, get-recent-emails, list-mailboxes, search-emails, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, get-email-thread, get-statistics, export-emails, list-emails)',
+              'Account name to filter by (for list-inbox-emails, get-recent-emails, list-mailboxes, search-emails, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, get-email-thread, get-statistics, export-emails, list-emails, classify-emails)',
         ),
         'max_emails': JsonSchema.integer(
           description:
@@ -160,11 +160,11 @@ McpServer createAppleMailServer() {
         ),
         'start_date': JsonSchema.string(
           description:
-              'Start date filter in ISO format YYYY-MM-DD (for list-emails, search-emails, search-email-content). For list-emails: traverses backwards from this date.',
+              'Start date filter in ISO format YYYY-MM-DD (for list-emails, search-emails, search-email-content, classify-emails). For list-emails: traverses backwards from this date.',
         ),
         'end_date': JsonSchema.string(
           description:
-              'End date filter in ISO format YYYY-MM-DD (for search-emails, search-email-content). Used with start_date to define a date range.',
+              'End date filter in ISO format YYYY-MM-DD (for search-emails, search-email-content, classify-emails). Used with start_date to define a date range.',
         ),
         'fields': JsonSchema.string(
           description:
@@ -337,6 +337,13 @@ McpServer createAppleMailServer() {
           // No required params beyond operation itself
           batchedHandler = runBatchedGetNewsletters;
         } else if (operation == 'classify-emails') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for classify-emails.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
           final classifiersJson = args['classifiers'] as String?;
           if (classifiersJson == null || classifiersJson.isEmpty) {
             return actionableError(
@@ -374,6 +381,22 @@ McpServer createAppleMailServer() {
             return actionableError(
               'Invalid search_field "$searchField".',
               'Use "all", "subject", or "sender".',
+            );
+          }
+          // Validate date parameters if provided
+          final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+          final startDate = args['start_date'] as String?;
+          if (startDate != null && !dateRegex.hasMatch(startDate)) {
+            return actionableError(
+              'Invalid start_date "$startDate".',
+              'Use ISO format: YYYY-MM-DD',
+            );
+          }
+          final endDate = args['end_date'] as String?;
+          if (endDate != null && !dateRegex.hasMatch(endDate)) {
+            return actionableError(
+              'Invalid end_date "$endDate".',
+              'Use ISO format: YYYY-MM-DD',
             );
           }
           batchedHandler = runBatchedClassifyEmails;
