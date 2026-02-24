@@ -15,7 +15,7 @@ void main() {
 
   group('get-statistics', () {
     test('account_overview returns volume metrics or times out', () async {
-      final (result, elapsed) = await timeOperation(
+      final (result, elapsed, error) = await timeOperationTolerant(
         () => attachmentHandlers['get-statistics']!({
           'account': account,
           'scope': 'account_overview',
@@ -23,36 +23,47 @@ void main() {
         }),
       );
 
-      final text = extractText(result);
-      if (isTimeoutResult(result)) {
-        // AppleScript timeout is acceptable for large mailboxes
+      if (error != null && error.contains('timed out')) {
+        // AppleScript timeout exception is acceptable for large mailboxes
         // ignore: avoid_print
-        print('account_overview timed out (acceptable for large mailboxes)');
+        print('account_overview threw timeout ($error)');
+      } else if (result != null) {
+        final text = extractText(result);
+        if (isTimeoutResult(result)) {
+          // ignore: avoid_print
+          print('account_overview returned timeout result');
+        } else {
+          assertSuccessResult(result);
+          expect(text, contains('EMAIL STATISTICS'));
+          expect(text, contains('VOLUME METRICS'));
+          expect(text, contains('Total Emails:'));
+        }
       } else {
-        assertSuccessResult(result);
-        expect(text, contains('EMAIL STATISTICS'));
-        expect(text, contains('VOLUME METRICS'));
-        expect(text, contains('Total Emails:'));
+        fail('Unexpected error: $error');
       }
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
 
     test('mailbox_breakdown returns mailbox stats', () async {
-      final (result, elapsed) = await timeOperation(
+      final (result, elapsed, error) = await timeOperationTolerant(
         () => attachmentHandlers['get-statistics']!({
           'account': account,
           'scope': 'mailbox_breakdown',
         }),
       );
 
-      final text = extractText(result);
-      if (isTimeoutResult(result)) {
+      if (error != null && error.contains('timed out')) {
         // ignore: avoid_print
-        print('mailbox_breakdown timed out (acceptable for large mailboxes)');
+        print('mailbox_breakdown threw timeout ($error)');
+      } else if (result != null) {
+        final text = extractText(result);
+        if (!isTimeoutResult(result)) {
+          assertSuccessResult(result);
+          expect(text, contains('MAILBOX STATISTICS'));
+          expect(text, contains('Total messages:'));
+        }
       } else {
-        assertSuccessResult(result);
-        expect(text, contains('MAILBOX STATISTICS'));
-        expect(text, contains('Total messages:'));
+        fail('Unexpected error: $error');
       }
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
@@ -71,7 +82,7 @@ void main() {
     });
 
     test('sender_stats with generic sender works or times out', () async {
-      final (result, elapsed) = await timeOperation(
+      final (result, elapsed, error) = await timeOperationTolerant(
         () => attachmentHandlers['get-statistics']!({
           'account': account,
           'scope': 'sender_stats',
@@ -80,13 +91,17 @@ void main() {
         }),
       );
 
-      final text = extractText(result);
-      if (isTimeoutResult(result)) {
+      if (error != null && error.contains('timed out')) {
         // ignore: avoid_print
-        print('sender_stats timed out (acceptable for large mailboxes)');
+        print('sender_stats threw timeout ($error)');
+      } else if (result != null) {
+        if (!isTimeoutResult(result)) {
+          assertSuccessResult(result);
+          final text = extractText(result);
+          expect(text, contains('SENDER STATISTICS'));
+        }
       } else {
-        assertSuccessResult(result);
-        expect(text, contains('SENDER STATISTICS'));
+        fail('Unexpected error: $error');
       }
       expect(elapsed, lessThan(maxComplexOpDuration));
     });

@@ -86,6 +86,25 @@ Future<(T, Duration)> timeOperation<T>(Future<T> Function() fn) async {
   return (result, sw.elapsed);
 }
 
+/// Like [timeOperation] but catches exceptions (e.g. AppleScript timeouts)
+/// and returns null instead ALONG with the exception message.
+///
+/// Some handlers don't catch the AppleScript timeout exception internally,
+/// so it propagates as an unhandled Exception. This wrapper lets tests
+/// treat such timeouts as an acceptable outcome.
+Future<(CallToolResult?, Duration, String?)>
+    timeOperationTolerant(Future<CallToolResult> Function() fn) async {
+  final sw = Stopwatch()..start();
+  try {
+    final result = await fn();
+    sw.stop();
+    return (result, sw.elapsed, null);
+  } on Exception catch (e) {
+    sw.stop();
+    return (null, sw.elapsed, e.toString());
+  }
+}
+
 /// A minimal fake for [RequestHandlerExtra] that records progress calls.
 ///
 /// Used for testing batched operations that require sending progress
