@@ -35,4 +35,6 @@ export 'src/core.dart'
         parseEmailList,
         buildJsonEmailOutput,
         actionableError;
+export 'src/session_operations.dart'
+    show handleGetOutput, handleListSessions, handleCancelSession;
 export 'src/constants.dart';

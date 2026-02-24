@@ -1,0 +1,18 @@
+# Integration test configuration for apple_mail_mcp
+#
+# Test commands:
+#   Unit tests only (from package dir):  cd packages/apple_mail_mcp && dart test
+#   Unit tests only (from workspace root): dart test -x integration packages/apple_mail_mcp
+#   Integration tests only:  dart test -t integration packages/apple_mail_mcp
+#   All tests:               dart test --run-skipped packages/apple_mail_mcp
+#
+# Note: In Dart workspaces, dart_test.yaml is only picked up from the current
+# working directory. When running from workspace root, use -x integration to
+# exclude integration tests instead of relying on this config file.
+
+tags:
+  integration:
+    # Integration tests require macOS with Apple Mail running.
+    # Run with: dart test -t integration
+    # Excluded from default test runs.
+    skip: "Integration tests require Apple Mail. Run with: dart test -t integration"

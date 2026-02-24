@@ -1,0 +1,131 @@
+// Shared helpers for Apple Mail MCP integration tests.
+//
+// Provides account discovery, result assertion, timing utilities,
+// and mock classes for session-based operations.
+
+import 'dart:async';
+
+import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:mcp_dart/mcp_dart.dart';
+import 'package:jhsware_code_shared_libs/shared_libs.dart';
+import 'package:test/test.dart';
+
+/// Maximum duration for simple operations (list-accounts, get-unread-count, etc.)
+const maxSimpleOpDuration = Duration(seconds: 30);
+
+/// Maximum duration for complex operations (search, classify, etc.)
+const maxComplexOpDuration = Duration(seconds: 60);
+
+/// Maximum duration for batched operations that poll sessions.
+const maxBatchedOpDuration = Duration(seconds: 120);
+
+/// All inbox operation handlers keyed by operation name.
+final inboxHandlers = getInboxOperations();
+
+/// All search operation handlers keyed by operation name.
+final searchHandlers = getSearchOperations();
+
+/// All attachment operation handlers keyed by operation name.
+final attachmentHandlers = getAttachmentOperations();
+
+/// Discovers the first available Apple Mail account name.
+///
+/// Calls list-accounts handler and parses the "  - AccountName" lines.
+/// Throws [TestFailure] if no accounts are found.
+Future<String> discoverFirstAccount() async {
+  final handler = inboxHandlers['list-accounts']!;
+  final result = await handler({});
+  final text = extractText(result);
+  // Parse "  - AccountName" lines
+  final lines =
+      text.split('\n').where((l) => l.trimLeft().startsWith('- ')).toList();
+  if (lines.isEmpty) {
+    fail('No Apple Mail accounts found. Integration tests require at least '
+        'one configured account.');
+  }
+  return lines.first.trimLeft().substring(2).trim();
+}
+
+/// Extracts all text content from a [CallToolResult].
+String extractText(CallToolResult result) {
+  return result.content
+      .whereType<TextContent>()
+      .map((c) => c.text)
+      .join('\n');
+}
+
+/// Asserts the result text does not indicate an error.
+void assertSuccessResult(CallToolResult result) {
+  final text = extractText(result);
+  expect(text, isNot(startsWith('Error:')),
+      reason: 'Result should not start with Error: got: $text');
+  // Also check for the actionableError format
+  expect(text, isNot(startsWith('Error: ')),
+      reason: 'Result should not be an actionable error');
+}
+
+/// Asserts the result text indicates an error.
+void assertErrorResult(CallToolResult result) {
+  final text = extractText(result);
+  expect(text.contains('Error:') || text.contains('ERROR:'), isTrue,
+      reason: 'Expected an error result, got: $text');
+}
+
+/// Runs an async operation and returns (result, elapsed duration).
+Future<(T, Duration)> timeOperation<T>(Future<T> Function() fn) async {
+  final sw = Stopwatch()..start();
+  final result = await fn();
+  sw.stop();
+  return (result, sw.elapsed);
+}
+
+/// A minimal fake for [RequestHandlerExtra] that records progress calls.
+///
+/// Used for testing batched operations that require sending progress
+/// notifications.
+class FakeRequestHandlerExtra implements RequestHandlerExtra {
+  final List<({double progress, String? message})> progressCalls = [];
+
+  @override
+  Future<void> sendProgress(double progress,
+      {String? message, double? total}) async {
+    progressCalls.add((progress: progress, message: message));
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    // Ignore other methods that may be called
+    return null;
+  }
+}
+
+/// Creates a fresh [SessionManager] for testing.
+///
+/// Note: SessionManager is a singleton, but for tests we can still
+/// use it since sessions are identified by unique IDs.
+SessionManager createTestSessionManager() {
+  return SessionManager();
+}
+
+/// Waits for a session to complete by polling.
+///
+/// Returns the final output text from all chunks.
+Future<String> waitForSession({
+  required String sessionId,
+  required SessionManager sessionManager,
+  Duration pollInterval = const Duration(milliseconds: 100),
+  Duration timeout = const Duration(seconds: 60),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    final session = sessionManager.getSession(sessionId);
+    if (session == null) {
+      fail('Session $sessionId not found');
+    }
+    if (session.isComplete) {
+      return session.chunks.join('');
+    }
+    await Future<void>.delayed(pollInterval);
+  }
+  fail('Session $sessionId did not complete within $timeout');
+}
