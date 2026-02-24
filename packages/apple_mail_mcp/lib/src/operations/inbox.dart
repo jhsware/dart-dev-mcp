@@ -278,7 +278,10 @@ end tell
       }
 
       if (trimmed.startsWith('✉') || trimmed.startsWith('✓')) {
-        current = {'subject': trimmed.substring(2).trim()};
+        current = {
+          'subject': trimmed.length >= 2 ? trimmed.substring(2).trim() : '',
+        };
+
       } else if (current != null) {
         if (trimmed.startsWith('From: ')) {
           current['sender'] = trimmed.substring(6).trim();

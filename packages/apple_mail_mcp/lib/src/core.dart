@@ -66,8 +66,9 @@ List<Map<String, String>> parseEmailList(String output) {
       if (current != null) results.add(current);
       current = {
         'read': trimmed.startsWith('✓') ? 'true' : 'false',
-        'subject': trimmed.substring(2).trim(),
+        'subject': trimmed.length >= 2 ? trimmed.substring(2).trim() : '',
       };
+
     } else if (current != null) {
       if (trimmed.startsWith('From: ')) {
         current['sender'] = trimmed.substring(6).trim();
