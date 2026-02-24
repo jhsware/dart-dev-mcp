@@ -14,6 +14,7 @@ import 'operations/inbox.dart';
 import 'operations/search.dart';
 import 'operations/search_content_batched.dart';
 import 'operations/search_batched.dart';
+import 'operations/search_cross_account_batched.dart';
 import 'operations/attachments.dart';
 import 'progress_wrapper.dart';
 import 'session_operations.dart';
@@ -317,6 +318,21 @@ McpServer createAppleMailServer() {
             );
           }
           batchedHandler = runBatchedMultiSearch;
+        } else if (operation == 'search-by-sender') {
+          final sender = args['sender'] as String?;
+          if (sender == null) {
+            return actionableError(
+              'sender parameter is required for search-by-sender.',
+              'Provide a sender name or email address to search for.',
+            );
+          }
+          batchedHandler = runBatchedSearchBySender;
+        } else if (operation == 'search-all-accounts') {
+          // No required params beyond operation itself
+          batchedHandler = runBatchedSearchAllAccounts;
+        } else if (operation == 'get-newsletters') {
+          // No required params beyond operation itself
+          batchedHandler = runBatchedGetNewsletters;
         } else {
           return actionableError(
             'Unknown batched operation "$operation".',

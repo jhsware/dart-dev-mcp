@@ -11,8 +11,14 @@ export 'src/operations/search_content_batched.dart'
     show runBatchedSearchEmailContent;
 export 'src/operations/search_batched.dart'
     show runBatchedSearchEmails, runBatchedMultiSearch;
+export 'src/operations/search_cross_account_batched.dart'
+    show
+        runBatchedSearchBySender,
+        runBatchedSearchAllAccounts,
+        runBatchedGetNewsletters;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
-export 'src/batch_helpers.dart' show batchList, fetchMessageIds, buildMessageIdSet;
+export 'src/batch_helpers.dart'
+    show batchList, fetchMessageIds, buildMessageIdSet, fetchAccountNames;
 export 'src/progress_wrapper.dart'
     show
         slowOperations,

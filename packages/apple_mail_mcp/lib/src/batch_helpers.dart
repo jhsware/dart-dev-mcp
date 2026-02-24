@@ -175,3 +175,27 @@ String buildMessageIdSet(List<String> messageIds) {
   final escaped = messageIds.map((id) => '"${escapeAppleScript(id)}"');
   return '{${escaped.join(', ')}}';
 }
+
+/// Fetches the list of account names from Apple Mail.
+///
+/// Returns account names as strings, used for cross-account operations
+/// that need to iterate all accounts.
+Future<List<String>> fetchAccountNames() async {
+  final script = '''
+tell application "Mail"
+    set acctNames to ""
+    set allAccounts to every account
+    repeat with acct in allAccounts
+        set acctNames to acctNames & name of acct & linefeed
+    end repeat
+    return acctNames
+end tell
+''';
+
+  final result = await runAppleScript(script);
+  return result
+      .split('\n')
+      .map((n) => n.trim())
+      .where((n) => n.isNotEmpty)
+      .toList();
+}

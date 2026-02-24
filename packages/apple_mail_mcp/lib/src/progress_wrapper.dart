@@ -30,11 +30,8 @@ typedef BatchedHandler = Future<void> Function({
 /// These are dispatched via [runInBackground] for fire-and-forget execution.
 const slowOperations = {
   'classify-emails',
-  'search-all-accounts',
-  'get-newsletters',
   'get-statistics',
   'export-emails',
-  'search-by-sender',
 };
 
 /// Set of operation names that use batched execution.
@@ -43,6 +40,9 @@ const batchedOperations = {
   'search-email-content',
   'search-emails',
   'multi-search',
+  'search-by-sender',
+  'search-all-accounts',
+  'get-newsletters',
 };
 
 /// Runs a handler in the background and returns a session_id immediately.
