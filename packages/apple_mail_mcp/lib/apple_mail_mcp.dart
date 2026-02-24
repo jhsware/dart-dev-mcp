@@ -34,7 +34,9 @@ export 'src/core.dart'
         escapeAppleScript,
         parseEmailList,
         buildJsonEmailOutput,
-        actionableError;
+        actionableError,
+        safeDateScript;
+
 export 'src/session_operations.dart'
     show handleGetOutput, handleListSessions, handleCancelSession;
 export 'src/constants.dart';
