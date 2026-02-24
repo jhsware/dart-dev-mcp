@@ -17,16 +17,29 @@ import '../core.dart';
 /// Accepts LLM-provided classifiers (a JSON object mapping category names
 /// to arrays of search terms), fetches emails from Apple Mail, builds a
 /// BM25 index, and returns results ranked and grouped by category.
+///
+/// Requires `account` parameter. Supports `start_date` and `end_date`
+/// for date range filtering in addition to `days_back`.
 Future<CallToolResult> handleClassifyEmails(
     Map<String, dynamic> args) async {
   final classifiersJson = args['classifiers'] as String?;
   final account = args['account'] as String?;
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
   final daysBack = args['days_back'] as int? ?? 30;
+  final startDate = args['start_date'] as String?;
+  final endDate = args['end_date'] as String?;
   final maxResults = args['max_results'] as int? ?? 200;
   final minScore = (args['min_score'] as num?)?.toDouble() ?? 0.0;
   final searchField = args['search_field'] as String? ?? 'all';
   final includeUnmatched = args['include_unmatched'] as bool? ?? true;
+
+  // Validate account
+  if (account == null) {
+    return actionableError(
+      'account parameter is required for classify-emails.',
+      'Use list-accounts to see available accounts.',
+    );
+  }
 
   // Validate classifiers
   if (classifiersJson == null || classifiersJson.isEmpty) {
@@ -81,31 +94,69 @@ Future<CallToolResult> handleClassifyEmails(
     );
   }
 
-  final escapedMailbox = escapeAppleScript(mailbox);
-
-  // Build account targeting
-  String accountScript;
-  if (account != null) {
-    final escapedAccount = escapeAppleScript(account);
-    accountScript = '''
-        set targetAccounts to {account "$escapedAccount"}
-''';
-  } else {
-    accountScript = '''
-        set targetAccounts to every account
-''';
+  // Validate date parameters
+  final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  if (startDate != null && !dateRegex.hasMatch(startDate)) {
+    return actionableError(
+      'Invalid start_date "$startDate".',
+      'Use ISO format: YYYY-MM-DD',
+    );
+  }
+  if (endDate != null && !dateRegex.hasMatch(endDate)) {
+    return actionableError(
+      'Invalid end_date "$endDate".',
+      'Use ISO format: YYYY-MM-DD',
+    );
   }
 
-  // Build date filter
-  final dateSetup = daysBack > 0
-      ? 'set cutoffDate to (current date) - ($daysBack * days)'
-      : '';
-  final dateCheck = daysBack > 0 ? 'messageDate > cutoffDate' : '';
+  final escapedAccount = escapeAppleScript(account);
+  final escapedMailbox = escapeAppleScript(mailbox);
+
+  // Build account targeting — account is now required
+  final accountScript =
+      '        set targetAccounts to {account "$escapedAccount"}\n';
+
+  // Build date filter — support days_back, start_date, end_date
+  final dateSetupParts = <String>[];
+  final dateChecks = <String>[];
+
+  if (daysBack > 0) {
+    dateSetupParts.add('set cutoffDate to (current date) - ($daysBack * days)');
+    dateChecks.add('messageDate > cutoffDate');
+  }
+
+  if (startDate != null) {
+    final parts = startDate.split('-');
+    dateSetupParts.add('''set startDateObj to current date
+    set year of startDateObj to ${parts[0]}
+    set month of startDateObj to ${parts[1]}
+    set day of startDateObj to ${parts[2]}
+    set hours of startDateObj to 0
+    set minutes of startDateObj to 0
+    set seconds of startDateObj to 0''');
+    dateChecks.add('messageDate >= startDateObj');
+  }
+
+  if (endDate != null) {
+    final parts = endDate.split('-');
+    dateSetupParts.add('''set endDateObj to current date
+    set year of endDateObj to ${parts[0]}
+    set month of endDateObj to ${parts[1]}
+    set day of endDateObj to ${parts[2]}
+    set hours of endDateObj to 23
+    set minutes of endDateObj to 59
+    set seconds of endDateObj to 59''');
+    dateChecks.add('messageDate <= endDateObj');
+  }
+
+  final dateSetup = dateSetupParts.join('\n    ');
+  final dateCheckCondition =
+      dateChecks.isEmpty ? '' : dateChecks.join(' and ');
 
   // Build date check script for inside the loop
-  final dateCheckScript = dateCheck.isNotEmpty
+  final dateCheckScript = dateCheckCondition.isNotEmpty
       ? '''
-                            if not ($dateCheck) then
+                            if not ($dateCheckCondition) then
                                 set skipMessage to true
                             end if'''
       : '';
