@@ -305,5 +305,117 @@ void main() {
       expect(parsed['total_emails_scanned'], isA<int>());
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
+
+    // --- Date range tests ---
+
+    test('start_date and end_date filtering works', () async {
+      final classifiers = jsonEncode({
+        'test_cat': ['the', 'and'],
+      });
+
+      // Use a recent date range (last 7 days)
+      final now = DateTime.now();
+      final startDate = now.subtract(const Duration(days: 7));
+      final endStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final startStr =
+          '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+
+      final (result, elapsed) = await timeOperation(
+        () => searchHandlers['classify-emails']!({
+          'account': account,
+          'classifiers': classifiers,
+          'start_date': startStr,
+          'end_date': endStr,
+          'days_back': 0,
+          'max_results': 50,
+        }),
+      );
+
+      assertSuccessResult(result);
+      final text = extractText(result);
+      final parsed = jsonDecode(text) as Map<String, dynamic>;
+      expect(parsed, contains('total_emails_scanned'));
+      expect(parsed['total_emails_scanned'], isA<int>());
+      expect(parsed, contains('summary'));
+      expect(parsed, contains('categories'));
+      expect(elapsed, lessThan(maxComplexOpDuration));
+    });
+
+    test('start_date without end_date works (open-ended range)', () async {
+      final classifiers = jsonEncode({
+        'test_cat': ['the', 'and'],
+      });
+
+      // Use start_date from 3 days ago
+      final startDate = DateTime.now().subtract(const Duration(days: 3));
+      final startStr =
+          '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+
+      final (result, elapsed) = await timeOperation(
+        () => searchHandlers['classify-emails']!({
+          'account': account,
+          'classifiers': classifiers,
+          'start_date': startStr,
+          'days_back': 0,
+          'max_results': 50,
+        }),
+      );
+
+      assertSuccessResult(result);
+      final text = extractText(result);
+      final parsed = jsonDecode(text) as Map<String, dynamic>;
+      expect(parsed, contains('total_emails_scanned'));
+      expect(parsed['total_emails_scanned'], isA<int>());
+      expect(elapsed, lessThan(maxComplexOpDuration));
+    });
+
+    test('date range with no emails returns zero scanned', () async {
+      final classifiers = jsonEncode({
+        'test_cat': ['the'],
+      });
+
+      // Use a far-future date range where no emails exist
+      final (result, elapsed) = await timeOperation(
+        () => searchHandlers['classify-emails']!({
+          'account': account,
+          'classifiers': classifiers,
+          'start_date': '2030-01-01',
+          'end_date': '2030-01-02',
+          'days_back': 0,
+          'max_results': 50,
+        }),
+      );
+
+      assertSuccessResult(result);
+      final text = extractText(result);
+      final parsed = jsonDecode(text) as Map<String, dynamic>;
+      expect(parsed['total_emails_scanned'], equals(0));
+      expect(elapsed, lessThan(maxComplexOpDuration));
+    });
+
+    test('invalid start_date format returns error', () async {
+      final classifiers = jsonEncode({
+        'test_cat': ['the'],
+      });
+
+      final (result, _) = await timeOperation(
+        () => searchHandlers['classify-emails']!({
+          'account': account,
+          'classifiers': classifiers,
+          'start_date': 'not-a-date',
+          'days_back': 0,
+          'max_results': 50,
+        }),
+      );
+
+      // Should return an error about invalid date format
+      final text = extractText(result);
+      expect(
+        text.toLowerCase(),
+        contains('invalid'),
+        reason: 'Should report invalid date format',
+      );
+    });
   });
 }
