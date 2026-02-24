@@ -6,6 +6,8 @@
 // session tracking for polling support. Batched operations use progressive
 // chunk-based output for incremental results.
 
+import 'dart:convert';
+
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
@@ -15,6 +17,7 @@ import 'operations/search.dart';
 import 'operations/search_content_batched.dart';
 import 'operations/search_batched.dart';
 import 'operations/search_cross_account_batched.dart';
+import 'operations/classify_batched.dart';
 import 'operations/attachments.dart';
 import 'progress_wrapper.dart';
 import 'session_operations.dart';
@@ -333,6 +336,47 @@ McpServer createAppleMailServer() {
         } else if (operation == 'get-newsletters') {
           // No required params beyond operation itself
           batchedHandler = runBatchedGetNewsletters;
+        } else if (operation == 'classify-emails') {
+          final classifiersJson = args['classifiers'] as String?;
+          if (classifiersJson == null || classifiersJson.isEmpty) {
+            return actionableError(
+              'classifiers parameter is required for classify-emails.',
+              'Provide a JSON object mapping category names to arrays of '
+                  'search terms, e.g. {"invoice": ["invoice", "bill"]}.',
+            );
+          }
+          // Validate JSON parses correctly
+          try {
+            final parsed =
+                jsonDecode(classifiersJson) as Map<String, dynamic>;
+            if (parsed.isEmpty) {
+              return actionableError(
+                'classifiers must contain at least one category.',
+                'Provide at least one category with search terms.',
+              );
+            }
+            for (final entry in parsed.entries) {
+              if (entry.value is! List || (entry.value as List).isEmpty) {
+                return actionableError(
+                  'Category "${entry.key}" must be a non-empty list of strings.',
+                  'Use format: {"category": ["term1", "term2"]}',
+                );
+              }
+            }
+          } catch (e) {
+            return actionableError(
+              'Invalid classifiers JSON: $e',
+              'Use format: {"category": ["term1", "term2"]}',
+            );
+          }
+          final searchField = args['search_field'] as String? ?? 'all';
+          if (!['all', 'subject', 'sender'].contains(searchField)) {
+            return actionableError(
+              'Invalid search_field "$searchField".',
+              'Use "all", "subject", or "sender".',
+            );
+          }
+          batchedHandler = runBatchedClassifyEmails;
         } else {
           return actionableError(
             'Unknown batched operation "$operation".',

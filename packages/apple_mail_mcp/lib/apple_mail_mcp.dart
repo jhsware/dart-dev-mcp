@@ -16,6 +16,8 @@ export 'src/operations/search_cross_account_batched.dart'
         runBatchedSearchBySender,
         runBatchedSearchAllAccounts,
         runBatchedGetNewsletters;
+export 'src/operations/classify_batched.dart'
+    show runBatchedClassifyEmails;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
 export 'src/batch_helpers.dart'
     show batchList, fetchMessageIds, buildMessageIdSet, fetchAccountNames;
