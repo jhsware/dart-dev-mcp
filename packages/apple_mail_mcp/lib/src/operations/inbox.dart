@@ -123,17 +123,12 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
   String dateCheck = '';
   if (startDate != null) {
     // Parse YYYY-MM-DD in AppleScript
-    dateFilterSetup = '''
-    set startDateStr to "$startDate"
-    set startYear to text 1 thru 4 of startDateStr as integer
-    set startMonth to text 6 thru 7 of startDateStr as integer
-    set startDay to text 9 thru 10 of startDateStr as integer
-    set filterDate to current date
-    set year of filterDate to startYear
-    set month of filterDate to startMonth
-    set day of filterDate to startDay
-    set time of filterDate to 86399
-''';
+    dateFilterSetup = safeDateScript(
+      varName: 'filterDate',
+      dateStr: startDate,
+      timeSeconds: 86399, // end of day
+    );
+
     dateCheck = '''
                         set msgDate to date received of aMessage
                         if msgDate > filterDate then

@@ -122,6 +122,34 @@ CallToolResult actionableError(String message, String suggestion) {
   );
 }
 
+
+/// Generates AppleScript that safely constructs a date from a YYYY-MM-DD string.
+///
+/// AppleScript dates overflow when setting month/day sequentially on `current date`
+/// if the current day doesn't exist in the target month (e.g., March 31 → set month
+/// to 2 → "Feb 31" overflows to March 3). The safe pattern sets day to 1 first.
+///
+/// [varName] is the AppleScript variable name for the date.
+/// [dateStr] is the date in "YYYY-MM-DD" format.
+/// [timeSeconds] is the time of day in seconds (0 = midnight, 86399 = 23:59:59).
+String safeDateScript({
+  required String varName,
+  required String dateStr,
+  int timeSeconds = 0,
+}) {
+  final parts = dateStr.split('-');
+  final year = parts[0];
+  final month = parts[1];
+  final day = parts[2];
+  return '''
+    set $varName to current date
+    set day of $varName to 1
+    set year of $varName to $year
+    set month of $varName to $month
+    set day of $varName to $day
+    set time of $varName to $timeSeconds''';
+}
+
 // ──────────────────────────── Template helpers ────────────────────────────
 
 /// AppleScript handler for case-insensitive string comparison.

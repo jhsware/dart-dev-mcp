@@ -46,30 +46,23 @@ Future<List<String>> fetchMessageIds({
   }
 
   if (startDate != null) {
-    final parts = startDate.split('-');
-    dateSetup.writeln('''
-    set startDateObj to current date
-    set year of startDateObj to ${parts[0]}
-    set month of startDateObj to ${parts[1]}
-    set day of startDateObj to ${parts[2]}
-    set hours of startDateObj to 0
-    set minutes of startDateObj to 0
-    set seconds of startDateObj to 0''');
+    dateSetup.writeln(safeDateScript(
+      varName: 'startDateObj',
+      dateStr: startDate,
+      timeSeconds: 0, // start of day
+    ));
     dateChecks.add('messageDate >= startDateObj');
   }
 
   if (endDate != null) {
-    final parts = endDate.split('-');
-    dateSetup.writeln('''
-    set endDateObj to current date
-    set year of endDateObj to ${parts[0]}
-    set month of endDateObj to ${parts[1]}
-    set day of endDateObj to ${parts[2]}
-    set hours of endDateObj to 23
-    set minutes of endDateObj to 59
-    set seconds of endDateObj to 59''');
+    dateSetup.writeln(safeDateScript(
+      varName: 'endDateObj',
+      dateStr: endDate,
+      timeSeconds: 86399, // end of day
+    ));
     dateChecks.add('messageDate <= endDateObj');
   }
+
 
   final dateCheckCondition =
       dateChecks.isEmpty ? '' : dateChecks.join(' and ');
