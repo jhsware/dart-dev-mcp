@@ -34,8 +34,6 @@ const slowOperations = {
   'get-newsletters',
   'get-statistics',
   'export-emails',
-  'multi-search',
-  'search-emails',
   'search-by-sender',
 };
 
@@ -43,10 +41,11 @@ const slowOperations = {
 /// These are dispatched via [runBatchedInBackground] for progressive output.
 const batchedOperations = {
   'search-email-content',
+  'search-emails',
+  'multi-search',
 };
 
 /// Runs a handler in the background and returns a session_id immediately.
-///
 /// 1. Creates a session via SessionManager
 /// 2. Returns immediately with JSON containing session_id + status
 /// 3. In a background Future:

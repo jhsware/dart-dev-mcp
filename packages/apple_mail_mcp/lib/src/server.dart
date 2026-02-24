@@ -13,6 +13,7 @@ import 'core.dart';
 import 'operations/inbox.dart';
 import 'operations/search.dart';
 import 'operations/search_content_batched.dart';
+import 'operations/search_batched.dart';
 import 'operations/attachments.dart';
 import 'progress_wrapper.dart';
 import 'session_operations.dart';
@@ -231,7 +232,8 @@ McpServer createAppleMailServer() {
       // Batched handlers need validation before dispatch since they bypass
       // the standard handler's parameter checks
       if (batchedOperations.contains(operation)) {
-        // Validate required parameters for search-email-content
+        BatchedHandler batchedHandler;
+
         if (operation == 'search-email-content') {
           final account = args['account'] as String?;
           if (account == null) {
@@ -261,13 +263,72 @@ McpServer createAppleMailServer() {
               'Use "all", "subject", or "body".',
             );
           }
+          batchedHandler = runBatchedSearchEmailContent;
+        } else if (operation == 'search-emails') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for search-emails.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
+          final query = args['query'] as String?;
+          if (query != null && query.trim().isEmpty) {
+            return actionableError(
+              'Empty query provided.',
+              'Provide one or more search keywords separated by spaces.',
+            );
+          }
+          final searchOperator = args['search_operator'] as String? ?? 'or';
+          if (searchOperator != 'and' && searchOperator != 'or') {
+            return actionableError(
+              'Invalid search_operator "$searchOperator".',
+              'Use "and" or "or".',
+            );
+          }
+          final searchField = args['search_field'] as String? ?? 'all';
+          if (!['all', 'subject', 'sender'].contains(searchField)) {
+            return actionableError(
+              'Invalid search_field "$searchField".',
+              'Use "all", "subject", or "sender".',
+            );
+          }
+          batchedHandler = runBatchedSearchEmails;
+        } else if (operation == 'multi-search') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for multi-search.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
+          final queries = args['queries'] as String?;
+          if (queries == null || queries.trim().isEmpty) {
+            return actionableError(
+              'queries parameter is required for multi-search.',
+              'Provide comma-separated query groups.',
+            );
+          }
+          final searchField = args['search_field'] as String? ?? 'all';
+          if (!['all', 'subject', 'sender'].contains(searchField)) {
+            return actionableError(
+              'Invalid search_field "$searchField".',
+              'Use "all", "subject", or "sender".',
+            );
+          }
+          batchedHandler = runBatchedMultiSearch;
+        } else {
+          return actionableError(
+            'Unknown batched operation "$operation".',
+            'Valid operations: ${operations.join(", ")}',
+          );
         }
 
         return runBatchedInBackground(
           extra: extra,
           operation: operation,
           args: args,
-          handler: runBatchedSearchEmailContent,
+          handler: batchedHandler,
           sessionManager: sessionManager,
         );
       }
