@@ -17,8 +17,10 @@ import 'operations/search.dart';
 import 'operations/search_content_batched.dart';
 import 'operations/search_batched.dart';
 import 'operations/search_cross_account_batched.dart';
+import 'operations/search_advanced_batched.dart';
 import 'operations/classify_batched.dart';
 import 'operations/attachments.dart';
+import 'operations/attachments_batched.dart';
 import 'progress_wrapper.dart';
 import 'session_operations.dart';
 
@@ -57,7 +59,9 @@ McpServer createAppleMailServer() {
     'apple-mail',
     description:
         'Read-only Apple Mail operations for listing, searching, and exporting emails.\n\n'
-        'For long-running operations (search-email-content, classify-emails, etc.), '
+        'For long-running operations (search-email-content, classify-emails, '
+        'get-email-with-content, get-email-thread, list-email-attachments, '
+        'save-email-attachment, etc.), '
         'a session_id is returned immediately. Use get_output with the session_id '
         'to poll for results. Progress notifications are sent during execution.',
     inputSchema: ToolInputSchema(
@@ -400,6 +404,54 @@ McpServer createAppleMailServer() {
             );
           }
           batchedHandler = runBatchedClassifyEmails;
+        } else if (operation == 'get-email-with-content') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for get-email-with-content.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
+          final subjectKeyword = args['subject_keyword'] as String?;
+          if (subjectKeyword == null) {
+            return actionableError(
+              'subject_keyword parameter is required for get-email-with-content.',
+              'Provide a keyword to search in email subjects.',
+            );
+          }
+          batchedHandler = runBatchedGetEmailWithContent;
+        } else if (operation == 'get-email-thread') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for get-email-thread.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
+          final subjectKeyword = args['subject_keyword'] as String?;
+          if (subjectKeyword == null) {
+            return actionableError(
+              'subject_keyword parameter is required for get-email-thread.',
+              'Provide a keyword to search for in email subject lines.',
+            );
+          }
+          batchedHandler = runBatchedGetEmailThread;
+        } else if (operation == 'list-email-attachments') {
+          final account = args['account'] as String?;
+          if (account == null) {
+            return actionableError(
+              'account parameter is required for list-email-attachments.',
+              'Use list-accounts to see available accounts.',
+            );
+          }
+          final subjectKeyword = args['subject_keyword'] as String?;
+          if (subjectKeyword == null) {
+            return actionableError(
+              'subject_keyword parameter is required for list-email-attachments.',
+              'Provide a keyword to match the email subject.',
+            );
+          }
+          batchedHandler = runBatchedListEmailAttachments;
         } else {
           return actionableError(
             'Unknown batched operation "$operation".',

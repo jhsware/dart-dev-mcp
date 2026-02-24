@@ -18,7 +18,11 @@ export 'src/operations/search_cross_account_batched.dart'
         runBatchedGetNewsletters;
 export 'src/operations/classify_batched.dart'
     show runBatchedClassifyEmails;
+export 'src/operations/search_advanced_batched.dart'
+    show runBatchedGetEmailWithContent, runBatchedGetEmailThread;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
+export 'src/operations/attachments_batched.dart'
+    show runBatchedListEmailAttachments;
 export 'src/batch_helpers.dart'
     show batchList, fetchMessageIds, buildMessageIdSet, fetchAccountNames;
 export 'src/progress_wrapper.dart'

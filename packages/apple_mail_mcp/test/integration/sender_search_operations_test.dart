@@ -169,6 +169,39 @@ void main() {
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
 
+    test('specific subject keyword with max_content_length', () async {
+      final (result, elapsed, error) = await timeOperationTolerant(
+        () => searchHandlers['get-email-with-content']!({
+          'account': account,
+          'subject_keyword': 'Payment Receipt for jhsware',
+          'max_content_length': 1000,
+        }),
+      );
+
+      if (error != null) {
+        // AppleScript timeout is acceptable for content-heavy fetches
+        // ignore: avoid_print
+        print(
+            'get-email-with-content Payment Receipt threw exception: $error');
+      } else if (result != null) {
+        final text = extractText(result);
+        if (!text.startsWith('Error:')) {
+          expect(text, contains('SEARCH RESULTS FOR:'));
+          expect(text, contains('FOUND:'));
+          // If matches found, verify content is included
+          if (!text.contains('FOUND: 0')) {
+            expect(text, contains('Content:'));
+          }
+        } else {
+          // ignore: avoid_print
+          print(
+              'get-email-with-content Payment Receipt returned error: $text');
+        }
+      }
+      expect(elapsed, lessThan(maxComplexOpDuration));
+    });
+
+
     // Note: mailbox='All' can cause AppleScript errors like
     // "Can't make missing value into type specifier" on some accounts,
     // or may throw a timeout exception for large mailboxes.
