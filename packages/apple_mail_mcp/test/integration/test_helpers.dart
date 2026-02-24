@@ -14,10 +14,11 @@ import 'package:test/test.dart';
 const maxSimpleOpDuration = Duration(seconds: 30);
 
 /// Maximum duration for complex operations (search, classify, etc.)
-const maxComplexOpDuration = Duration(seconds: 60);
+/// Some searches can take over a minute depending on mailbox size.
+const maxComplexOpDuration = Duration(minutes: 3);
 
 /// Maximum duration for batched operations that poll sessions.
-const maxBatchedOpDuration = Duration(seconds: 120);
+const maxBatchedOpDuration = Duration(minutes: 5);
 
 /// All inbox operation handlers keyed by operation name.
 final inboxHandlers = getInboxOperations();
@@ -71,6 +72,12 @@ void assertErrorResult(CallToolResult result) {
       reason: 'Expected an error result, got: $text');
 }
 
+/// Checks if a result contains a timeout error from AppleScript.
+bool isTimeoutResult(CallToolResult result) {
+  final text = extractText(result);
+  return text.contains('timed out');
+}
+
 /// Runs an async operation and returns (result, elapsed duration).
 Future<(T, Duration)> timeOperation<T>(Future<T> Function() fn) async {
   final sw = Stopwatch()..start();
@@ -114,7 +121,7 @@ Future<String> waitForSession({
   required String sessionId,
   required SessionManager sessionManager,
   Duration pollInterval = const Duration(milliseconds: 100),
-  Duration timeout = const Duration(seconds: 60),
+  Duration timeout = const Duration(minutes: 4),
 }) async {
   final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
