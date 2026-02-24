@@ -51,9 +51,8 @@ McpServer createAppleMailServer() {
     description:
         'Read-only Apple Mail operations for listing, searching, and exporting emails.\n\n'
         'For long-running operations (search-email-content, classify-emails, etc.), '
-        'progress notifications are sent during execution. Results are also stored in '
-        'sessions that can be retrieved with get_output, listed with list_sessions, '
-        'or cancelled with cancel.',
+        'a session_id is returned immediately. Use get_output with the session_id '
+        'to poll for results. Progress notifications are sent during execution.',
     inputSchema: ToolInputSchema(
       properties: {
         'operation': JsonSchema.string(
@@ -236,9 +235,9 @@ McpServer createAppleMailServer() {
       }
 
       try {
-        // Wrap slow operations with progress + session tracking
+        // Fire-and-forget: return session_id immediately, run in background
         if (slowOperations.contains(operation)) {
-          return await runWithProgress(
+          return runInBackground(
             extra: extra,
             operation: operation,
             args: args,

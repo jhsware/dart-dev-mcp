@@ -1,7 +1,11 @@
 // Progress wrapper for long-running Apple Mail operations.
 //
-// Wraps existing handlers with session tracking and MCP progress
-// notifications without modifying their signatures.
+// Provides fire-and-forget background execution with session tracking
+// and MCP progress notifications. Returns session_id immediately,
+// runs the handler in a background Future that the client polls via get_output.
+
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
@@ -19,46 +23,58 @@ const slowOperations = {
   'search-by-sender',
 };
 
-/// Wraps a handler to add progress notifications and session tracking.
+/// Runs a handler in the background and returns a session_id immediately.
 ///
 /// 1. Creates a session via SessionManager
-/// 2. Sends a progress notification ("Running operation...")
-/// 3. Calls the original handler
-/// 4. Stores the result text in the session
-/// 5. Sends a completion progress notification
-/// 6. Returns the original result
-Future<CallToolResult> runWithProgress({
+/// 2. Returns immediately with JSON containing session_id + status
+/// 3. In a background Future:
+///    a. Sends a progress notification ("Running operation...")
+///    b. Calls the original handler
+///    c. Stores the result text in the session
+///    d. Sends a completion progress notification
+///    e. On error: stores error in session, sends failure progress
+CallToolResult runInBackground({
   required RequestHandlerExtra extra,
   required String operation,
   required Map<String, dynamic> args,
   required Future<CallToolResult> Function(Map<String, dynamic>) handler,
   required SessionManager sessionManager,
-}) async {
+}) {
   final sessionId = sessionManager.createSession(operation, operation);
   final session = sessionManager.getSession(sessionId)!;
 
-  // Send "started" progress
-  await extra.sendProgress(0, message: 'Running $operation...');
+  // Fire-and-forget: run handler in background
+  unawaited(() async {
+    try {
+      await extra.sendProgress(0, message: 'Running $operation...');
 
-  try {
-    final result = await handler(args);
+      final result = await handler(args);
 
-    // Extract text content from the result and store in session
-    final textContent = result.content
-        .whereType<TextContent>()
-        .map((c) => c.text)
-        .join('\n');
-    session.chunks.add(textContent);
-    session.isComplete = true;
+      // Extract text content from the result and store in session
+      final textContent = result.content
+          .whereType<TextContent>()
+          .map((c) => c.text)
+          .join('\n');
+      session.chunks.add(textContent);
+      session.isComplete = true;
 
-    // Send "completed" progress
-    await extra.sendProgress(1, message: '$operation completed');
+      await extra.sendProgress(1, message: '$operation completed');
+    } catch (e) {
+      session.chunks.add('ERROR: $e');
+      session.isComplete = true;
+      await extra.sendProgress(1, message: '$operation failed: $e');
+    }
+  }());
 
-    return result;
-  } catch (e) {
-    session.chunks.add('ERROR: $e');
-    session.isComplete = true;
-    await extra.sendProgress(1, message: '$operation failed: $e');
-    rethrow;
-  }
+  // Return immediately with session_id
+  return CallToolResult.fromContent([
+    TextContent(
+      text: jsonEncode({
+        'session_id': sessionId,
+        'status': 'running',
+        'message':
+            'Operation started. Use get_output with this session_id to poll for results.',
+      }),
+    ),
+  ]);
 }
