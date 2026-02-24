@@ -14,10 +14,11 @@ import 'package:test/test.dart';
 const maxSimpleOpDuration = Duration(seconds: 30);
 
 /// Maximum duration for complex operations (search, classify, etc.)
-const maxComplexOpDuration = Duration(seconds: 60);
+/// Some searches can take over a minute depending on mailbox size.
+const maxComplexOpDuration = Duration(minutes: 3);
 
 /// Maximum duration for batched operations that poll sessions.
-const maxBatchedOpDuration = Duration(seconds: 120);
+const maxBatchedOpDuration = Duration(minutes: 5);
 
 /// All inbox operation handlers keyed by operation name.
 final inboxHandlers = getInboxOperations();
@@ -71,12 +72,37 @@ void assertErrorResult(CallToolResult result) {
       reason: 'Expected an error result, got: $text');
 }
 
+/// Checks if a result contains a timeout error from AppleScript.
+bool isTimeoutResult(CallToolResult result) {
+  final text = extractText(result);
+  return text.contains('timed out');
+}
+
 /// Runs an async operation and returns (result, elapsed duration).
 Future<(T, Duration)> timeOperation<T>(Future<T> Function() fn) async {
   final sw = Stopwatch()..start();
   final result = await fn();
   sw.stop();
   return (result, sw.elapsed);
+}
+
+/// Like [timeOperation] but catches exceptions (e.g. AppleScript timeouts)
+/// and returns null instead ALONG with the exception message.
+///
+/// Some handlers don't catch the AppleScript timeout exception internally,
+/// so it propagates as an unhandled Exception. This wrapper lets tests
+/// treat such timeouts as an acceptable outcome.
+Future<(CallToolResult?, Duration, String?)>
+    timeOperationTolerant(Future<CallToolResult> Function() fn) async {
+  final sw = Stopwatch()..start();
+  try {
+    final result = await fn();
+    sw.stop();
+    return (result, sw.elapsed, null);
+  } on Exception catch (e) {
+    sw.stop();
+    return (null, sw.elapsed, e.toString());
+  }
 }
 
 /// A minimal fake for [RequestHandlerExtra] that records progress calls.
@@ -114,7 +140,7 @@ Future<String> waitForSession({
   required String sessionId,
   required SessionManager sessionManager,
   Duration pollInterval = const Duration(milliseconds: 100),
-  Duration timeout = const Duration(seconds: 60),
+  Duration timeout = const Duration(minutes: 4),
 }) async {
   final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {

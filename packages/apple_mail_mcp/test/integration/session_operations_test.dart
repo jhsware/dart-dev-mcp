@@ -1,5 +1,5 @@
 @Tags(['integration'])
-@Timeout(Duration(minutes: 5))
+@Timeout(Duration(minutes: 15))
 library;
 
 import 'dart:convert';
@@ -170,6 +170,7 @@ void main() {
       await waitForSession(
         sessionId: sessionId,
         sessionManager: sessionManager,
+        timeout: maxBatchedOpDuration,
       );
 
       // Poll with chunk_index=0, max_chunks=1

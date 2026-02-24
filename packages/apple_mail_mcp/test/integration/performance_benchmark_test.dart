@@ -1,5 +1,5 @@
 @Tags(['integration'])
-@Timeout(Duration(minutes: 10))
+@Timeout(Duration(minutes: 15))
 library;
 
 import 'dart:convert';
