@@ -1,0 +1,6 @@
+tags:
+  integration:
+    # Integration tests require macOS with Apple Mail running.
+    # Run with: dart test -t integration
+    # Excluded from default test runs.
+    skip: "Integration tests require Apple Mail. Run with: dart test -t integration"
