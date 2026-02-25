@@ -146,6 +146,7 @@ end tell
             batchOutput.writeln('$readIndicator $subject');
             batchOutput.writeln('   From: $senderVal');
             batchOutput.writeln('   Date: $date');
+            batchOutput.writeln('   ID: ${parts[0]}');
             batchOutput.writeln();
           }
         }

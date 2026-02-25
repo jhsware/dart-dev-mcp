@@ -138,6 +138,7 @@ tell application "Mail"
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Account: " & accountName & return
                                     set outputText to outputText & "   Mailbox: " & mailboxName & return
+                                    set outputText to outputText & "   ID: " & (message id of aMessage) & return
                                     set outputText to outputText & return
                                     set resultCount to resultCount + 1
                                 end if
@@ -302,6 +303,7 @@ tell application "Mail"
                                     set outputText to outputText & "   From: " & messageSender & return
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Account: " & accountName & return
+                                    set outputText to outputText & "   ID: " & (message id of aMessage) & return
                                     set outputText to outputText & return
                                     set resultCount to resultCount + 1
                                 end if

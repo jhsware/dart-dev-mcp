@@ -359,6 +359,7 @@ end tell
             batchOutput.writeln('   From: $sender');
             batchOutput.writeln('   Date: $date');
             batchOutput.writeln('   Mailbox: $mailbox');
+            batchOutput.writeln('   ID: ${parts[0]}');
             batchOutput.writeln();
             resultCount++;
           }

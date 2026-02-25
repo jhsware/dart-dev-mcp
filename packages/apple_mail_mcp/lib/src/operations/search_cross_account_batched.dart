@@ -140,6 +140,7 @@ end tell
               batchOutput.writeln('   Date: ${parts[4]}');
               batchOutput.writeln('   Account: $acctName');
               batchOutput.writeln('   Mailbox: ${parts[5]}');
+              batchOutput.writeln('   ID: ${parts[0]}');
               batchOutput.writeln();
               resultCount++;
             }
@@ -283,6 +284,7 @@ end tell
               batchOutput.writeln('From: ${parts[3]}');
               batchOutput.writeln('Date: ${parts[4]}');
               batchOutput.writeln('Status: $readStatus');
+              batchOutput.writeln('ID: ${parts[0]}');
               batchOutput.writeln('\n---');
             }
           }
@@ -428,6 +430,7 @@ end tell
               batchOutput.writeln('   From: ${parts[3]}');
               batchOutput.writeln('   Date: ${parts[4]}');
               batchOutput.writeln('   Account: $acctName');
+              batchOutput.writeln('   ID: ${parts[0]}');
               batchOutput.writeln();
             }
           }

@@ -81,6 +81,7 @@ tell application "Mail"
                                     set outputText to outputText & "   From: " & messageSender & return
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Account: " & accountName & return
+                                    set outputText to outputText & "   ID: " & (message id of aMessage) & return
                                     set outputText to outputText & return
                                     set resultCount to resultCount + 1
                                 end if
@@ -215,6 +216,7 @@ tell application "Mail"
                 set outputText to outputText & readIndicator & " " & messageSubject & return
                 set outputText to outputText & "   From: " & messageSender & return
                 set outputText to outputText & "   Date: " & (messageDate as string) & return
+                set outputText to outputText & "   ID: " & (message id of aMessage) & return
                 set outputText to outputText & return
             end try
         end repeat
@@ -339,6 +341,7 @@ tell application "Mail"
                         set emailRecord to emailRecord & "Subject: " & messageSubject & linefeed
                         set emailRecord to emailRecord & "From: " & messageSender & linefeed
                         set emailRecord to emailRecord & "Date: " & (messageDate as string) & linefeed
+                        set emailRecord to emailRecord & "ID: " & (message id of msg) & linefeed
                         if messageRead then
                             set emailRecord to emailRecord & "Status: Read" & linefeed
                         else

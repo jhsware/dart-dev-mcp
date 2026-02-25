@@ -194,6 +194,7 @@ end tell
             batchOutput.writeln('   From: $senderVal');
             batchOutput.writeln('   Date: $date');
             batchOutput.writeln('   Mailbox: $mailboxName');
+            batchOutput.writeln('   ID: ${parts[0]}');
             batchOutput.writeln();
             resultCount++;
           }
@@ -399,6 +400,7 @@ end tell
             batchOutput.writeln('   Mailbox: $mailboxName');
             batchOutput.writeln(
                 '   Matched: ${matchedGroups.join(' ')}');
+            batchOutput.writeln('   ID: ${parts[0]}');
             batchOutput.writeln();
             resultCount++;
           }

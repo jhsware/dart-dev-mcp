@@ -338,6 +338,7 @@ tell application "Mail"
                                     set outputText to outputText & "   From: " & messageSender & return
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Mailbox: " & mailboxName & return
+                                    set outputText to outputText & "   ID: " & (message id of aMessage) & return
                                     set outputText to outputText & return
 
                                     set resultCount to resultCount + 1
@@ -525,6 +526,7 @@ tell application "Mail"
                             set outputText to outputText & "   From: " & messageSender & return
                             set outputText to outputText & "   Date: " & (messageDate as string) & return
                             set outputText to outputText & "   Mailbox: $escapedMailbox" & return
+                            set outputText to outputText & "   ID: " & (message id of aMessage) & return
                             set outputText to outputText & return
                             set resultCount to resultCount + 1
                         end if
@@ -762,6 +764,7 @@ $groupTagScript
                                         set outputText to outputText & "   Date: " & (messageDate as string) & return
                                         set outputText to outputText & "   Mailbox: " & mailboxName & return
                                         set outputText to outputText & "   Matched: " & matchedGroups & return
+                                        set outputText to outputText & "   ID: " & (message id of aMessage) & return
                                         set outputText to outputText & return
                                         set resultCount to resultCount + 1
                                     end if

@@ -20,7 +20,9 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
   final limit = args['limit'] as int? ?? 20;
   final offset = args['offset'] as int? ?? 0;
   final startDate = args['start_date'] as String?;
+  final endDate = args['end_date'] as String?;
   final fieldsStr = args['fields'] as String?;
+
 
   // Validate and parse fields
   final requestedFields = fieldsStr != null
@@ -46,6 +48,18 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
       );
     }
   }
+
+  // Validate end_date format if provided
+  if (endDate != null) {
+    final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+    if (!dateRegex.hasMatch(endDate)) {
+      return actionableError(
+        'Invalid end_date "$endDate".',
+        'Use ISO format: YYYY-MM-DD',
+      );
+    }
+  }
+
 
   final escapedMailbox = escapeAppleScript(mailbox);
 
@@ -106,19 +120,31 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
   String dateFilterSetup = '';
   String dateCheck = '';
   if (startDate != null) {
-    // Parse YYYY-MM-DD in AppleScript
-    dateFilterSetup = safeDateScript(
-      varName: 'filterDate',
+    dateFilterSetup += safeDateScript(
+      varName: 'startFilterDate',
       dateStr: startDate,
-      timeSeconds: 86399, // end of day
     );
 
-    dateCheck = '''
+    dateCheck += '''
                         set msgDate to date received of aMessage
-                        if msgDate > filterDate then
+                        if msgDate < startFilterDate then
                             set skipMsg to true
                         end if''';
   }
+  if (endDate != null) {
+    dateFilterSetup += safeDateScript(
+      varName: 'endFilterDate',
+      dateStr: endDate,
+      timeSeconds: 86399, // end of day
+    );
+
+    dateCheck += '''
+                        ${startDate == null ? 'set msgDate to date received of aMessage' : ''}
+                        if msgDate > endFilterDate then
+                            set skipMsg to true
+                        end if''';
+  }
+
 
   // Build account loop
   String accountLoopStart;
@@ -495,15 +521,59 @@ end tell
 /// Lists all inbox emails across all accounts or a specific one.
 Future<CallToolResult> handleListInboxEmails(
     Map<String, dynamic> args) async {
-  // account filtering not yet implemented; iterates all accounts
   final maxEmails = args['max_emails'] as int? ?? 0;
   final includeRead = args['include_read'] as bool? ?? true;
+  final startDate = args['start_date'] as String?;
+  final endDate = args['end_date'] as String?;
+
+  // Validate date formats
+  final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  if (startDate != null && !dateRegex.hasMatch(startDate)) {
+    return actionableError(
+      'Invalid start_date "$startDate".',
+      'Use ISO format: YYYY-MM-DD',
+    );
+  }
+  if (endDate != null && !dateRegex.hasMatch(endDate)) {
+    return actionableError(
+      'Invalid end_date "$endDate".',
+      'Use ISO format: YYYY-MM-DD',
+    );
+  }
+
+  // Build date filter
+  String dateFilterSetup = '';
+  String dateCheck = '';
+  if (startDate != null) {
+    dateFilterSetup += safeDateScript(
+      varName: 'startFilterDate',
+      dateStr: startDate,
+    );
+    dateCheck += '''
+                        if messageDate < startFilterDate then
+                            set shouldInclude to false
+                        end if''';
+  }
+  if (endDate != null) {
+    dateFilterSetup += safeDateScript(
+      varName: 'endFilterDate',
+      dateStr: endDate,
+      timeSeconds: 86399,
+    );
+    dateCheck += '''
+                        if messageDate > endFilterDate then
+                            set shouldInclude to false
+                        end if''';
+  }
 
   final script = '''
+
 tell application "Mail"
     set outputText to "INBOX EMAILS - ALL ACCOUNTS" & return & return
     set totalCount to 0
     set allAccounts to every account
+
+    $dateFilterSetup
 
     repeat with anAccount in allAccounts
         set accountName to name of anAccount
@@ -533,6 +603,7 @@ tell application "Mail"
                         if not ${includeRead.toString()} and messageRead then
                             set shouldInclude to false
                         end if
+                        $dateCheck
 
                         if shouldInclude then
                             if messageRead then
@@ -544,7 +615,9 @@ tell application "Mail"
                             set outputText to outputText & readIndicator & " " & messageSubject & return
                             set outputText to outputText & "   From: " & messageSender & return
                             set outputText to outputText & "   Date: " & (messageDate as string) & return
+                            set outputText to outputText & "   ID: " & (message id of aMessage) & return
                             set outputText to outputText & return
+
 
                             set totalCount to totalCount + 1
                         end if
@@ -694,8 +767,10 @@ tell application "Mail"
                 set outputText to outputText & readIndicator & " " & messageSubject & return
                 set outputText to outputText & "   From: " & messageSender & return
                 set outputText to outputText & "   Date: " & (messageDate as string) & return
+                set outputText to outputText & "   ID: " & (message id of aMessage) & return
 
-                set outputText to outputText & return
+
+
             end try
         end repeat
 
@@ -916,10 +991,13 @@ tell application "Mail"
                     set messageSubject to subject of aMessage
                     set messageSender to sender of aMessage
                     set messageDate to date received of aMessage
-                    set messageRead to read status of aMessage
 
-                    set messageRecord to {accountName:accountName, msgSubject:messageSubject, msgSender:messageSender, msgDate:messageDate, msgRead:messageRead}
+                    set messageRead to read status of aMessage
+                    set messageId to message id of aMessage
+
+                    set messageRecord to {accountName:accountName, msgSubject:messageSubject, msgSender:messageSender, msgDate:messageDate, msgRead:messageRead, msgId:messageId}
                     set end of allRecentMessages to messageRecord
+
                 end try
             end repeat
         end try
@@ -940,6 +1018,8 @@ tell application "Mail"
         set outputText to outputText & "   Account: " & accountName of msgRecord & return
         set outputText to outputText & "   From: " & msgSender of msgRecord & return
         set outputText to outputText & "   Date: " & (msgDate of msgRecord as string) & return
+        set outputText to outputText & "   ID: " & msgId of msgRecord & return
+
     end repeat
 
     if displayCount = 0 then
