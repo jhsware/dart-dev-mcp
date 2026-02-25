@@ -30,22 +30,14 @@ void main() {
   });
 
   group('getSearchOperations', () {
-    test('returns a map with exactly 9 entries', () {
+    test('returns a map with exactly 1 entry (sync-only operations)', () {
       final ops = getSearchOperations();
-      expect(ops.length, equals(9));
+      expect(ops.length, equals(1));
     });
 
-    test('contains all expected search operation keys', () {
+    test('contains get-recent-from-sender (only non-batched search op)', () {
       final ops = getSearchOperations();
-      expect(ops.containsKey('search-emails'), isTrue);
-      expect(ops.containsKey('search-by-sender'), isTrue);
-      expect(ops.containsKey('search-email-content'), isTrue);
-      expect(ops.containsKey('get-newsletters'), isTrue);
       expect(ops.containsKey('get-recent-from-sender'), isTrue);
-      expect(ops.containsKey('get-email-thread'), isTrue);
-      expect(ops.containsKey('search-all-accounts'), isTrue);
-      expect(ops.containsKey('multi-search'), isTrue);
-      expect(ops.containsKey('classify-emails'), isTrue);
     });
   });
 
@@ -66,7 +58,8 @@ void main() {
   });
 
   group('allOperations', () {
-    test('contains exactly 25 operations (22 mail + 3 session)', () {
+    test('contains exactly 25 operations (14 sync + 8 batched + 3 session)',
+        () {
       expect(allOperations.length, equals(25));
     });
 
@@ -78,10 +71,19 @@ void main() {
       expect(allOperations, contains('get-email-by-id'));
     });
 
-    test('contains all search operations', () {
+    test('contains batched search operations', () {
       expect(allOperations, contains('search-emails'));
       expect(allOperations, contains('search-by-sender'));
       expect(allOperations, contains('get-newsletters'));
+      expect(allOperations, contains('search-email-content'));
+      expect(allOperations, contains('multi-search'));
+      expect(allOperations, contains('classify-emails'));
+      expect(allOperations, contains('get-email-thread'));
+      expect(allOperations, contains('search-all-accounts'));
+    });
+
+    test('contains sync search operations', () {
+      expect(allOperations, contains('get-recent-from-sender'));
     });
 
     test('contains all attachment operations', () {
@@ -97,3 +99,4 @@ void main() {
     });
   });
 }
+

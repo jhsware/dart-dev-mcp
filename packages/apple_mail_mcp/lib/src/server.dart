@@ -36,6 +36,7 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
 /// All supported operation names for the apple-mail tool.
 List<String> get allOperations => [
       ..._buildOperationHandlers().keys,
+      ...batchedOperations,
       'get_output',
       'list_sessions',
       'cancel',

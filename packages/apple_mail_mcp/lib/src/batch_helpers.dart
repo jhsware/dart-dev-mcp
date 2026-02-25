@@ -7,8 +7,8 @@
 // Message discovery uses mdfind (Spotlight CLI) for fast index queries.
 // Metadata extraction uses mdls and .emlx file parsing.
 
-import 'constants.dart';
 import 'core.dart';
+import 'constants.dart';
 import 'emlx_parser.dart';
 import 'mdfind_helpers.dart';
 
@@ -215,18 +215,6 @@ Future<List<Map<String, String>>> fetchEmailMetadata(
   return results;
 }
 
-/// Builds an AppleScript set literal containing the given message IDs.
-///
-/// Returns a string like `{"id1", "id2", "id3"}` for use in
-/// AppleScript `is in` conditions.
-///
-/// Note: This is still used by batched handlers that haven't been migrated
-/// to direct mdfind queries yet. Will be removed in a later cleanup.
-String buildMessageIdSet(List<String> messageIds) {
-  final escaped = messageIds.map((id) => '"${escapeAppleScript(id)}"');
-  return '{${escaped.join(', ')}}';
-}
-
 /// Fetches the list of account names from Apple Mail.
 ///
 /// Uses filesystem scanning of ~/Library/Mail/ to discover accounts,
@@ -255,4 +243,15 @@ bool _isSystemFolderPath(String path) {
   return _systemFolderPatterns.any(
     (pattern) => lowerPath.contains(pattern.toLowerCase()),
   );
+}
+
+/// Builds an AppleScript set literal from a list of message IDs.
+///
+/// Used by attachment operations that still use AppleScript batch processing.
+/// Example: `buildMessageIdSet(['a', 'b'])` → `{"a", "b"}`
+String buildMessageIdSet(List<String> ids) {
+  final escaped = ids.map((id) {
+    return '"${escapeAppleScript(id)}"';
+  }).join(', ');
+  return '{$escaped}';
 }
