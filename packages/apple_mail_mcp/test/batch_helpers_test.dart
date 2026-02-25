@@ -94,5 +94,11 @@ void main() {
     test('allOperations contains exactly 25 operations', () {
       expect(allOperations.length, equals(25));
     });
+
+    test('allOperations contains all batched operations', () {
+      for (final op in batchedOperations) {
+        expect(allOperations, contains(op));
+      }
+    });
   });
 }

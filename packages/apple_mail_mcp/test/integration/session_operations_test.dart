@@ -187,56 +187,8 @@ void main() {
       expect(pollParsed, contains('total_chunks'));
     });
 
-    test('batched get-email-with-content creates session and completes',
-
-        () async {
-      final sessionManager = createTestSessionManager();
-      final extra = FakeRequestHandlerExtra();
-
-      final (startResult, startElapsed) = await timeOperation(
-        () async => runBatchedInBackground(
-          extra: extra,
-          operation: 'get-email-with-content',
-          args: {
-            'account': account,
-            'subject_keyword': 'the',
-            'max_results': 5,
-          },
-          handler: runBatchedGetEmailWithContent,
-          sessionManager: sessionManager,
-        ),
-      );
-
-      final startText = extractText(startResult);
-      final startParsed = jsonDecode(startText) as Map<String, dynamic>;
-      expect(startParsed, contains('session_id'));
-      expect(startParsed['status'], equals('running'));
-      expect(startElapsed, lessThan(const Duration(seconds: 2)),
-          reason: 'Batched start should return immediately');
-
-      final sessionId = startParsed['session_id'] as String;
-
-      final output = await waitForSession(
-        sessionId: sessionId,
-        sessionManager: sessionManager,
-        timeout: maxBatchedOpDuration,
-      );
-
-      expect(output, isNotEmpty, reason: 'Session should produce output');
-
-      // Verify session is complete and get_output works
-      final getOutputResult = handleGetOutput(
-        {'session_id': sessionId, 'chunk_index': 0},
-        sessionManager,
-      );
-      final getOutputText = extractText(getOutputResult);
-      final getOutputParsed =
-          jsonDecode(getOutputText) as Map<String, dynamic>;
-      expect(getOutputParsed['is_complete'], isTrue);
-      expect(getOutputParsed['session_id'], equals(sessionId));
-    });
-
     test('batched get-email-thread creates session and completes', () async {
+
       final sessionManager = createTestSessionManager();
       final extra = FakeRequestHandlerExtra();
 
@@ -279,52 +231,5 @@ void main() {
           jsonDecode(getOutputText) as Map<String, dynamic>;
       expect(getOutputParsed['is_complete'], isTrue);
     });
-
-    test('batched list-email-attachments creates session and completes',
-        () async {
-      final sessionManager = createTestSessionManager();
-      final extra = FakeRequestHandlerExtra();
-
-      final (startResult, startElapsed) = await timeOperation(
-        () async => runBatchedInBackground(
-          extra: extra,
-          operation: 'list-email-attachments',
-          args: {
-            'account': account,
-            'subject_keyword': 'the',
-            'max_results': 5,
-          },
-          handler: runBatchedListEmailAttachments,
-          sessionManager: sessionManager,
-        ),
-      );
-
-      final startText = extractText(startResult);
-      final startParsed = jsonDecode(startText) as Map<String, dynamic>;
-      expect(startParsed, contains('session_id'));
-      expect(startParsed['status'], equals('running'));
-      expect(startElapsed, lessThan(const Duration(seconds: 2)),
-          reason: 'Batched start should return immediately');
-
-      final sessionId = startParsed['session_id'] as String;
-
-      final output = await waitForSession(
-        sessionId: sessionId,
-        sessionManager: sessionManager,
-        timeout: maxBatchedOpDuration,
-      );
-
-      expect(output, isNotEmpty, reason: 'Session should produce output');
-
-      final getOutputResult = handleGetOutput(
-        {'session_id': sessionId, 'chunk_index': 0},
-        sessionManager,
-      );
-      final getOutputText = extractText(getOutputResult);
-      final getOutputParsed =
-          jsonDecode(getOutputText) as Map<String, dynamic>;
-      expect(getOutputParsed['is_complete'], isTrue);
-    });
-
     });
 }

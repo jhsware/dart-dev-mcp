@@ -80,9 +80,6 @@ List<Map<String, String>> parseEmailList(String output) {
         current['mailbox'] = trimmed.substring(9).trim();
       } else if (trimmed.startsWith('ID: ')) {
         current['message_id'] = trimmed.substring(4).trim();
-      } else if (trimmed.startsWith('Preview: ') ||
-          trimmed.startsWith('Content: ')) {
-        current['preview'] = trimmed.substring(trimmed.indexOf(' ') + 1).trim();
       }
     }
   }
@@ -176,32 +173,6 @@ on error
     on error
         error "Could not find INBOX mailbox"
     end try
-end try
-''';
-}
-
-/// AppleScript snippet that extracts a content preview, truncated to
-/// [maxLength] characters.
-String contentPreviewScript({
-  int maxLength = 200,
-  String outputVar = 'outputText',
-}) {
-  return '''
-try
-    set msgContent to content of aMessage
-    set AppleScript's text item delimiters to {return, linefeed}
-    set contentParts to text items of msgContent
-    set AppleScript's text item delimiters to " "
-    set cleanText to contentParts as string
-    set AppleScript's text item delimiters to ""
-    if length of cleanText > $maxLength then
-        set contentPreview to text 1 thru $maxLength of cleanText & "..."
-    else
-        set contentPreview to cleanText
-    end if
-    set $outputVar to $outputVar & "   Content: " & contentPreview & return
-on error
-    set $outputVar to $outputVar & "   Content: [Not available]" & return
 end try
 ''';
 }

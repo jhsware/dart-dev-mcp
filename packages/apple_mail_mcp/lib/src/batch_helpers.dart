@@ -1,9 +1,16 @@
 // Batch helpers for Apple Mail MCP operations.
 //
-// Provides utilities for fetching message IDs in bulk and splitting
-// work into batches for progressive processing with cancellation support.
+// Provides utilities for fetching message IDs and metadata in bulk,
+// splitting work into batches for progressive processing with
+// cancellation support.
+//
+// Message discovery uses mdfind (Spotlight CLI) for fast index queries.
+// Metadata extraction uses mdls and .emlx file parsing.
 
 import 'core.dart';
+import 'constants.dart';
+import 'emlx_parser.dart';
+import 'mdfind_helpers.dart';
 
 /// Splits a list into batches of the given size.
 ///
@@ -17,11 +24,115 @@ List<List<T>> batchList<T>(List<T> items, int batchSize) {
   return batches;
 }
 
+/// Fetches .emlx file paths from a mailbox, optionally filtered by date.
+///
+/// Uses mdfind (Spotlight CLI) for fast index-based queries instead of
+/// AppleScript enumeration. Returns absolute paths to matching .emlx files.
+///
+/// When [mailbox] is "All", searches the entire account directory but
+/// filters out system folders (Trash, Junk, Sent, Drafts, etc.).
+Future<List<String>> fetchEmailFiles({
+  required String account,
+  required String mailbox,
+  int daysBack = 0,
+  String? startDate,
+  String? endDate,
+}) async {
+  // Resolve account name → filesystem path
+  final accountPaths = await resolveAccountPaths();
+  final accountPath = accountPaths[account];
+  if (accountPath == null) {
+    // Try partial match (account name might differ slightly)
+    final matchingKey = accountPaths.keys.firstWhere(
+      (k) => k.toLowerCase().contains(account.toLowerCase()) ||
+          account.toLowerCase().contains(k.toLowerCase()),
+      orElse: () => '',
+    );
+    if (matchingKey.isEmpty) {
+      throw Exception('Account "$account" not found in Mail directory');
+    }
+    return _fetchEmailFilesFromPath(
+      accountPath: accountPaths[matchingKey]!,
+      mailbox: mailbox,
+      daysBack: daysBack,
+      startDate: startDate,
+      endDate: endDate,
+    );
+  }
+
+  return _fetchEmailFilesFromPath(
+    accountPath: accountPath,
+    mailbox: mailbox,
+    daysBack: daysBack,
+    startDate: startDate,
+    endDate: endDate,
+  );
+}
+
+/// Internal: fetches .emlx files from a resolved account path.
+Future<List<String>> _fetchEmailFilesFromPath({
+  required String accountPath,
+  required String mailbox,
+  int daysBack = 0,
+  String? startDate,
+  String? endDate,
+}) async {
+  // Build date filters
+  DateTime? dateAfter;
+  DateTime? dateBefore;
+
+  if (daysBack > 0) {
+    dateAfter = DateTime.now().subtract(Duration(days: daysBack));
+  }
+
+  if (startDate != null) {
+    dateAfter = DateTime.parse(startDate);
+  }
+
+  if (endDate != null) {
+    // End of day
+    dateBefore = DateTime.parse(endDate).add(const Duration(
+      hours: 23,
+      minutes: 59,
+      seconds: 59,
+    ));
+  }
+
+  // Determine search scope directory
+  String scopeDir;
+  if (mailbox == 'All') {
+    scopeDir = accountPath;
+  } else {
+    final mailboxDir = await findMailboxDirectory(
+      accountPath: accountPath,
+      mailbox: mailbox,
+    );
+    if (mailboxDir == null) {
+      throw Exception('Mailbox "$mailbox" not found in account');
+    }
+    scopeDir = mailboxDir;
+  }
+
+  // Build and run mdfind query
+  final query = buildMdfindQuery(
+    dateAfter: dateAfter,
+    dateBefore: dateBefore,
+  );
+
+  final files = await runMdfind(query, directory: scopeDir);
+
+  // For "All" mailbox, filter out system folders
+  if (mailbox == 'All') {
+    return files.where((path) => !_isSystemFolderPath(path)).toList();
+  }
+
+  return files;
+}
+
 /// Fetches message IDs from a mailbox, optionally filtered by date.
 ///
-/// Returns a list of Apple Mail message ID strings. Message IDs are stable
-/// identifiers that don't shift when new mail arrives, making them safe
-/// to use across multiple AppleScript invocations.
+/// Uses mdfind (Spotlight CLI) for fast message discovery, then extracts
+/// RFC Message-ID headers from matching .emlx files.
 ///
 /// When [mailbox] is "All", searches all mailboxes except system folders
 /// (Trash, Junk, Sent, Drafts, etc.).
@@ -32,163 +143,115 @@ Future<List<String>> fetchMessageIds({
   String? startDate,
   String? endDate,
 }) async {
-  final escapedAccount = escapeAppleScript(account);
-  final escapedMailbox = escapeAppleScript(mailbox);
+  final files = await fetchEmailFiles(
+    account: account,
+    mailbox: mailbox,
+    daysBack: daysBack,
+    startDate: startDate,
+    endDate: endDate,
+  );
 
-  // Build date filter setup and check
-  final dateSetup = StringBuffer();
-  final dateChecks = <String>[];
-
-  if (daysBack > 0) {
-    dateSetup.writeln(
-        '    set cutoffDate to (current date) - ($daysBack * days)');
-    dateChecks.add('messageDate > cutoffDate');
+  // Extract Message-ID from each .emlx file
+  final ids = <String>[];
+  for (final filePath in files) {
+    final messageId = await parseEmlxMessageId(filePath);
+    if (messageId != null && messageId.isNotEmpty) {
+      ids.add(messageId);
+    }
   }
 
-  if (startDate != null) {
-    dateSetup.writeln(safeDateScript(
-      varName: 'startDateObj',
-      dateStr: startDate,
-      timeSeconds: 0, // start of day
-    ));
-    dateChecks.add('messageDate >= startDateObj');
-  }
-
-  if (endDate != null) {
-    dateSetup.writeln(safeDateScript(
-      varName: 'endDateObj',
-      dateStr: endDate,
-      timeSeconds: 86399, // end of day
-    ));
-    dateChecks.add('messageDate <= endDateObj');
-  }
-
-
-  final dateCheckCondition =
-      dateChecks.isEmpty ? '' : dateChecks.join(' and ');
-
-  final dateCheckScript = dateCheckCondition.isNotEmpty
-      ? '''
-                        set messageDate to date received of aMessage
-                        if not ($dateCheckCondition) then
-                            set skipMessage to true
-                        end if'''
-      : '';
-
-  // Build mailbox resolution script
-  String mailboxScript;
-  if (mailbox == 'All') {
-    mailboxScript = '''
-        set searchMailboxes to every mailbox of targetAccount
-''';
-  } else {
-    mailboxScript = '''
-        try
-            set searchMailbox to mailbox "$escapedMailbox" of targetAccount
-        on error
-            if "$escapedMailbox" is "INBOX" then
-                set searchMailbox to mailbox "Inbox" of targetAccount
-            else
-                error "Mailbox \\"$escapedMailbox\\" not found."
-            end if
-        end try
-        set searchMailboxes to {searchMailbox}
-''';
-  }
-
-  // Skip system folders condition (only relevant for "All" mailbox)
-  final skipFoldersScript = mailbox == 'All'
-      ? '''
-                set skipFoldersList to {"Trash", "Junk", "Junk Email", "Deleted Items", "Sent", "Sent Items", "Sent Messages", "Drafts", "Spam", "Deleted Messages"}
-                set shouldSkipFolder to false
-                repeat with skipFolder in skipFoldersList
-                    if mailboxName is skipFolder then
-                        set shouldSkipFolder to true
-                        exit repeat
-                    end if
-                end repeat
-                if shouldSkipFolder then'''
-      : 'if false then -- no folder skip needed';
-
-  final script = '''
-tell application "Mail"
-    set idList to ""
-${dateSetup.toString()}
-
-    try
-        set targetAccount to account "$escapedAccount"
-$mailboxScript
-
-        repeat with currentMailbox in searchMailboxes
-            try
-                set mailboxName to name of currentMailbox
-                $skipFoldersScript
-                    -- skip this folder
-                else
-                    set mailboxMessages to every message of currentMailbox
-                    repeat with aMessage in mailboxMessages
-                        try
-                            set skipMessage to false
-$dateCheckScript
-                            if not skipMessage then
-                                set msgId to message id of aMessage
-                                set idList to idList & msgId & linefeed
-                            end if
-                        end try
-                    end repeat
-                end if
-            end try
-        end repeat
-
-    on error errMsg
-        error "ERROR:" & errMsg
-    end try
-
-    return idList
-end tell
-''';
-
-  final result = await runAppleScript(script);
-  if (result.startsWith('ERROR:')) {
-    throw Exception(result.substring(6));
-  }
-
-  return result
-      .split('\n')
-      .map((id) => id.trim())
-      .where((id) => id.isNotEmpty)
-      .toList();
+  return ids;
 }
 
-/// Builds an AppleScript set literal containing the given message IDs.
+/// Fetches email metadata for multiple .emlx files using mdls and parsing.
 ///
-/// Returns a string like `{"id1", "id2", "id3"}` for use in
-/// AppleScript `is in` conditions.
-String buildMessageIdSet(List<String> messageIds) {
-  final escaped = messageIds.map((id) => '"${escapeAppleScript(id)}"');
-  return '{${escaped.join(', ')}}';
+/// Returns a list of maps with keys: subject, sender, date, message_id,
+/// read_status, mailbox, account, file_path.
+///
+/// Uses mdls for fast Spotlight-indexed metadata (subject, sender, date)
+/// and .emlx parsing for Message-ID and read status.
+Future<List<Map<String, String>>> fetchEmailMetadata(
+    List<String> emlxPaths) async {
+  if (emlxPaths.isEmpty) return [];
+
+  // Batch mdls queries in groups of 100 to avoid command line limits
+  final results = <Map<String, String>>[];
+  final batches = batchList(emlxPaths, 100);
+
+  for (final batch in batches) {
+    final mdlsResults = await runMdlsBatch(
+      batch,
+      attributes: [
+        'kMDItemTitle',
+        'kMDItemAuthors',
+        'kMDItemContentCreationDate',
+      ],
+    );
+
+    for (var i = 0; i < batch.length; i++) {
+      final filePath = batch[i];
+      final mdls = i < mdlsResults.length ? mdlsResults[i] : <String, String>{};
+
+      // Extract path-based info
+      final pathInfo = parseEmlxPath(filePath);
+
+      // Parse .emlx for Message-ID and read status
+      final content = await parseEmlxContent(filePath, bodyPreviewLength: 0);
+
+      results.add({
+        'file_path': filePath,
+        'subject': mdls['kMDItemTitle'] ?? content?.subject ?? '',
+        'sender': mdls['kMDItemAuthors'] ?? content?.sender ?? '',
+        'date': mdls['kMDItemContentCreationDate'] ?? content?.dateStr ?? '',
+        'message_id': content?.messageId ?? '',
+        'read_status': (content?.isRead ?? false) ? 'read' : 'unread',
+        'mailbox': pathInfo?.mailbox ?? '',
+        'account': pathInfo?.accountDir ?? '',
+        'has_attachments': (content?.hasAttachments ?? false) ? 'true' : 'false',
+      });
+    }
+  }
+
+  return results;
 }
 
 /// Fetches the list of account names from Apple Mail.
 ///
-/// Returns account names as strings, used for cross-account operations
-/// that need to iterate all accounts.
+/// Uses filesystem scanning of ~/Library/Mail/ to discover accounts,
+/// reading account plists for display names.
 Future<List<String>> fetchAccountNames() async {
-  final script = '''
-tell application "Mail"
-    set acctNames to ""
-    set allAccounts to every account
-    repeat with acct in allAccounts
-        set acctNames to acctNames & name of acct & linefeed
-    end repeat
-    return acctNames
-end tell
-''';
+  final accountPaths = await resolveAccountPaths();
+  return accountPaths.keys.toList();
+}
 
-  final result = await runAppleScript(script);
-  return result
-      .split('\n')
-      .map((n) => n.trim())
-      .where((n) => n.isNotEmpty)
-      .toList();
+// ──────────────────────── Private helpers ────────────────────────
+
+/// System folder names to skip when searching "All" mailboxes.
+/// These are matched against the .mbox directory name in the file path.
+final _systemFolderPatterns = [
+  ...skipFolders.map((f) => '/$f.mbox/'),
+  '/Junk Email.mbox/',
+  '/Deleted Items.mbox/',
+  '/Sent Items.mbox/',
+  '/Sent Messages.mbox/',
+];
+
+/// Checks if an .emlx file path is within a system folder that should
+/// be skipped when searching "All" mailboxes.
+bool _isSystemFolderPath(String path) {
+  final lowerPath = path.toLowerCase();
+  return _systemFolderPatterns.any(
+    (pattern) => lowerPath.contains(pattern.toLowerCase()),
+  );
+}
+
+/// Builds an AppleScript set literal from a list of message IDs.
+///
+/// Used by attachment operations that still use AppleScript batch processing.
+/// Example: `buildMessageIdSet(['a', 'b'])` → `{"a", "b"}`
+String buildMessageIdSet(List<String> ids) {
+  final escaped = ids.map((id) {
+    return '"${escapeAppleScript(id)}"';
+  }).join(', ');
+  return '{$escaped}';
 }

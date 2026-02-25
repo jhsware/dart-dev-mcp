@@ -31,7 +31,6 @@ typedef BatchedHandler = Future<void> Function({
 const slowOperations = {
   'get-statistics',
   'export-emails',
-  'save-email-attachment',
 };
 
 /// Set of operation names that use batched execution.
@@ -43,11 +42,8 @@ const batchedOperations = {
   'search-all-accounts',
   'get-newsletters',
   'classify-emails',
-  'get-email-with-content',
   'get-email-thread',
-  'list-email-attachments',
 };
-
 /// Runs a handler in the background and returns a session_id immediately.
 /// 1. Creates a session via SessionManager
 /// 2. Returns immediately with JSON containing session_id + status

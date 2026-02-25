@@ -25,19 +25,11 @@ String _expandHome(String path) {
 /// write to filesystem — does NOT modify the email).
 Future<CallToolResult> handleSaveEmailAttachment(
     Map<String, dynamic> args) async {
-  final account = args['account'] as String?;
-  if (account == null) {
+  final messageId = args['message_id'] as String?;
+  if (messageId == null || messageId.isEmpty) {
     return actionableError(
-      'account parameter is required for save-email-attachment.',
-      'Use list-accounts to see available accounts.',
-    );
-  }
-
-  final subjectKeyword = args['subject_keyword'] as String?;
-  if (subjectKeyword == null) {
-    return actionableError(
-      'subject_keyword parameter is required for save-email-attachment.',
-      'Provide a keyword to match the email subject containing the attachment.',
+      'message_id parameter is required for save-email-attachment.',
+      'Use list-emails or search-emails to find the message ID of the email containing the attachment.',
     );
   }
 
@@ -46,158 +38,319 @@ Future<CallToolResult> handleSaveEmailAttachment(
       args['save_directory'] as String? ?? '~/Desktop';
   final expandedPath = _expandHome(savePath);
 
-  final escapedAccount = escapeAppleScript(account);
-  final escapedKeyword = escapeAppleScript(subjectKeyword);
+  final escapedMessageId = escapeAppleScript(messageId);
   final escapedAttachment = escapeAppleScript(attachmentName);
   final escapedPath = escapeAppleScript(expandedPath);
+
+  final skipCondition = skipFoldersCondition();
 
   final script = '''
 tell application "Mail"
     set outputText to ""
+    set foundMessage to false
+    set foundAttachment to false
 
-    try
-        set targetAccount to account "$escapedAccount"
-        ${inboxMailboxScript(varName: 'inboxMailbox', accountVar: 'targetAccount')}
-        set inboxMessages to every message of inboxMailbox
-        set foundAttachment to false
+    set allAccounts to every account
+    repeat with anAccount in allAccounts
+        if foundAttachment then exit repeat
 
-        repeat with aMessage in inboxMessages
+        set accountMailboxes to every mailbox of anAccount
+        repeat with aMailbox in accountMailboxes
+            if foundAttachment then exit repeat
+
+            set mailboxName to name of aMailbox
+            $skipCondition
+
             try
-                set messageSubject to subject of aMessage
+                set mailboxMessages to every message of aMailbox
+                repeat with aMessage in mailboxMessages
+                    if foundAttachment then exit repeat
 
-                if messageSubject contains "$escapedKeyword" then
-                    set msgAttachments to mail attachments of aMessage
+                    try
+                        set msgId to message id of aMessage
+                        if msgId is "$escapedMessageId" then
+                            set foundMessage to true
+                            set messageSubject to subject of aMessage
+                            set msgAttachments to mail attachments of aMessage
 
-                    repeat with anAttachment in msgAttachments
-                        set attachmentFileName to name of anAttachment
+                            repeat with anAttachment in msgAttachments
+                                set attachmentFileName to name of anAttachment
 
-                        if attachmentFileName contains "$escapedAttachment" then
-                            save anAttachment in POSIX file "$escapedPath"
+                                if attachmentFileName contains "$escapedAttachment" then
+                                    save anAttachment in POSIX file "$escapedPath"
 
-                            set outputText to "✓ Attachment saved successfully!" & return & return
-                            set outputText to outputText & "Email: " & messageSubject & return
-                            set outputText to outputText & "Attachment: " & attachmentFileName & return
-                            set outputText to outputText & "Saved to: $escapedPath" & return
+                                    set outputText to "✓ Attachment saved successfully!" & return & return
+                                    set outputText to outputText & "Email: " & messageSubject & return
+                                    set outputText to outputText & "Attachment: " & attachmentFileName & return
+                                    set outputText to outputText & "Saved to: $escapedPath" & return
 
-                            set foundAttachment to true
+                                    set foundAttachment to true
+                                    exit repeat
+                                end if
+                            end repeat
+
+                            if not foundAttachment then
+                                set outputText to "⚠ Attachment not found in email" & return
+                                set outputText to outputText & "Email: " & messageSubject & return
+                                set outputText to outputText & "Attachment name filter: $escapedAttachment" & return
+                                set outputText to outputText & return & "Available attachments:" & return
+                                repeat with anAttachment in msgAttachments
+                                    set outputText to outputText & "  - " & name of anAttachment & return
+                                end repeat
+                            end if
+
                             exit repeat
                         end if
-                    end repeat
-
-                    if foundAttachment then exit repeat
-                end if
+                    end try
+                end repeat
             end try
+
+            end if
         end repeat
+    end repeat
 
-        if not foundAttachment then
-            set outputText to "⚠ Attachment not found" & return
-            set outputText to outputText & "Email keyword: $escapedKeyword" & return
-            set outputText to outputText & "Attachment name: $escapedAttachment" & return
-        end if
-
-    on error errMsg
-        return "Error: " & errMsg
-    end try
+    if not foundMessage then
+        set outputText to "⚠ No email found with message ID: $escapedMessageId" & return
+        set outputText to outputText & "The message may have been moved or deleted." & return
+    end if
 
     return outputText
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to save attachment: $e',
+      'Check that Apple Mail is running. The message may have been moved or deleted.',
+    );
+  }
 }
 
 /// Handles the list-email-attachments operation.
 ///
-/// Lists attachments with names and sizes for emails matching a subject.
+/// Lists attachments with names and sizes for an email identified by message ID.
 Future<CallToolResult> handleListEmailAttachments(
     Map<String, dynamic> args) async {
-  final account = args['account'] as String?;
-  if (account == null) {
+  final messageId = args['message_id'] as String?;
+  if (messageId == null || messageId.isEmpty) {
     return actionableError(
-      'account parameter is required for list-email-attachments.',
-      'Use list-accounts to see available accounts.',
+      'message_id parameter is required for list-email-attachments.',
+      'Use list-emails or search-emails to find the message ID.',
     );
   }
 
-  final subjectKeyword = args['subject_keyword'] as String?;
-  if (subjectKeyword == null) {
-    return actionableError(
-      'subject_keyword parameter is required for list-email-attachments.',
-      'Provide a keyword to match the email subject.',
-    );
-  }
+  final escapedMessageId = escapeAppleScript(messageId);
 
-  final maxResults = args['max_results'] as int? ?? 1;
-
-  final escapedKeyword = escapeAppleScript(subjectKeyword);
-  final escapedAccount = escapeAppleScript(account);
+  final skipCondition = skipFoldersCondition();
 
   final script = '''
 tell application "Mail"
-    set outputText to "ATTACHMENTS FOR: $escapedKeyword" & return & return
-    set resultCount to 0
+    set outputText to ""
+    set foundMessage to false
 
-    try
-        set targetAccount to account "$escapedAccount"
-        ${inboxMailboxScript(varName: 'inboxMailbox', accountVar: 'targetAccount')}
-        set inboxMessages to every message of inboxMailbox
+    set allAccounts to every account
+    repeat with anAccount in allAccounts
+        if foundMessage then exit repeat
 
-        repeat with aMessage in inboxMessages
-            if resultCount >= $maxResults then exit repeat
+        set accountMailboxes to every mailbox of anAccount
+        repeat with aMailbox in accountMailboxes
+            if foundMessage then exit repeat
+
+            set mailboxName to name of aMailbox
+            $skipCondition
 
             try
-                set messageSubject to subject of aMessage
+                set mailboxMessages to every message of aMailbox
+                repeat with aMessage in mailboxMessages
+                    if foundMessage then exit repeat
 
-                if messageSubject contains "$escapedKeyword" then
-                    set messageSender to sender of aMessage
-                    set messageDate to date received of aMessage
+                    try
+                        set msgId to message id of aMessage
+                        if msgId is "$escapedMessageId" then
+                            set foundMessage to true
+                            set messageSubject to subject of aMessage
+                            set messageSender to sender of aMessage
+                            set messageDate to date received of aMessage
 
-                    set outputText to outputText & "✉ " & messageSubject & return
-                    set outputText to outputText & "   From: " & messageSender & return
-                    set outputText to outputText & "   Date: " & (messageDate as string) & return & return
+                            set outputText to "ATTACHMENTS" & return & return
+                            set outputText to outputText & "✉ " & messageSubject & return
+                            set outputText to outputText & "   From: " & messageSender & return
+                            set outputText to outputText & "   Date: " & (messageDate as string) & return
+                            set outputText to outputText & "   ID: " & msgId & return & return
 
-                    set msgAttachments to mail attachments of aMessage
-                    set attachmentCount to count of msgAttachments
+                            set msgAttachments to mail attachments of aMessage
+                            set attachmentCount to count of msgAttachments
 
-                    if attachmentCount > 0 then
-                        set outputText to outputText & "   Attachments (" & attachmentCount & "):" & return
+                            if attachmentCount > 0 then
+                                set outputText to outputText & "   Attachments (" & attachmentCount & "):" & return
 
-                        repeat with anAttachment in msgAttachments
-                            set attachmentName to name of anAttachment
-                            try
-                                set attachmentSize to size of anAttachment
-                                set sizeInKB to (attachmentSize / 1024) as integer
-                                set outputText to outputText & "   📎 " & attachmentName & " (" & sizeInKB & " KB)" & return
-                            on error
-                                set outputText to outputText & "   📎 " & attachmentName & return
-                            end try
-                        end repeat
-                    else
-                        set outputText to outputText & "   No attachments" & return
-                    end if
+                                repeat with anAttachment in msgAttachments
+                                    set attachmentName to name of anAttachment
+                                    try
+                                        set attachmentSize to size of anAttachment
+                                        set sizeInKB to (attachmentSize / 1024) as integer
+                                        set outputText to outputText & "   📎 " & attachmentName & " (" & sizeInKB & " KB)" & return
+                                    on error
+                                        set outputText to outputText & "   📎 " & attachmentName & return
+                                    end try
+                                end repeat
+                            else
+                                set outputText to outputText & "   No attachments" & return
+                            end if
 
-                    set outputText to outputText & return
-                    set resultCount to resultCount + 1
-                end if
+                            exit repeat
+                        end if
+                    end try
+                end repeat
             end try
+
+            end if
         end repeat
+    end repeat
 
-        set outputText to outputText & "========================================" & return
-        set outputText to outputText & "FOUND: " & resultCount & " matching email(s)" & return
-        set outputText to outputText & "========================================" & return
-
-    on error errMsg
-        return "Error: " & errMsg
-    end try
+    if not foundMessage then
+        set outputText to "⚠ No email found with message ID: $escapedMessageId" & return
+        set outputText to outputText & "The message may have been moved or deleted." & return
+    end if
 
     return outputText
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to list attachments: $e',
+      'Check that Apple Mail is running. The message may have been moved or deleted.',
+    );
+  }
 }
+
+/// Handles the get-email-attachment operation.
+///
+/// Finds an email by message ID, saves the specified attachment to a
+/// temporary directory, and returns the file path.
+Future<CallToolResult> handleGetEmailAttachment(
+    Map<String, dynamic> args) async {
+  final messageId = args['message_id'] as String?;
+  if (messageId == null || messageId.isEmpty) {
+    return actionableError(
+      'message_id parameter is required for get-email-attachment.',
+      'Use list-emails or search-emails to find the message ID.',
+    );
+  }
+
+  final attachmentName = args['attachment_name'] as String?;
+  if (attachmentName == null || attachmentName.isEmpty) {
+    return actionableError(
+      'attachment_name parameter is required for get-email-attachment.',
+      'Use list-email-attachments to see available attachments for an email.',
+    );
+  }
+
+  final saveDirectory =
+      args['save_directory'] as String? ?? '/tmp/apple_mail_attachments';
+  final expandedPath = _expandHome(saveDirectory);
+
+  final escapedMessageId = escapeAppleScript(messageId);
+  final escapedAttachment = escapeAppleScript(attachmentName);
+  final escapedPath = escapeAppleScript(expandedPath);
+
+  final skipCondition = skipFoldersCondition();
+
+  final script = '''
+tell application "Mail"
+    set outputText to ""
+    set foundMessage to false
+    set foundAttachment to false
+
+    -- Ensure save directory exists
+    do shell script "mkdir -p " & quoted form of "$escapedPath"
+
+    set allAccounts to every account
+    repeat with anAccount in allAccounts
+        if foundAttachment then exit repeat
+
+        set accountMailboxes to every mailbox of anAccount
+        repeat with aMailbox in accountMailboxes
+            if foundAttachment then exit repeat
+
+            set mailboxName to name of aMailbox
+            $skipCondition
+
+            try
+                set mailboxMessages to every message of aMailbox
+                repeat with aMessage in mailboxMessages
+                    if foundAttachment then exit repeat
+
+                    try
+                        set msgId to message id of aMessage
+                        if msgId is "$escapedMessageId" then
+                            set foundMessage to true
+                            set messageSubject to subject of aMessage
+                            set msgAttachments to mail attachments of aMessage
+
+                            repeat with anAttachment in msgAttachments
+                                set attName to name of anAttachment
+
+                                if attName is "$escapedAttachment" then
+                                    set saveTo to "$escapedPath/" & attName
+                                    save anAttachment in POSIX file saveTo
+
+                                    set outputText to "✓ Attachment retrieved successfully!" & return & return
+                                    set outputText to outputText & "Email: " & messageSubject & return
+                                    set outputText to outputText & "Attachment: " & attName & return
+                                    set outputText to outputText & "Saved to: " & saveTo & return
+
+                                    set foundAttachment to true
+                                    exit repeat
+                                end if
+                            end repeat
+
+                            if not foundAttachment then
+                                set outputText to "⚠ Attachment not found: $escapedAttachment" & return
+                                set outputText to outputText & "Email: " & messageSubject & return
+                                set outputText to outputText & return & "Available attachments:" & return
+                                repeat with anAttachment in msgAttachments
+                                    set outputText to outputText & "  - " & name of anAttachment & return
+                                end repeat
+                            end if
+
+                            exit repeat
+                        end if
+                    end try
+                end repeat
+            end try
+
+            end if
+        end repeat
+    end repeat
+
+    if not foundMessage then
+        set outputText to "⚠ No email found with message ID: $escapedMessageId" & return
+        set outputText to outputText & "The message may have been moved or deleted." & return
+    end if
+
+    return outputText
+end tell
+''';
+
+  try {
+    final result = await runAppleScript(script);
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to get attachment: $e',
+      'Check that Apple Mail is running. The message may have been moved or deleted.',
+    );
+  }
+}
+
 
 /// Handles the get-statistics operation.
 ///
@@ -677,6 +830,7 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
   return {
     'save-email-attachment': handleSaveEmailAttachment,
     'list-email-attachments': handleListEmailAttachments,
+    'get-email-attachment': handleGetEmailAttachment,
     'get-statistics': handleGetStatistics,
     'export-emails': handleExportEmails,
   };

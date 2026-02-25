@@ -19,12 +19,16 @@ export 'src/operations/search_cross_account_batched.dart'
 export 'src/operations/classify_batched.dart'
     show runBatchedClassifyEmails;
 export 'src/operations/search_advanced_batched.dart'
-    show runBatchedGetEmailWithContent, runBatchedGetEmailThread;
+    show runBatchedGetEmailThread;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
-export 'src/operations/attachments_batched.dart'
-    show runBatchedListEmailAttachments;
 export 'src/batch_helpers.dart'
-    show batchList, fetchMessageIds, buildMessageIdSet, fetchAccountNames;
+    show
+        batchList,
+        fetchMessageIds,
+        fetchEmailFiles,
+        fetchEmailMetadata,
+        buildMessageIdSet,
+        fetchAccountNames;
 export 'src/progress_wrapper.dart'
     show
         slowOperations,
@@ -44,3 +48,27 @@ export 'src/core.dart'
 export 'src/session_operations.dart'
     show handleGetOutput, handleListSessions, handleCancelSession;
 export 'src/constants.dart';
+
+// New mdfind/emlx helper layer
+export 'src/mdfind_helpers.dart'
+    show
+        runMdfind,
+        runMdls,
+        runMdlsBatch,
+        buildMdfindQuery,
+        mdfindEmails,
+        resolveAccountPaths,
+        findMailboxDirectory,
+        parseMdlsOutput,
+        parseMdlsBatchOutput,
+        defaultMailDirectory,
+        emlxContentType;
+export 'src/emlx_parser.dart'
+    show
+        EmlxPathInfo,
+        EmlxContent,
+        parseEmlxPath,
+        parseEmlxMessageId,
+        parseEmlxContent,
+        parseEmlxContentFromString,
+        parseEmlxReadStatus;
