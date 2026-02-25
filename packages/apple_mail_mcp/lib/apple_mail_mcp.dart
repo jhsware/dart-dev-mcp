@@ -42,3 +42,27 @@ export 'src/core.dart'
 export 'src/session_operations.dart'
     show handleGetOutput, handleListSessions, handleCancelSession;
 export 'src/constants.dart';
+
+// New mdfind/emlx helper layer
+export 'src/mdfind_helpers.dart'
+    show
+        runMdfind,
+        runMdls,
+        runMdlsBatch,
+        buildMdfindQuery,
+        mdfindEmails,
+        resolveAccountPaths,
+        findMailboxDirectory,
+        parseMdlsOutput,
+        parseMdlsBatchOutput,
+        defaultMailDirectory,
+        emlxContentType;
+export 'src/emlx_parser.dart'
+    show
+        EmlxPathInfo,
+        EmlxContent,
+        parseEmlxPath,
+        parseEmlxMessageId,
+        parseEmlxContent,
+        parseEmlxContentFromString,
+        parseEmlxReadStatus;
