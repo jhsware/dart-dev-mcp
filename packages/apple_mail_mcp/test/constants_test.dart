@@ -94,7 +94,6 @@ void main() {
       expect(allEmailFields, contains('read_status'));
       expect(allEmailFields, contains('mailbox'));
       expect(allEmailFields, contains('account'));
-      expect(allEmailFields, contains('content'));
       expect(allEmailFields, contains('attachments'));
     });
   });

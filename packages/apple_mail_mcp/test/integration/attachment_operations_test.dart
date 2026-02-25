@@ -123,42 +123,62 @@ void main() {
   });
 
   group('list-email-attachments', () {
-    test('returns attachment listing for subject keyword', () async {
+    test('requires message_id parameter', () async {
+      final (result, _) = await timeOperation(
+        () => attachmentHandlers['list-email-attachments']!({}),
+      );
+
+      final text = extractText(result);
+      expect(text, contains('message_id parameter is required'));
+    });
+
+    test('returns not found for invalid message_id', () async {
       final (result, elapsed) = await timeOperation(
         () => attachmentHandlers['list-email-attachments']!({
-          'account': account,
-          'subject_keyword': 'the',
-          'max_results': 3,
+          'message_id': 'nonexistent-id-test-12345',
         }),
       );
 
-      assertSuccessResult(result);
       final text = extractText(result);
-      expect(text, contains('ATTACHMENTS FOR:'));
-      expect(text, contains('FOUND:'));
+      expect(
+        text.contains('No email found') || text.contains('not found'),
+        isTrue,
+        reason: 'Should indicate email not found, got: $text',
+      );
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
+  });
 
-    test('requires account parameter', () async {
+  group('save-email-attachment', () {
+    test('requires message_id parameter', () async {
       final (result, _) = await timeOperation(
-        () => attachmentHandlers['list-email-attachments']!({
-          'subject_keyword': 'test',
-        }),
+        () => attachmentHandlers['save-email-attachment']!({}),
       );
 
       final text = extractText(result);
-      expect(text, contains('account parameter is required'));
+      expect(text, contains('message_id parameter is required'));
+    });
+  });
+
+  group('get-email-attachment', () {
+    test('requires message_id parameter', () async {
+      final (result, _) = await timeOperation(
+        () => attachmentHandlers['get-email-attachment']!({}),
+      );
+
+      final text = extractText(result);
+      expect(text, contains('message_id parameter is required'));
     });
 
-    test('requires subject_keyword parameter', () async {
+    test('requires attachment_name parameter', () async {
       final (result, _) = await timeOperation(
-        () => attachmentHandlers['list-email-attachments']!({
-          'account': account,
+        () => attachmentHandlers['get-email-attachment']!({
+          'message_id': 'some-id',
         }),
       );
 
       final text = extractText(result);
-      expect(text, contains('subject_keyword parameter is required'));
+      expect(text, contains('attachment_name parameter is required'));
     });
   });
 

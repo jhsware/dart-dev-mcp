@@ -21,8 +21,6 @@ export 'src/operations/classify_batched.dart'
 export 'src/operations/search_advanced_batched.dart'
     show runBatchedGetEmailThread;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
-export 'src/operations/attachments_batched.dart'
-    show runBatchedListEmailAttachments;
 export 'src/batch_helpers.dart'
     show batchList, fetchMessageIds, buildMessageIdSet, fetchAccountNames;
 export 'src/progress_wrapper.dart'

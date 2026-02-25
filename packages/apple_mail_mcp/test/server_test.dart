@@ -30,14 +30,13 @@ void main() {
   });
 
   group('getSearchOperations', () {
-    test('returns a map with exactly 10 entries', () {
+    test('returns a map with exactly 9 entries', () {
       final ops = getSearchOperations();
-      expect(ops.length, equals(10));
+      expect(ops.length, equals(9));
     });
 
     test('contains all expected search operation keys', () {
       final ops = getSearchOperations();
-      expect(ops.containsKey('get-email-with-content'), isTrue);
       expect(ops.containsKey('search-emails'), isTrue);
       expect(ops.containsKey('search-by-sender'), isTrue);
       expect(ops.containsKey('search-email-content'), isTrue);
@@ -51,15 +50,16 @@ void main() {
   });
 
   group('getAttachmentOperations', () {
-    test('returns a map with exactly 4 entries', () {
+    test('returns a map with exactly 5 entries', () {
       final ops = getAttachmentOperations();
-      expect(ops.length, equals(4));
+      expect(ops.length, equals(5));
     });
 
     test('contains all expected attachment operation keys', () {
       final ops = getAttachmentOperations();
       expect(ops.containsKey('save-email-attachment'), isTrue);
       expect(ops.containsKey('list-email-attachments'), isTrue);
+      expect(ops.containsKey('get-email-attachment'), isTrue);
       expect(ops.containsKey('get-statistics'), isTrue);
       expect(ops.containsKey('export-emails'), isTrue);
     });

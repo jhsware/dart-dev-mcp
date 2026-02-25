@@ -20,7 +20,6 @@ import 'operations/search_cross_account_batched.dart';
 import 'operations/search_advanced_batched.dart';
 import 'operations/classify_batched.dart';
 import 'operations/attachments.dart';
-import 'operations/attachments_batched.dart';
 import 'progress_wrapper.dart';
 import 'session_operations.dart';
 
@@ -60,8 +59,7 @@ McpServer createAppleMailServer() {
     description:
         'Read-only Apple Mail operations for listing, searching, and exporting emails.\n\n'
         'For long-running operations (search-email-content, classify-emails, '
-        'get-email-with-content, get-email-thread, list-email-attachments, '
-        'save-email-attachment, etc.), '
+        'get-email-thread, etc.), '
         'a session_id is returned immediately. Use get_output with the session_id '
         'to poll for results. Progress notifications are sent during execution.',
     inputSchema: ToolInputSchema(
@@ -86,17 +84,13 @@ McpServer createAppleMailServer() {
           description:
               'Number of emails to return (for get-recent-emails, get-recent-from-sender). Default: 10',
         ),
-        'include_content': JsonSchema.boolean(
-          description:
-              'Include email content preview (for get-recent-emails, get-recent-from-sender). Default: false',
-        ),
         'include_counts': JsonSchema.boolean(
           description:
               'Include message counts per mailbox (for list-mailboxes). Default: true',
         ),
         'subject_keyword': JsonSchema.string(
           description:
-              'Subject keyword to search for (for get-email-with-content, get-email-thread, save-email-attachment, list-email-attachments, export-emails)',
+              'Subject keyword to search for (for get-email-thread, export-emails)',
         ),
         'query': JsonSchema.string(
           description:
@@ -116,11 +110,11 @@ McpServer createAppleMailServer() {
         ),
         'max_results': JsonSchema.integer(
           description:
-              'Maximum results to return (for search-emails, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, search-all-accounts, list-email-attachments). Default varies.',
+              'Maximum results to return (for search-emails, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, search-all-accounts). Default varies.',
         ),
         'max_content_length': JsonSchema.integer(
           description:
-              'Maximum characters of content preview (for get-email-with-content, search-by-sender, search-email-content, get-newsletters, get-recent-from-sender, search-all-accounts). Default varies.',
+              'Maximum characters of content preview (for get-email-by-id). Default: 5000.',
         ),
         'days_back': JsonSchema.integer(
           description:
@@ -140,11 +134,11 @@ McpServer createAppleMailServer() {
         ),
         'attachment_name': JsonSchema.string(
           description:
-              'Name of attachment to save (for save-email-attachment). Optional — saves all if omitted.',
+              'Name of attachment to save (for save-email-attachment, get-email-attachment). Optional for save-email-attachment — saves all if omitted.',
         ),
         'save_directory': JsonSchema.string(
           description:
-              'Directory path to save files (for save-email-attachment, export-emails). Default: ~/Desktop',
+              'Directory path to save files (for save-email-attachment, get-email-attachment, export-emails). Default: ~/Desktop',
         ),
         'scope': JsonSchema.string(
           description:
@@ -164,19 +158,19 @@ McpServer createAppleMailServer() {
         ),
         'start_date': JsonSchema.string(
           description:
-              'Start date filter in ISO format YYYY-MM-DD (for list-emails, search-emails, search-email-content, classify-emails). For list-emails: traverses backwards from this date.',
+              'Start date filter in ISO format YYYY-MM-DD (for list-emails, list-inbox-emails, search-emails, search-email-content, classify-emails). For list-emails: traverses backwards from this date.',
         ),
         'end_date': JsonSchema.string(
           description:
-              'End date filter in ISO format YYYY-MM-DD (for search-emails, search-email-content, classify-emails). Used with start_date to define a date range.',
+              'End date filter in ISO format YYYY-MM-DD (for list-emails, list-inbox-emails, search-emails, search-email-content, classify-emails). Used with start_date to define a date range.',
         ),
         'fields': JsonSchema.string(
           description:
-              'Comma-separated list of fields to return (for list-emails). Valid: sender, subject, date, message_id, read_status, mailbox, account, content, attachments. Default: "sender,subject,date,message_id"',
+              'Comma-separated list of fields to return (for list-emails). Valid: sender, subject, date, message_id, read_status, mailbox, account, attachments. Default: "sender,subject,date,message_id"',
         ),
         'message_id': JsonSchema.string(
           description:
-              'Apple Mail message ID for fetching a specific email (for get-email-by-id). Get this from list-emails or search results.',
+              'Apple Mail message ID for fetching a specific email (for get-email-by-id, save-email-attachment, list-email-attachments, get-email-attachment). Get this from list-emails or search results.',
         ),
         'search_operator': JsonSchema.string(
           description:
@@ -420,22 +414,6 @@ McpServer createAppleMailServer() {
             );
           }
           batchedHandler = runBatchedGetEmailThread;
-        } else if (operation == 'list-email-attachments') {
-          final account = args['account'] as String?;
-          if (account == null) {
-            return actionableError(
-              'account parameter is required for list-email-attachments.',
-              'Use list-accounts to see available accounts.',
-            );
-          }
-          final subjectKeyword = args['subject_keyword'] as String?;
-          if (subjectKeyword == null) {
-            return actionableError(
-              'subject_keyword parameter is required for list-email-attachments.',
-              'Provide a keyword to match the email subject.',
-            );
-          }
-          batchedHandler = runBatchedListEmailAttachments;
         } else {
           return actionableError(
             'Unknown batched operation "$operation".',
