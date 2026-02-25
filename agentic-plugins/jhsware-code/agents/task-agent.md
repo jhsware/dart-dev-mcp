@@ -6,8 +6,7 @@ disallowed-tools: Bash, Read, Write, Edit, Cowork
 permission-mode: dontAsk, acceptEdits
 model: opus
 skills:
-  - planner-do-task
-  - planner-do-parent-task
+  - planner-do-sub-task
   - code-index
 ---
 

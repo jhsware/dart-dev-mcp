@@ -6,9 +6,11 @@ model: opus
 ---
 ultrathink
 
-A parent task is an orchestration task that references tasks (called sub-tasks) via steps. These sub-tasks are the actual instructions and should be performed separately using the /planner-do-task skill combined with the output of the output of the get-subtask-prompt operation from the planner tool.
+A parent task is an orchestration task that references tasks (called sub-tasks) via steps. These sub-tasks are the actual instructions and should be performed separately using the /planner-do-sub-task {prompt} skill where the prompt is the output the get-subtask-prompt operation in the planner tool.
 
 When working on a parent task we update the status of the task and steps as we progress. Each step is marked started when we have marked the status of the referenced sub-task as started. When the sub-task status is set to merged or done we mark the step in the parent task as done. When all steps are marked done, we mark the parent task status as done.
+
+Make sure the status of sub-tasks (both status of task and steps) and sub-task memory is updated by the sub-task agent as it progresses.
 
 Make sure the task memory is updated as we progress.
 

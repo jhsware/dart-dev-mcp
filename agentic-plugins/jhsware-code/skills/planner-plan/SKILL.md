@@ -125,7 +125,7 @@ When adding steps to a parent task, you MUST follow this exact order:
 2. Then, add steps to the parent task using `add-step` with the `sub_task_id` parameter set to the corresponding sub-task's id
 3. Each parent task step title should match the sub-task title
 
-Without `sub_task_id`, the planner-do-task skill cannot use `get-subtask-prompt` to fetch the sub-task details, breaking the parent task execution flow.
+Without `sub_task_id`, the planner-do-parent-task skill cannot use `get-subtask-prompt` to fetch the sub-task details, breaking the parent task execution flow.
 
 ## Phase 4 — Verification
 
