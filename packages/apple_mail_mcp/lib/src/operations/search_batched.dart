@@ -20,7 +20,7 @@ const _batchSize = 200;
 ///
 /// Fetches message IDs, then processes in batches checking subject/sender
 /// against query keywords with support for all existing filters:
-/// has_attachments, read_status, subject_keyword, sender, include_content.
+/// has_attachments, read_status, subject_keyword, sender.
 Future<void> runBatchedSearchEmails({
   required Map<String, dynamic> args,
   required ProcessSession session,
@@ -33,7 +33,6 @@ Future<void> runBatchedSearchEmails({
   final sender = args['sender'] as String?;
   final hasAttachments = args['has_attachments'] as bool?;
   final readStatus = args['read_status'] as String? ?? 'all';
-  final includeContent = args['include_content'] as bool? ?? false;
   final maxResults = args['max_results'] as int? ?? 20;
   final offset = args['offset'] as int? ?? 0;
   final daysBack = args['days_back'] as int? ?? 0;
@@ -121,26 +120,6 @@ Future<void> runBatchedSearchEmails({
     conditionStr = 'true';
   }
 
-  // Content extraction script (only when include_content is true)
-  final contentScript = includeContent
-      ? '''
-                                try
-                                    set msgContent to content of aMessage
-                                    set AppleScript's text item delimiters to {return, linefeed}
-                                    set contentParts to text items of msgContent
-                                    set AppleScript's text item delimiters to " "
-                                    set cleanText to contentParts as string
-                                    set AppleScript's text item delimiters to ""
-                                    if length of cleanText > 300 then
-                                        set contentPreview to text 1 thru 300 of cleanText & "..."
-                                    else
-                                        set contentPreview to cleanText
-                                    end if
-                                on error
-                                    set contentPreview to "[Not available]"
-                                end try'''
-      : 'set contentPreview to ""';
-
   // Process in batches
   final batches = batchList(allIds, _batchSize);
   var matchedCount = 0;
@@ -181,8 +160,7 @@ tell application "Mail"
                                         set readIndicator to "unread"
                                     end if
                                     set mailboxName to name of currentMailbox
-                                    $contentScript
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & "|" & contentPreview & linefeed
+                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & linefeed
                                 end if
                             end if
                         end try
@@ -211,16 +189,11 @@ end tell
             final senderVal = parts[3];
             final date = parts[4];
             final mailboxName = parts[5];
-            final content =
-                parts.length > 6 ? parts.sublist(6).join('|') : '';
 
             batchOutput.writeln('$readIndicator $subject');
             batchOutput.writeln('   From: $senderVal');
             batchOutput.writeln('   Date: $date');
             batchOutput.writeln('   Mailbox: $mailboxName');
-            if (content.isNotEmpty) {
-              batchOutput.writeln('   Content: $content');
-            }
             batchOutput.writeln();
             resultCount++;
           }

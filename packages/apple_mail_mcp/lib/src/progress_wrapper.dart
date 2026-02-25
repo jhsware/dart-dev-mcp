@@ -43,8 +43,8 @@ const batchedOperations = {
   'search-all-accounts',
   'get-newsletters',
   'classify-emails',
-  'get-email-with-content',
   'get-email-thread',
+
   'list-email-attachments',
 };
 

@@ -1,4 +1,4 @@
-// Advanced search operations: content search, newsletters, threads, cross-account.
+// Advanced search operations: newsletters, threads, cross-account.
 //
 // Split from search.dart for maintainability.
 
@@ -6,142 +6,6 @@ import 'package:mcp_dart/mcp_dart.dart';
 
 import '../core.dart';
 import '../constants.dart';
-
-/// Handles the get-email-with-content operation.
-///
-/// Searches by subject keyword and returns with content preview.
-Future<CallToolResult> handleGetEmailWithContent(
-    Map<String, dynamic> args) async {
-  final account = args['account'] as String?;
-  if (account == null) {
-    return actionableError(
-      'account parameter is required for get-email-with-content.',
-      'Use list-accounts to see available accounts.',
-    );
-  }
-
-  final subjectKeyword = args['subject_keyword'] as String?;
-  if (subjectKeyword == null) {
-    return actionableError(
-      'subject_keyword parameter is required for get-email-with-content.',
-      'Provide a keyword to search in email subjects.',
-    );
-  }
-
-  final maxResults = args['max_results'] as int? ?? 5;
-  final maxContentLength = args['max_content_length'] as int? ?? 300;
-  final mailbox = args['mailbox'] as String? ?? 'INBOX';
-
-  final escapedKeyword = escapeAppleScript(subjectKeyword);
-  final escapedAccount = escapeAppleScript(account);
-  final escapedMailbox = escapeAppleScript(mailbox);
-
-  String mailboxScript;
-  String searchLocation;
-  if (mailbox == 'All') {
-    mailboxScript = '''
-            set allMailboxes to every mailbox of targetAccount
-            set searchMailboxes to allMailboxes
-''';
-    searchLocation = 'all mailboxes';
-  } else {
-    mailboxScript = '''
-            try
-                set searchMailbox to mailbox "$escapedMailbox" of targetAccount
-            on error
-                if "$escapedMailbox" is "INBOX" then
-                    set searchMailbox to mailbox "Inbox" of targetAccount
-                else
-                    error "Mailbox not found: $escapedMailbox"
-                end if
-            end try
-            set searchMailboxes to {searchMailbox}
-''';
-    searchLocation = mailbox;
-  }
-
-  final contentLimitCheck = maxContentLength > 0
-      ? 'if $maxContentLength > 0 and length of cleanText > $maxContentLength then\n                                    set contentPreview to text 1 thru $maxContentLength of cleanText & "..."\n                                else\n                                    set contentPreview to cleanText\n                                end if'
-      : 'set contentPreview to cleanText';
-
-  final script = '''
-$lowercaseHandler
-
-tell application "Mail"
-    set outputText to "SEARCH RESULTS FOR: $escapedKeyword" & return
-    set outputText to outputText & "Searching in: $searchLocation" & return & return
-    set resultCount to 0
-
-    try
-        set targetAccount to account "$escapedAccount"
-        $mailboxScript
-
-        repeat with currentMailbox in searchMailboxes
-            set mailboxMessages to every message of currentMailbox
-            set mailboxName to name of currentMailbox
-
-            repeat with aMessage in mailboxMessages
-                if resultCount >= $maxResults then exit repeat
-
-                try
-                    set messageSubject to subject of aMessage
-
-                    set lowerSubject to my lowercase(messageSubject)
-                    set lowerKeyword to my lowercase("$escapedKeyword")
-
-                    if lowerSubject contains lowerKeyword then
-                        set messageSender to sender of aMessage
-                        set messageDate to date received of aMessage
-                        set messageRead to read status of aMessage
-
-                        if messageRead then
-                            set readIndicator to "✓"
-                        else
-                            set readIndicator to "✉"
-                        end if
-
-                        set outputText to outputText & readIndicator & " " & messageSubject & return
-                        set outputText to outputText & "   From: " & messageSender & return
-                        set outputText to outputText & "   Date: " & (messageDate as string) & return
-                        set outputText to outputText & "   Mailbox: " & mailboxName & return
-
-                        try
-                            set msgContent to content of aMessage
-                            set AppleScript's text item delimiters to {return, linefeed}
-                            set contentParts to text items of msgContent
-                            set AppleScript's text item delimiters to " "
-                            set cleanText to contentParts as string
-                            set AppleScript's text item delimiters to ""
-
-                            $contentLimitCheck
-
-                            set outputText to outputText & "   Content: " & contentPreview & return
-                        on error
-                            set outputText to outputText & "   Content: [Not available]" & return
-                        end try
-
-                        set outputText to outputText & return
-                        set resultCount to resultCount + 1
-                    end if
-                end try
-            end repeat
-        end repeat
-
-        set outputText to outputText & "========================================" & return
-        set outputText to outputText & "FOUND: " & resultCount & " matching email(s)" & return
-        set outputText to outputText & "========================================" & return
-
-    on error errMsg
-        return "Error: " & errMsg
-    end try
-
-    return outputText
-end tell
-''';
-
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
-}
 
 /// Handles the get-newsletters operation.
 ///
@@ -151,32 +15,9 @@ Future<CallToolResult> handleGetNewsletters(
   final account = args['account'] as String?;
   final daysBack = args['days_back'] as int? ?? 7;
   final maxResults = args['max_results'] as int? ?? 25;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 500;
 
   final escapedAccount =
       account != null ? escapeAppleScript(account) : null;
-
-  final contentScript = includeContent
-      ? '''
-                                    try
-                                        set msgContent to content of aMessage
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-                                        if length of cleanText > $maxContentLength then
-                                            set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                        else
-                                            set contentPreview to cleanText
-                                        end if
-                                        set outputText to outputText & "   Content: " & contentPreview & return
-                                    on error
-                                        set outputText to outputText & "   Content: [Not available]" & return
-                                    end try
-'''
-      : '';
 
   final accountFilterStart = escapedAccount != null
       ? 'if accountName is "$escapedAccount" then'
@@ -240,7 +81,6 @@ tell application "Mail"
                                     set outputText to outputText & "   From: " & messageSender & return
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Account: " & accountName & return
-                                    $contentScript
                                     set outputText to outputText & return
                                     set resultCount to resultCount + 1
                                 end if
@@ -375,24 +215,6 @@ tell application "Mail"
                 set outputText to outputText & readIndicator & " " & messageSubject & return
                 set outputText to outputText & "   From: " & messageSender & return
                 set outputText to outputText & "   Date: " & (messageDate as string) & return
-
-                try
-                    set msgContent to content of aMessage
-                    set AppleScript's text item delimiters to {return, linefeed}
-                    set contentParts to text items of msgContent
-                    set AppleScript's text item delimiters to " "
-                    set cleanText to contentParts as string
-                    set AppleScript's text item delimiters to ""
-
-                    if length of cleanText > 150 then
-                        set contentPreview to text 1 thru 150 of cleanText & "..."
-                    else
-                        set contentPreview to cleanText
-                    end if
-
-                    set outputText to outputText & "   Preview: " & contentPreview & return
-                end try
-
                 set outputText to outputText & return
             end try
         end repeat
@@ -418,8 +240,6 @@ Future<CallToolResult> handleSearchAllAccounts(
   final sender = args['sender'] as String?;
   final daysBack = args['days_back'] as int? ?? 7;
   final maxResults = args['max_results'] as int? ?? 30;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 400;
 
   // Build date filter
   final dateFilter = daysBack > 0
@@ -450,23 +270,6 @@ Future<CallToolResult> handleSearchAllAccounts(
             if lowerSender does not contain lowerSenderFilter then
                 set skipMessage to true
             end if
-'''
-      : '';
-
-  // Build content retrieval
-  final contentRetrieval = includeContent
-      ? '''
-            try
-                set messageContent to content of msg
-                if length of messageContent > $maxContentLength then
-                    set messageContent to text 1 thru $maxContentLength of messageContent & "..."
-                end if
-                set messageContent to my replaceText(messageContent, return, " ")
-                set messageContent to my replaceText(messageContent, linefeed, " ")
-            on error
-                set messageContent to "(Content unavailable)"
-            end try
-            set emailRecord to emailRecord & "Content: " & messageContent & linefeed
 '''
       : '';
 
@@ -541,7 +344,6 @@ tell application "Mail"
                         else
                             set emailRecord to emailRecord & "Status: UNREAD" & linefeed
                         end if
-                        $contentRetrieval
 
                         set end of allResults to {emailDate:messageDate, emailText:emailRecord}
                     end if
@@ -603,7 +405,6 @@ end sortByDate
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
     getAdvancedSearchOperations() {
   return {
-    'get-email-with-content': handleGetEmailWithContent,
     'get-newsletters': handleGetNewsletters,
     'get-email-thread': handleGetEmailThread,
     'search-all-accounts': handleSearchAllAccounts,

@@ -32,8 +32,6 @@ Future<void> runBatchedSearchBySender({
   final account = args['account'] as String?;
   final daysBack = args['days_back'] as int? ?? 30;
   final maxResults = args['max_results'] as int? ?? 20;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 500;
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
   final offset = args['offset'] as int? ?? 0;
 
@@ -91,25 +89,6 @@ Future<void> runBatchedSearchBySender({
       final batch = batches[i];
       final idSet = buildMessageIdSet(batch);
 
-      final contentScript = includeContent
-          ? '''
-                                try
-                                    set msgContent to content of aMessage
-                                    set AppleScript's text item delimiters to {return, linefeed}
-                                    set contentParts to text items of msgContent
-                                    set AppleScript's text item delimiters to " "
-                                    set cleanText to contentParts as string
-                                    set AppleScript's text item delimiters to ""
-                                    if length of cleanText > $maxContentLength then
-                                        set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                    else
-                                        set contentPreview to cleanText
-                                    end if
-                                on error
-                                    set contentPreview to "[Not available]"
-                                end try'''
-          : 'set contentPreview to ""';
-
       final script = '''
 $lowercaseHandler
 
@@ -136,8 +115,7 @@ tell application "Mail"
                                         set readIndicator to "unread"
                                     end if
                                     set mailboxName to name of currentMailbox
-                                    $contentScript
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & "|" & contentPreview & linefeed
+                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & linefeed
                                 end if
                             end if
                         end try
@@ -162,11 +140,6 @@ end tell
               batchOutput.writeln('   Date: ${parts[4]}');
               batchOutput.writeln('   Account: $acctName');
               batchOutput.writeln('   Mailbox: ${parts[5]}');
-              final content =
-                  parts.length > 6 ? parts.sublist(6).join('|') : '';
-              if (content.isNotEmpty) {
-                batchOutput.writeln('   Content: $content');
-              }
               batchOutput.writeln();
               resultCount++;
             }
@@ -204,8 +177,6 @@ Future<void> runBatchedSearchAllAccounts({
   final sender = args['sender'] as String?;
   final daysBack = args['days_back'] as int? ?? 7;
   final maxResults = args['max_results'] as int? ?? 30;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 400;
 
   session.chunks.add(
     '=== Cross-Account Search Results ===\n---\n\n',
@@ -253,25 +224,6 @@ Future<void> runBatchedSearchAllAccounts({
     final filterCondition =
         filterParts.isEmpty ? 'true' : filterParts.join(' and ');
 
-    final contentScript = includeContent
-        ? '''
-                                try
-                                    set msgContent to content of aMessage
-                                    set AppleScript's text item delimiters to {return, linefeed}
-                                    set contentParts to text items of msgContent
-                                    set AppleScript's text item delimiters to " "
-                                    set cleanText to contentParts as string
-                                    set AppleScript's text item delimiters to ""
-                                    if length of cleanText > $maxContentLength then
-                                        set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                    else
-                                        set contentPreview to cleanText
-                                    end if
-                                on error
-                                    set contentPreview to "[Not available]"
-                                end try'''
-        : 'set contentPreview to ""';
-
     final batches = batchList(allIds, _batchSize);
     for (var i = 0; i < batches.length; i++) {
       if (session.isComplete) return;
@@ -306,8 +258,7 @@ tell application "Mail"
                                     else
                                         set readIndicator to "unread"
                                     end if
-                                    $contentScript
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & contentPreview & linefeed
+                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & linefeed
                                 end if
                             end if
                         end try
@@ -332,11 +283,6 @@ end tell
               batchOutput.writeln('From: ${parts[3]}');
               batchOutput.writeln('Date: ${parts[4]}');
               batchOutput.writeln('Status: $readStatus');
-              final content =
-                  parts.length > 5 ? parts.sublist(5).join('|') : '';
-              if (content.isNotEmpty) {
-                batchOutput.writeln('Content: $content');
-              }
               batchOutput.writeln('\n---');
             }
           }
@@ -375,8 +321,6 @@ Future<void> runBatchedGetNewsletters({
   final account = args['account'] as String?;
   final daysBack = args['days_back'] as int? ?? 7;
   final maxResults = args['max_results'] as int? ?? 25;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 500;
 
   // Build newsletter pattern conditions
   final platformChecks = newsletterPlatformPatterns
@@ -426,24 +370,6 @@ Future<void> runBatchedGetNewsletters({
     if (allIds.isEmpty) continue;
 
     final escapedAccount = escapeAppleScript(acctName);
-    final contentScript = includeContent
-        ? '''
-                                try
-                                    set msgContent to content of aMessage
-                                    set AppleScript's text item delimiters to {return, linefeed}
-                                    set contentParts to text items of msgContent
-                                    set AppleScript's text item delimiters to " "
-                                    set cleanText to contentParts as string
-                                    set AppleScript's text item delimiters to ""
-                                    if length of cleanText > $maxContentLength then
-                                        set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                    else
-                                        set contentPreview to cleanText
-                                    end if
-                                on error
-                                    set contentPreview to "[Not available]"
-                                end try'''
-        : 'set contentPreview to ""';
 
     final batches = batchList(allIds, _batchSize);
     for (var i = 0; i < batches.length; i++) {
@@ -478,8 +404,7 @@ tell application "Mail"
                                     else
                                         set readIndicator to "unread"
                                     end if
-                                    $contentScript
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & contentPreview & linefeed
+                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & linefeed
                                 end if
                             end if
                         end try
@@ -503,11 +428,6 @@ end tell
               batchOutput.writeln('   From: ${parts[3]}');
               batchOutput.writeln('   Date: ${parts[4]}');
               batchOutput.writeln('   Account: $acctName');
-              final content =
-                  parts.length > 5 ? parts.sublist(5).join('|') : '';
-              if (content.isNotEmpty) {
-                batchOutput.writeln('   Content: $content');
-              }
               batchOutput.writeln();
             }
           }

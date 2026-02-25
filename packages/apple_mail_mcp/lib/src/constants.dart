@@ -83,6 +83,6 @@ const List<String> allEmailFields = [
   'read_status',
   'mailbox',
   'account',
-  'content',
   'attachments',
+
 ];

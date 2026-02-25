@@ -19,7 +19,7 @@ export 'src/operations/search_cross_account_batched.dart'
 export 'src/operations/classify_batched.dart'
     show runBatchedClassifyEmails;
 export 'src/operations/search_advanced_batched.dart'
-    show runBatchedGetEmailWithContent, runBatchedGetEmailThread;
+    show runBatchedGetEmailThread;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
 export 'src/operations/attachments_batched.dart'
     show runBatchedListEmailAttachments;

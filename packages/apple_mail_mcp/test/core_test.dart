@@ -52,8 +52,8 @@ void main() {
 
       expect(result[1]['read'], equals('true'));
       expect(result[1]['subject'], equals('Test Subject Two'));
-      expect(result[1]['preview'], equals('This is a preview.'));
     });
+
 
     test('returns empty list for empty input', () {
       expect(parseEmailList(''), isEmpty);
@@ -212,14 +212,9 @@ void main() {
       expect(script, contains('on error'));
     });
 
-    test('contentPreviewScript contains truncation logic', () {
-      final script = contentPreviewScript(maxLength: 300);
-      expect(script, contains('300'));
-      expect(script, contains('content of aMessage'));
-      expect(script, contains('contentPreview'));
-    });
 
     test('dateCutoffScript returns empty for non-positive daysBack', () {
+
       expect(dateCutoffScript(daysBack: 0), equals(''));
       expect(dateCutoffScript(daysBack: -1), equals(''));
     });

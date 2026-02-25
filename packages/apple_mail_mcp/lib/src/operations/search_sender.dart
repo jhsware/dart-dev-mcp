@@ -23,8 +23,6 @@ Future<CallToolResult> handleSearchBySender(
   final account = args['account'] as String?;
   final daysBack = args['days_back'] as int? ?? 30;
   final maxResults = args['max_results'] as int? ?? 20;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 500;
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
   final offset = args['offset'] as int? ?? 0;
 
@@ -36,27 +34,6 @@ Future<CallToolResult> handleSearchBySender(
   final dateFilterScript =
       daysBack > 0 ? 'set targetDate to (current date) - ($daysBack * days)' : '';
   final dateCheck = daysBack > 0 ? 'and messageDate > targetDate' : '';
-
-  final contentScript = includeContent
-      ? '''
-                                    try
-                                        set msgContent to content of aMessage
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-                                        if $maxContentLength > 0 and length of cleanText > $maxContentLength then
-                                            set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                        else
-                                            set contentPreview to cleanText
-                                        end if
-                                        set outputText to outputText & "   Content: " & contentPreview & return
-                                    on error
-                                        set outputText to outputText & "   Content: [Not available]" & return
-                                    end try
-'''
-      : '';
 
   String mailboxLoopStart;
   String mailboxLoopEnd;
@@ -161,9 +138,6 @@ tell application "Mail"
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Account: " & accountName & return
                                     set outputText to outputText & "   Mailbox: " & mailboxName & return
-
-                                    $contentScript
-
                                     set outputText to outputText & return
                                     set resultCount to resultCount + 1
                                 end if
@@ -208,8 +182,6 @@ Future<CallToolResult> handleGetRecentFromSender(
   final account = args['account'] as String?;
   final timeRange = args['time_range'] as String? ?? 'week';
   final maxResults = args['max_results'] as int? ?? 15;
-  final includeContent = args['include_content'] as bool? ?? true;
-  final maxContentLength = args['max_content_length'] as int? ?? 400;
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
 
   final daysBack = timeRanges[timeRange.toLowerCase()] ?? 7;
@@ -218,27 +190,6 @@ Future<CallToolResult> handleGetRecentFromSender(
   final escapedSender = escapeAppleScript(sender);
   final escapedMailbox = escapeAppleScript(mailbox);
   final searchAllMailboxes = mailbox == 'All';
-
-  final contentScript = includeContent
-      ? '''
-                                    try
-                                        set msgContent to content of aMessage
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-                                        if length of cleanText > $maxContentLength then
-                                            set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                        else
-                                            set contentPreview to cleanText
-                                        end if
-                                        set outputText to outputText & "   Content: " & contentPreview & return
-                                    on error
-                                        set outputText to outputText & "   Content: [Not available]" & return
-                                    end try
-'''
-      : '';
 
   String dateFilter = '';
   String dateCheck = '';
@@ -351,7 +302,6 @@ tell application "Mail"
                                     set outputText to outputText & "   From: " & messageSender & return
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Account: " & accountName & return
-                                    $contentScript
                                     set outputText to outputText & return
                                     set resultCount to resultCount + 1
                                 end if

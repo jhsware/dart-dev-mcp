@@ -1,6 +1,6 @@
-// Batched handlers for get-email-with-content and get-email-thread operations.
+// Batched handler for get-email-thread operation.
 //
-// These operations previously ran synchronously, scanning the entire mailbox
+// This operation previously ran synchronously, scanning the entire mailbox
 // in a single AppleScript call. When called via MCP by an LLM, the
 // client-side timeout (30-60s) triggers before the AppleScript finishes.
 //
@@ -16,177 +16,6 @@ import '../constants.dart';
 
 /// Batch size for subject-based searches (fast, so large batches).
 const _batchSize = 200;
-
-/// Batched get-email-with-content handler.
-///
-/// Searches by subject keyword and returns matching emails with content
-/// previews. Uses fetchMessageIds + batch processing to avoid timeouts.
-Future<void> runBatchedGetEmailWithContent({
-  required Map<String, dynamic> args,
-  required ProcessSession session,
-  required RequestHandlerExtra extra,
-}) async {
-  final account = args['account'] as String;
-  final subjectKeyword = args['subject_keyword'] as String;
-  final maxResults = args['max_results'] as int? ?? 5;
-  final maxContentLength = args['max_content_length'] as int? ?? 300;
-  final mailbox = args['mailbox'] as String? ?? 'INBOX';
-
-  final escapedAccount = escapeAppleScript(account);
-  final escapedMailbox = escapeAppleScript(mailbox);
-  final escapedKeyword = escapeAppleScript(subjectKeyword);
-
-  // Write header chunk
-  session.chunks.add(
-    'SEARCH RESULTS FOR: $subjectKeyword\n'
-    'Searching in: $mailbox\n\n',
-  );
-
-  // Fetch message IDs
-  await extra.sendProgress(0, message: 'Fetching message IDs...');
-  final allIds = await fetchMessageIds(
-    account: account,
-    mailbox: mailbox,
-  );
-
-  if (allIds.isEmpty) {
-    session.chunks.add(
-      '========================================\n'
-      'FOUND: 0 matching email(s)\n'
-      '========================================\n',
-    );
-    session.isComplete = true;
-    await extra.sendProgress(1, message: 'get-email-with-content completed');
-    return;
-  }
-
-  await extra.sendProgress(0,
-      message: 'Found ${allIds.length} messages to search');
-
-  // Content truncation script
-  final contentLimitCheck = maxContentLength > 0
-      ? '''
-                                    if length of cleanText > $maxContentLength then
-                                        set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                    else
-                                        set contentPreview to cleanText
-                                    end if'''
-      : '                                    set contentPreview to cleanText';
-
-  // Process in batches
-  final batches = batchList(allIds, _batchSize);
-  var matchedCount = 0;
-  var resultCount = 0;
-  var scanned = 0;
-
-  for (var i = 0; i < batches.length; i++) {
-    if (session.isComplete) return; // cancelled
-    if (resultCount >= maxResults) break;
-
-    final batch = batches[i];
-    final idSet = buildMessageIdSet(batch);
-
-    final script = '''
-$lowercaseHandler
-
-tell application "Mail"
-    set outputText to ""
-    set targetAccount to account "$escapedAccount"
-    set idSet to $idSet
-
-    ${_mailboxLoopStart(mailbox, escapedMailbox)}
-                    set mailboxMessages to every message of currentMailbox
-                    repeat with aMessage in mailboxMessages
-                        try
-                            set msgId to message id of aMessage
-                            if msgId is in idSet then
-                                set messageSubject to subject of aMessage
-                                set lowerSubject to my lowercase(messageSubject)
-                                set lowerKeyword to my lowercase("$escapedKeyword")
-                                if lowerSubject contains lowerKeyword then
-                                    set messageSender to sender of aMessage
-                                    set messageDate to date received of aMessage
-                                    set messageRead to read status of aMessage
-                                    if messageRead then
-                                        set readIndicator to "read"
-                                    else
-                                        set readIndicator to "unread"
-                                    end if
-                                    set mailboxName to name of currentMailbox
-                                    try
-                                        set msgContent to content of aMessage
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-$contentLimitCheck
-                                    on error
-                                        set contentPreview to "[Not available]"
-                                    end try
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & "|" & contentPreview & linefeed
-                                end if
-                            end if
-                        end try
-                    end repeat
-    ${_mailboxLoopEnd()}
-
-    return outputText
-end tell
-''';
-
-    try {
-      final result = await runAppleScript(script);
-      final lines = _parseLines(result);
-
-      final batchOutput = StringBuffer();
-      for (final line in lines) {
-        final parts = line.split('|');
-        if (parts.length >= 6) {
-          matchedCount++;
-          if (resultCount < maxResults) {
-            final readIndicator = parts[1] == 'read' ? '✓' : '✉';
-            final subject = parts[2];
-            final senderVal = parts[3];
-            final date = parts[4];
-            final mailboxName = parts[5];
-            final content =
-                parts.length > 6 ? parts.sublist(6).join('|') : '';
-
-            batchOutput.writeln('$readIndicator $subject');
-            batchOutput.writeln('   From: $senderVal');
-            batchOutput.writeln('   Date: $date');
-            batchOutput.writeln('   Mailbox: $mailboxName');
-            if (content.isNotEmpty) {
-              batchOutput.writeln('   Content: $content');
-            }
-            batchOutput.writeln();
-            resultCount++;
-          }
-        }
-      }
-
-      if (batchOutput.isNotEmpty) {
-        session.chunks.add(batchOutput.toString());
-      }
-    } catch (e) {
-      session.chunks.add('Warning: Batch ${i + 1} error: $e\n');
-    }
-
-    scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Scanned $scanned of ${allIds.length} messages, '
-            'found $matchedCount matches');
-  }
-
-  session.chunks.add(
-    '========================================\n'
-    'FOUND: $matchedCount matching email(s)\n'
-    '========================================\n',
-  );
-  session.isComplete = true;
-  await extra.sendProgress(1, message: 'get-email-with-content completed');
-}
 
 /// Batched get-email-thread handler.
 ///
@@ -288,22 +117,7 @@ tell application "Mail"
                                     else
                                         set readIndicator to "unread"
                                     end if
-                                    try
-                                        set msgContent to content of aMessage
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-                                        if length of cleanText > 150 then
-                                            set contentPreview to text 1 thru 150 of cleanText & "..."
-                                        else
-                                            set contentPreview to cleanText
-                                        end if
-                                    on error
-                                        set contentPreview to "[Not available]"
-                                    end try
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & contentPreview & linefeed
+                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & linefeed
                                 end if
                             end if
                         end try
@@ -328,15 +142,10 @@ end tell
             final subject = parts[2];
             final senderVal = parts[3];
             final date = parts[4];
-            final content =
-                parts.length > 5 ? parts.sublist(5).join('|') : '';
 
             batchOutput.writeln('$readIndicator $subject');
             batchOutput.writeln('   From: $senderVal');
             batchOutput.writeln('   Date: $date');
-            if (content.isNotEmpty) {
-              batchOutput.writeln('   Preview: $content');
-            }
             batchOutput.writeln();
           }
         }

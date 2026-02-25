@@ -78,22 +78,6 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
       case 'account':
         fieldExtractions.add(
             'set emailRecord to emailRecord & "Account: " & accountName & linefeed');
-      case 'content':
-        fieldExtractions.add('''
-                        try
-                            set msgContent to content of aMessage
-                            set AppleScript's text item delimiters to {return, linefeed}
-                            set contentParts to text items of msgContent
-                            set AppleScript's text item delimiters to " "
-                            set cleanText to contentParts as string
-                            set AppleScript's text item delimiters to ""
-                            if length of cleanText > 500 then
-                                set cleanText to text 1 thru 500 of cleanText & "..."
-                            end if
-                            set emailRecord to emailRecord & "Content: " & cleanText & linefeed
-                        on error
-                            set emailRecord to emailRecord & "Content: [Not available]" & linefeed
-                        end try''');
       case 'attachments':
         fieldExtractions.add('''
                         try
@@ -297,8 +281,6 @@ end tell
           current['mailbox'] = trimmed.substring(9).trim();
         } else if (trimmed.startsWith('Account: ')) {
           current['account'] = trimmed.substring(9).trim();
-        } else if (trimmed.startsWith('Content: ')) {
-          current['content'] = trimmed.substring(9).trim();
         } else if (trimmed.startsWith('Attachments: ')) {
           current['attachments'] = trimmed.substring(13).trim();
         }
@@ -681,12 +663,7 @@ Future<CallToolResult> handleGetRecentEmails(
   }
 
   final count = args['count'] as int? ?? 10;
-  final includeContent = args['include_content'] as bool? ?? false;
   final escapedAccount = escapeAppleScript(account);
-
-  final contentScript = includeContent
-      ? contentPreviewScript(maxLength: 200, outputVar: 'outputText')
-      : '';
 
   final script = '''
 tell application "Mail"
@@ -717,8 +694,6 @@ tell application "Mail"
                 set outputText to outputText & readIndicator & " " & messageSubject & return
                 set outputText to outputText & "   From: " & messageSender & return
                 set outputText to outputText & "   Date: " & (messageDate as string) & return
-
-                $contentScript
 
                 set outputText to outputText & return
             end try

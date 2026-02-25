@@ -147,8 +147,8 @@ Future<CallToolResult> handleSearchEmails(
   final sender = args['sender'] as String?;
   final hasAttachments = args['has_attachments'] as bool?;
   final readStatus = args['read_status'] as String? ?? 'all';
-  final includeContent = args['include_content'] as bool? ?? false;
   final maxResults = args['max_results'] as int? ?? 20;
+
   final offset = args['offset'] as int? ?? 0;
   final daysBack = args['days_back'] as int? ?? 0;
   final startDate = args['start_date'] as String?;
@@ -250,27 +250,6 @@ Future<CallToolResult> handleSearchEmails(
     conditionStr = 'true';
   }
 
-  final contentScript = includeContent
-      ? '''
-                                    try
-                                        set msgContent to content of aMessage
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-                                        if length of cleanText > 300 then
-                                            set contentPreview to text 1 thru 300 of cleanText & "..."
-                                        else
-                                            set contentPreview to cleanText
-                                        end if
-                                        set outputText to outputText & "   Content: " & contentPreview & return
-                                    on error
-                                        set outputText to outputText & "   Content: [Not available]" & return
-                                    end try
-'''
-      : '';
-
   String mailboxScript;
   if (mailbox == 'All') {
     mailboxScript = '''
@@ -359,10 +338,8 @@ tell application "Mail"
                                     set outputText to outputText & "   From: " & messageSender & return
                                     set outputText to outputText & "   Date: " & (messageDate as string) & return
                                     set outputText to outputText & "   Mailbox: " & mailboxName & return
-
-                                    $contentScript
-
                                     set outputText to outputText & return
+
                                     set resultCount to resultCount + 1
                                 end if
                             end if
@@ -427,7 +404,6 @@ Future<CallToolResult> handleSearchEmailContent(
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
   final searchBody = args['search_body'] as bool? ?? true;
   final maxResults = args['max_results'] as int? ?? 10;
-  final maxContentLength = args['max_content_length'] as int? ?? 600;
   final offset = args['offset'] as int? ?? 0;
   final daysBack = args['days_back'] as int? ?? 0;
   final startDate = args['start_date'] as String?;
@@ -549,21 +525,6 @@ tell application "Mail"
                             set outputText to outputText & "   From: " & messageSender & return
                             set outputText to outputText & "   Date: " & (messageDate as string) & return
                             set outputText to outputText & "   Mailbox: $escapedMailbox" & return
-                            try
-                                set AppleScript's text item delimiters to {return, linefeed}
-                                set contentParts to text items of msgContent
-                                set AppleScript's text item delimiters to " "
-                                set cleanText to contentParts as string
-                                set AppleScript's text item delimiters to ""
-                                if length of cleanText > $maxContentLength then
-                                    set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                else
-                                    set contentPreview to cleanText
-                                end if
-                                set outputText to outputText & "   Content: " & contentPreview & return
-                            on error
-                                set outputText to outputText & "   Content: [Not available]" & return
-                            end try
                             set outputText to outputText & return
                             set resultCount to resultCount + 1
                         end if

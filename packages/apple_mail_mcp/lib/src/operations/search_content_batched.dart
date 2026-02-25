@@ -40,7 +40,6 @@ Future<void> runBatchedSearchEmailContent({
   final mailbox = args['mailbox'] as String? ?? 'INBOX';
   final searchBody = args['search_body'] as bool? ?? true;
   final maxResults = args['max_results'] as int? ?? 10;
-  final maxContentLength = args['max_content_length'] as int? ?? 600;
   final offset = args['offset'] as int? ?? 0;
   final daysBack = args['days_back'] as int? ?? 0;
   final startDate = args['start_date'] as String?;
@@ -143,7 +142,6 @@ Future<void> runBatchedSearchEmailContent({
     searchField: searchField,
     searchBody: searchBody,
     maxResults: maxResults,
-    maxContentLength: maxContentLength,
     offset: offset,
     session: session,
     extra: extra,
@@ -269,7 +267,6 @@ Future<int> _runPhase2({
   required String searchField,
   required bool searchBody,
   required int maxResults,
-  required int maxContentLength,
   required int offset,
   required ProcessSession session,
   required RequestHandlerExtra extra,
@@ -329,22 +326,7 @@ tell application "Mail"
                                     else
                                         set readIndicator to "unread"
                                     end if
-                                    -- Clean content for preview
-                                    try
-                                        set AppleScript's text item delimiters to {return, linefeed}
-                                        set contentParts to text items of msgContent
-                                        set AppleScript's text item delimiters to " "
-                                        set cleanText to contentParts as string
-                                        set AppleScript's text item delimiters to ""
-                                        if length of cleanText > $maxContentLength then
-                                            set contentPreview to text 1 thru $maxContentLength of cleanText & "..."
-                                        else
-                                            set contentPreview to cleanText
-                                        end if
-                                    on error
-                                        set contentPreview to "[Not available]"
-                                    end try
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & contentPreview & linefeed
+                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & linefeed
                                 end if
                             end if
                         end try
@@ -372,16 +354,11 @@ end tell
             final subject = parts[2];
             final sender = parts[3];
             final date = parts[4];
-            final content =
-                parts.length > 5 ? parts.sublist(5).join('|') : '';
 
             batchOutput.writeln('$readIndicator $subject');
             batchOutput.writeln('   From: $sender');
             batchOutput.writeln('   Date: $date');
             batchOutput.writeln('   Mailbox: $mailbox');
-            if (content.isNotEmpty) {
-              batchOutput.writeln('   Content: $content');
-            }
             batchOutput.writeln();
             resultCount++;
           }

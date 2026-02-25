@@ -404,22 +404,6 @@ McpServer createAppleMailServer() {
             );
           }
           batchedHandler = runBatchedClassifyEmails;
-        } else if (operation == 'get-email-with-content') {
-          final account = args['account'] as String?;
-          if (account == null) {
-            return actionableError(
-              'account parameter is required for get-email-with-content.',
-              'Use list-accounts to see available accounts.',
-            );
-          }
-          final subjectKeyword = args['subject_keyword'] as String?;
-          if (subjectKeyword == null) {
-            return actionableError(
-              'subject_keyword parameter is required for get-email-with-content.',
-              'Provide a keyword to search in email subjects.',
-            );
-          }
-          batchedHandler = runBatchedGetEmailWithContent;
         } else if (operation == 'get-email-thread') {
           final account = args['account'] as String?;
           if (account == null) {
