@@ -1,26 +1,23 @@
 // Batched handlers for search-emails and multi-search operations.
 //
-// Single-phase batching: fetch message IDs, then process in batches
-// of 200 with subject/sender matching. Unlike search-email-content,
-// these operations don't need body content so a single phase suffices.
-//
-// Each batch writes results to session chunks progressively, enabling
-// polling via get_output. Cancellation is checked between batches.
+// Uses mdfind (Spotlight CLI) for fast message discovery with keyword,
+// sender, and date filtering pushed into the Spotlight query. Metadata
+// is extracted via mdls and .emlx parsing.
 
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
-import '../core.dart';
 import '../batch_helpers.dart';
+import '../mdfind_helpers.dart';
 
-/// Batch size for subject/sender searches (fast, so large batches).
-const _batchSize = 200;
+/// Batch size for metadata fetching.
+const _metadataBatchSize = 100;
 
 /// Batched search-emails handler.
 ///
-/// Fetches message IDs, then processes in batches checking subject/sender
-/// against query keywords with support for all existing filters:
-/// has_attachments, read_status, subject_keyword, sender.
+/// Uses mdfind to find matching .emlx files, then fetches metadata
+/// and applies Dart-side post-filters for read_status, has_attachments,
+/// subject_keyword, and sender exact match.
 Future<void> runBatchedSearchEmails({
   required Map<String, dynamic> args,
   required ProcessSession session,
@@ -41,9 +38,6 @@ Future<void> runBatchedSearchEmails({
   final searchOperator = args['search_operator'] as String? ?? 'or';
   final searchField = args['search_field'] as String? ?? 'all';
 
-  final escapedAccount = escapeAppleScript(account);
-  final escapedMailbox = escapeAppleScript(mailbox);
-
   // Write header chunk
   session.chunks.add(
     'SEARCH RESULTS\n\n'
@@ -51,17 +45,44 @@ Future<void> runBatchedSearchEmails({
     'Account: $account\n\n',
   );
 
-  // Fetch message IDs with date filtering
-  await extra.sendProgress(0, message: 'Fetching message IDs...');
-  final allIds = await fetchMessageIds(
-    account: account,
-    mailbox: mailbox,
-    daysBack: daysBack,
-    startDate: startDate,
-    endDate: endDate,
-  );
+  // Build mdfind query with keyword filters
+  await extra.sendProgress(0, message: 'Searching emails via Spotlight...');
 
-  if (allIds.isEmpty) {
+  List<String> files;
+  try {
+    if (query != null && query.isNotEmpty) {
+      final keywords =
+          query.split(' ').where((k) => k.trim().isNotEmpty).toList();
+
+      // Build keyword conditions based on search field and operator
+      files = await _searchWithKeywords(
+        account: account,
+        mailbox: mailbox,
+        keywords: keywords,
+        searchField: searchField,
+        searchOperator: searchOperator,
+        daysBack: daysBack,
+        startDate: startDate,
+        endDate: endDate,
+      );
+    } else {
+      // No query — just date/scope filtering
+      files = await fetchEmailFiles(
+        account: account,
+        mailbox: mailbox,
+        daysBack: daysBack,
+        startDate: startDate,
+        endDate: endDate,
+      );
+    }
+  } catch (e) {
+    session.chunks.add('Error searching: $e\n');
+    session.isComplete = true;
+    await extra.sendProgress(1, message: 'search-emails completed');
+    return;
+  }
+
+  if (files.isEmpty) {
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 matching email(s), showing 0 (offset: $offset)\n'
@@ -73,55 +94,10 @@ Future<void> runBatchedSearchEmails({
   }
 
   await extra.sendProgress(0,
-      message: 'Found ${allIds.length} messages to search');
+      message: 'Found ${files.length} messages, fetching metadata...');
 
-  // Build query condition for AppleScript
-  String queryCondition = '';
-  if (query != null) {
-    final keywords =
-        query.split(' ').where((k) => k.trim().isNotEmpty).toList();
-    queryCondition = _buildQueryCondition(
-      keywords: keywords,
-      searchOperator: searchOperator,
-      searchField: searchField,
-    );
-  }
-
-  // Build additional filter conditions
-  final filterConditions = <String>[];
-  if (subjectKeyword != null) {
-    filterConditions.add(
-        'lowerSubject contains "${escapeAppleScript(subjectKeyword.toLowerCase())}"');
-  }
-  if (sender != null) {
-    filterConditions.add(
-        'lowerSender contains "${escapeAppleScript(sender.toLowerCase())}"');
-  }
-  if (hasAttachments == true) {
-    filterConditions.add('(count of mail attachments of aMessage) > 0');
-  } else if (hasAttachments == false) {
-    filterConditions.add('(count of mail attachments of aMessage) = 0');
-  }
-  if (readStatus == 'read') {
-    filterConditions.add('messageRead is true');
-  } else if (readStatus == 'unread') {
-    filterConditions.add('messageRead is false');
-  }
-
-  // Combine: (query condition) AND (filter conditions)
-  String conditionStr;
-  if (queryCondition.isNotEmpty && filterConditions.isNotEmpty) {
-    conditionStr = '($queryCondition) and ${filterConditions.join(' and ')}';
-  } else if (queryCondition.isNotEmpty) {
-    conditionStr = queryCondition;
-  } else if (filterConditions.isNotEmpty) {
-    conditionStr = filterConditions.join(' and ');
-  } else {
-    conditionStr = 'true';
-  }
-
-  // Process in batches
-  final batches = batchList(allIds, _batchSize);
+  // Fetch metadata in batches and apply post-filters
+  final batches = batchList(files, _metadataBatchSize);
   var matchedCount = 0;
   var resultCount = 0;
   var scanned = 0;
@@ -131,73 +107,47 @@ Future<void> runBatchedSearchEmails({
     if (resultCount >= maxResults) break;
 
     final batch = batches[i];
-    final idSet = buildMessageIdSet(batch);
-
-    final script = '''
-$lowercaseHandler
-
-tell application "Mail"
-    set outputText to ""
-    set targetAccount to account "$escapedAccount"
-    set idSet to $idSet
-
-    ${_mailboxLoopStart(mailbox, escapedMailbox)}
-                    set mailboxMessages to every message of currentMailbox
-                    repeat with aMessage in mailboxMessages
-                        try
-                            set msgId to message id of aMessage
-                            if msgId is in idSet then
-                                set messageSubject to subject of aMessage
-                                set messageSender to sender of aMessage
-                                set messageDate to date received of aMessage
-                                set messageRead to read status of aMessage
-                                set lowerSubject to my lowercase(messageSubject)
-                                set lowerSender to my lowercase(messageSender)
-                                if $conditionStr then
-                                    if messageRead then
-                                        set readIndicator to "read"
-                                    else
-                                        set readIndicator to "unread"
-                                    end if
-                                    set mailboxName to name of currentMailbox
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & linefeed
-                                end if
-                            end if
-                        end try
-                    end repeat
-    ${_mailboxLoopEnd()}
-
-    return outputText
-end tell
-''';
 
     try {
-      final result = await runAppleScript(script);
-      final lines = result
-          .split('\n')
-          .map((l) => l.trim())
-          .where((l) => l.isNotEmpty);
+      final metadataList = await fetchEmailMetadata(batch);
 
       final batchOutput = StringBuffer();
-      for (final line in lines) {
-        final parts = line.split('|');
-        if (parts.length >= 6) {
-          matchedCount++;
-          if (matchedCount > offset && resultCount < maxResults) {
-            final readIndicator = parts[1] == 'read' ? '✓' : '✉';
-            final subject = parts[2];
-            final senderVal = parts[3];
-            final date = parts[4];
-            final mailboxName = parts[5];
+      for (final meta in metadataList) {
+        // Apply Dart-side post-filters
+        if (subjectKeyword != null &&
+            !(meta['subject'] ?? '')
+                .toLowerCase()
+                .contains(subjectKeyword.toLowerCase())) {
+          continue;
+        }
+        if (sender != null &&
+            !(meta['sender'] ?? '')
+                .toLowerCase()
+                .contains(sender.toLowerCase())) {
+          continue;
+        }
+        if (hasAttachments == true && meta['has_attachments'] != 'true') {
+          continue;
+        }
+        if (hasAttachments == false && meta['has_attachments'] == 'true') {
+          continue;
+        }
+        if (readStatus == 'read' && meta['read_status'] != 'read') continue;
+        if (readStatus == 'unread' && meta['read_status'] != 'unread') {
+          continue;
+        }
 
-            batchOutput.writeln('$readIndicator $subject');
-            batchOutput.writeln('   From: $senderVal');
-            batchOutput.writeln('   Date: $date');
-            batchOutput.writeln('   Mailbox: $mailboxName');
-            batchOutput.writeln('   ID: ${parts[0]}');
-            batchOutput.writeln();
-            resultCount++;
-          }
+        matchedCount++;
+        if (matchedCount > offset && resultCount < maxResults) {
+          final readIndicator =
+              meta['read_status'] == 'read' ? '✓' : '✉';
+          batchOutput.writeln('$readIndicator ${meta['subject']}');
+          batchOutput.writeln('   From: ${meta['sender']}');
+          batchOutput.writeln('   Date: ${meta['date']}');
+          batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
+          batchOutput.writeln('   ID: ${meta['message_id']}');
+          batchOutput.writeln();
+          resultCount++;
         }
       }
 
@@ -210,7 +160,7 @@ end tell
 
     scanned += batch.length;
     await extra.sendProgress(0,
-        message: 'Scanned $scanned of ${allIds.length} messages, '
+        message: 'Processed $scanned of ${files.length} messages, '
             'found $matchedCount matches');
   }
 
@@ -226,9 +176,8 @@ end tell
 
 /// Batched multi-search handler.
 ///
-/// Similar to search-emails but with multiple comma-separated query groups.
-/// AppleScript pre-filters with an OR of all keywords, then Dart-side
-/// tagging determines which groups matched each result.
+/// Runs separate mdfind queries per query group, deduplicates results,
+/// and tags each result with matching groups in Dart.
 Future<void> runBatchedMultiSearch({
   required Map<String, dynamic> args,
   required ProcessSession session,
@@ -242,14 +191,10 @@ Future<void> runBatchedMultiSearch({
   final daysBack = args['days_back'] as int? ?? 0;
   final searchField = args['search_field'] as String? ?? 'all';
 
-  final escapedAccount = escapeAppleScript(account);
-  final escapedMailbox = escapeAppleScript(mailbox);
-
   final useSubject = searchField == 'all' || searchField == 'subject';
   final useSender = searchField == 'all' || searchField == 'sender';
 
-  // Parse query groups: "invoice faktura, receipt kvitto" →
-  // [["invoice", "faktura"], ["receipt", "kvitto"]]
+  // Parse query groups
   final groups = queries
       .split(',')
       .map((g) =>
@@ -263,22 +208,6 @@ Future<void> runBatchedMultiSearch({
     return;
   }
 
-  // Collect all unique keywords for AppleScript OR condition
-  final allKeywords = <String>{};
-  for (final group in groups) {
-    allKeywords.addAll(group.map((k) => k.toLowerCase()));
-  }
-
-  final keywordChecks = <String>[];
-  for (final keyword in allKeywords) {
-    final escaped = escapeAppleScript(keyword);
-    if (useSubject) keywordChecks.add('lowerSubject contains "$escaped"');
-    if (useSender) keywordChecks.add('lowerSender contains "$escaped"');
-  }
-  final anyKeywordCondition =
-      keywordChecks.isNotEmpty ? keywordChecks.join(' or ') : 'true';
-
-  // Write header chunk
   session.chunks.add(
     'MULTI-SEARCH RESULTS\n'
     'Query groups: $queries\n'
@@ -286,15 +215,31 @@ Future<void> runBatchedMultiSearch({
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n',
   );
 
-  // Fetch message IDs
-  await extra.sendProgress(0, message: 'Fetching message IDs...');
-  final allIds = await fetchMessageIds(
-    account: account,
-    mailbox: mailbox,
-    daysBack: daysBack,
-  );
+  // Run mdfind for all keywords combined (broad match), then tag in Dart
+  await extra.sendProgress(0, message: 'Searching via Spotlight...');
 
-  if (allIds.isEmpty) {
+  final allKeywords = <String>{};
+  for (final group in groups) {
+    allKeywords.addAll(group.map((k) => k.toLowerCase()));
+  }
+
+  List<String> files;
+  try {
+    files = await _searchWithKeywords(
+      account: account,
+      mailbox: mailbox,
+      keywords: allKeywords.toList(),
+      searchField: searchField,
+      searchOperator: 'or', // Broad OR match for all keywords
+      daysBack: daysBack,
+    );
+  } catch (e) {
+    session.chunks.add('Error searching: $e\n');
+    session.isComplete = true;
+    return;
+  }
+
+  if (files.isEmpty) {
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 matching email(s), showing 0 (offset: $offset)\n'
@@ -307,103 +252,55 @@ Future<void> runBatchedMultiSearch({
   }
 
   await extra.sendProgress(0,
-      message: 'Found ${allIds.length} messages to search');
+      message: 'Found ${files.length} messages, fetching metadata...');
 
-  // Process in batches
-  final batches = batchList(allIds, _batchSize);
+  // Fetch metadata and tag with query groups
+  final batches = batchList(files, _metadataBatchSize);
   var matchedCount = 0;
   var resultCount = 0;
   var scanned = 0;
 
   for (var i = 0; i < batches.length; i++) {
-    if (session.isComplete) return; // cancelled
+    if (session.isComplete) return;
     if (resultCount >= maxResults) break;
 
     final batch = batches[i];
-    final idSet = buildMessageIdSet(batch);
-
-    final script = '''
-$lowercaseHandler
-
-tell application "Mail"
-    set outputText to ""
-    set targetAccount to account "$escapedAccount"
-    set idSet to $idSet
-
-    ${_mailboxLoopStart(mailbox, escapedMailbox)}
-                    set mailboxMessages to every message of currentMailbox
-                    repeat with aMessage in mailboxMessages
-                        try
-                            set msgId to message id of aMessage
-                            if msgId is in idSet then
-                                set messageSubject to subject of aMessage
-                                set messageSender to sender of aMessage
-                                set lowerSubject to my lowercase(messageSubject)
-                                set lowerSender to my lowercase(messageSender)
-                                if $anyKeywordCondition then
-                                    set messageDate to date received of aMessage
-                                    set messageRead to read status of aMessage
-                                    if messageRead then
-                                        set readIndicator to "read"
-                                    else
-                                        set readIndicator to "unread"
-                                    end if
-                                    set mailboxName to name of currentMailbox
-                                    set outputText to outputText & msgId & "|" & readIndicator & "|" & messageSubject & "|" & messageSender & "|" & (messageDate as string) & "|" & mailboxName & linefeed
-                                end if
-                            end if
-                        end try
-                    end repeat
-    ${_mailboxLoopEnd()}
-
-    return outputText
-end tell
-''';
 
     try {
-      final result = await runAppleScript(script);
-      final lines = result
-          .split('\n')
-          .map((l) => l.trim())
-          .where((l) => l.isNotEmpty);
+      final metadataList = await fetchEmailMetadata(batch);
 
       final batchOutput = StringBuffer();
-      for (final line in lines) {
-        final parts = line.split('|');
-        if (parts.length >= 6) {
-          matchedCount++;
-          if (matchedCount > offset && resultCount < maxResults) {
-            final readIndicator = parts[1] == 'read' ? '✓' : '✉';
-            final subject = parts[2];
-            final senderVal = parts[3];
-            final date = parts[4];
-            final mailboxName = parts[5];
+      for (final meta in metadataList) {
+        matchedCount++;
+        if (matchedCount > offset && resultCount < maxResults) {
+          final readIndicator =
+              meta['read_status'] == 'read' ? '✓' : '✉';
+          final subject = meta['subject'] ?? '';
+          final senderVal = meta['sender'] ?? '';
 
-            // Dart-side group tagging
-            final lowerSubject = subject.toLowerCase();
-            final lowerSender = senderVal.toLowerCase();
-            final matchedGroups = <String>[];
-            for (final group in groups) {
-              final groupLabel = group.join(' ');
-              final matches = group.any((keyword) {
-                final lk = keyword.toLowerCase();
-                if (useSubject && lowerSubject.contains(lk)) return true;
-                if (useSender && lowerSender.contains(lk)) return true;
-                return false;
-              });
-              if (matches) matchedGroups.add('[$groupLabel]');
-            }
-
-            batchOutput.writeln('$readIndicator $subject');
-            batchOutput.writeln('   From: $senderVal');
-            batchOutput.writeln('   Date: $date');
-            batchOutput.writeln('   Mailbox: $mailboxName');
-            batchOutput.writeln(
-                '   Matched: ${matchedGroups.join(' ')}');
-            batchOutput.writeln('   ID: ${parts[0]}');
-            batchOutput.writeln();
-            resultCount++;
+          // Dart-side group tagging
+          final lowerSubject = subject.toLowerCase();
+          final lowerSender = senderVal.toLowerCase();
+          final matchedGroups = <String>[];
+          for (final group in groups) {
+            final groupLabel = group.join(' ');
+            final matches = group.any((keyword) {
+              final lk = keyword.toLowerCase();
+              if (useSubject && lowerSubject.contains(lk)) return true;
+              if (useSender && lowerSender.contains(lk)) return true;
+              return false;
+            });
+            if (matches) matchedGroups.add('[$groupLabel]');
           }
+
+          batchOutput.writeln('$readIndicator $subject');
+          batchOutput.writeln('   From: $senderVal');
+          batchOutput.writeln('   Date: ${meta['date']}');
+          batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
+          batchOutput.writeln('   Matched: ${matchedGroups.join(' ')}');
+          batchOutput.writeln('   ID: ${meta['message_id']}');
+          batchOutput.writeln();
+          resultCount++;
         }
       }
 
@@ -416,7 +313,7 @@ end tell
 
     scanned += batch.length;
     await extra.sendProgress(0,
-        message: 'Scanned $scanned of ${allIds.length} messages, '
+        message: 'Processed $scanned of ${files.length} messages, '
             'found $matchedCount matches');
   }
 
@@ -431,79 +328,103 @@ end tell
   await extra.sendProgress(1, message: 'multi-search completed');
 }
 
-// ─────────────────────── AppleScript helpers ───────────────────────
+// ─────────────────────── Search helpers ───────────────────────
 
-/// Builds an AppleScript condition for keyword search across subject/sender.
-String _buildQueryCondition({
+/// Searches for emails using mdfind with keyword filters.
+///
+/// Builds a Spotlight query with keyword conditions pushed into the
+/// query based on searchField and searchOperator.
+Future<List<String>> _searchWithKeywords({
+  required String account,
+  required String mailbox,
   required List<String> keywords,
-  required String searchOperator,
   required String searchField,
-}) {
-  final checks = <String>[];
+  required String searchOperator,
+  int daysBack = 0,
+  String? startDate,
+  String? endDate,
+}) async {
+  // Resolve scope directory
+  final accountPaths = await resolveAccountPaths();
+  String? scopeDir;
+
+  for (final entry in accountPaths.entries) {
+    if (entry.key.toLowerCase().contains(account.toLowerCase()) ||
+        account.toLowerCase().contains(entry.key.toLowerCase())) {
+      if (mailbox == 'All') {
+        scopeDir = entry.value;
+      } else {
+        scopeDir = await findMailboxDirectory(
+              accountPath: entry.value,
+              mailbox: mailbox,
+            ) ??
+            entry.value;
+      }
+      break;
+    }
+  }
+
+  scopeDir ??= defaultMailDirectory;
+
+  // Build date filters
+  DateTime? dateAfter;
+  DateTime? dateBefore;
+
+  if (daysBack > 0) {
+    dateAfter = DateTime.now().subtract(Duration(days: daysBack));
+  }
+  if (startDate != null) dateAfter = DateTime.parse(startDate);
+  if (endDate != null) {
+    dateBefore = DateTime.parse(endDate)
+        .add(const Duration(hours: 23, minutes: 59, seconds: 59));
+  }
+
+  // Build keyword conditions for Spotlight
+  final keywordConditions = <String>[];
   for (final keyword in keywords) {
-    final escaped = escapeAppleScript(keyword.toLowerCase());
-    final fieldChecks = <String>[];
+    final fieldConditions = <String>[];
     if (searchField == 'all' || searchField == 'subject') {
-      fieldChecks.add('lowerSubject contains "$escaped"');
+      fieldConditions
+          .add('kMDItemTitle == "*${_escapeSpotlight(keyword)}*"cd');
     }
     if (searchField == 'all' || searchField == 'sender') {
-      fieldChecks.add('lowerSender contains "$escaped"');
+      fieldConditions
+          .add('kMDItemAuthors == "*${_escapeSpotlight(keyword)}*"cd');
     }
-    if (fieldChecks.isEmpty) return 'true';
-    if (fieldChecks.length == 1) {
-      checks.add(fieldChecks.first);
+    if (fieldConditions.isEmpty) continue;
+    if (fieldConditions.length == 1) {
+      keywordConditions.add(fieldConditions.first);
     } else {
-      checks.add('(${fieldChecks.join(' or ')})');
+      keywordConditions.add('(${fieldConditions.join(' || ')})');
     }
   }
-  if (checks.isEmpty) return 'true';
-  return searchOperator == 'and'
-      ? checks.join(' and ')
-      : checks.join(' or ');
-}
 
-/// Generates the AppleScript mailbox loop start for batch scripts.
-///
-/// For "All" mailbox: loops all mailboxes with system folder skipping.
-/// For specific mailbox: resolves the single mailbox, wraps in list.
-String _mailboxLoopStart(String mailbox, String escapedMailbox) {
-  if (mailbox == 'All') {
-    return '''
-    set searchMailboxes to every mailbox of targetAccount
-    repeat with currentMailbox in searchMailboxes
-        try
-            set mailboxName to name of currentMailbox
-            set skipFoldersList to {"Trash", "Junk", "Junk Email", "Deleted Items", "Sent", "Sent Items", "Sent Messages", "Drafts", "Spam", "Deleted Messages"}
-            set shouldSkip to false
-            repeat with skipFolder in skipFoldersList
-                if mailboxName is skipFolder then
-                    set shouldSkip to true
-                    exit repeat
-                end if
-            end repeat
-            if not shouldSkip then''';
-  } else {
-    return '''
-    try
-        set searchMailbox to mailbox "$escapedMailbox" of targetAccount
-    on error
-        if "$escapedMailbox" is "INBOX" then
-            set searchMailbox to mailbox "Inbox" of targetAccount
-        else
-            error "Mailbox \\"$escapedMailbox\\" not found."
-        end if
-    end try
-    set searchMailboxes to {searchMailbox}
-    repeat with currentMailbox in searchMailboxes
-        try
-            if true then''';
+  // Build the complete query
+  final conditions = <String>[
+    'kMDItemContentType == "$emlxContentType"',
+  ];
+
+  if (dateAfter != null) {
+    conditions.add(
+      'kMDItemContentCreationDate >= \$time.iso(${dateAfter.toUtc().toIso8601String()})',
+    );
   }
+  if (dateBefore != null) {
+    conditions.add(
+      'kMDItemContentCreationDate <= \$time.iso(${dateBefore.toUtc().toIso8601String()})',
+    );
+  }
+
+  if (keywordConditions.isNotEmpty) {
+    final joiner = searchOperator == 'and' ? ' && ' : ' || ';
+    conditions.add('(${keywordConditions.join(joiner)})');
+  }
+
+  final query = conditions.join(' && ');
+  return runMdfind(query, directory: scopeDir);
 }
 
-/// Generates the AppleScript mailbox loop end.
-String _mailboxLoopEnd() {
-  return '''
-                end if
-            end try
-        end repeat''';
+/// Escapes special characters for Spotlight query strings.
+String _escapeSpotlight(String value) {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }

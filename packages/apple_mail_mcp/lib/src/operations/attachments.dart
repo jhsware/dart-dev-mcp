@@ -42,6 +42,8 @@ Future<CallToolResult> handleSaveEmailAttachment(
   final escapedAttachment = escapeAppleScript(attachmentName);
   final escapedPath = escapeAppleScript(expandedPath);
 
+  final skipCondition = skipFoldersCondition();
+
   final script = '''
 tell application "Mail"
     set outputText to ""
@@ -55,6 +57,9 @@ tell application "Mail"
         set accountMailboxes to every mailbox of anAccount
         repeat with aMailbox in accountMailboxes
             if foundAttachment then exit repeat
+
+            set mailboxName to name of aMailbox
+            $skipCondition
 
             try
                 set mailboxMessages to every message of aMailbox
@@ -99,6 +104,8 @@ tell application "Mail"
                     end try
                 end repeat
             end try
+
+            end if
         end repeat
     end repeat
 
@@ -111,8 +118,15 @@ tell application "Mail"
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to save attachment: $e',
+      'Check that Apple Mail is running. The message may have been moved or deleted.',
+    );
+  }
 }
 
 /// Handles the list-email-attachments operation.
@@ -130,6 +144,8 @@ Future<CallToolResult> handleListEmailAttachments(
 
   final escapedMessageId = escapeAppleScript(messageId);
 
+  final skipCondition = skipFoldersCondition();
+
   final script = '''
 tell application "Mail"
     set outputText to ""
@@ -142,6 +158,9 @@ tell application "Mail"
         set accountMailboxes to every mailbox of anAccount
         repeat with aMailbox in accountMailboxes
             if foundMessage then exit repeat
+
+            set mailboxName to name of aMailbox
+            $skipCondition
 
             try
                 set mailboxMessages to every message of aMailbox
@@ -187,6 +206,8 @@ tell application "Mail"
                     end try
                 end repeat
             end try
+
+            end if
         end repeat
     end repeat
 
@@ -199,8 +220,15 @@ tell application "Mail"
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to list attachments: $e',
+      'Check that Apple Mail is running. The message may have been moved or deleted.',
+    );
+  }
 }
 
 /// Handles the get-email-attachment operation.
@@ -233,6 +261,8 @@ Future<CallToolResult> handleGetEmailAttachment(
   final escapedAttachment = escapeAppleScript(attachmentName);
   final escapedPath = escapeAppleScript(expandedPath);
 
+  final skipCondition = skipFoldersCondition();
+
   final script = '''
 tell application "Mail"
     set outputText to ""
@@ -249,6 +279,9 @@ tell application "Mail"
         set accountMailboxes to every mailbox of anAccount
         repeat with aMailbox in accountMailboxes
             if foundAttachment then exit repeat
+
+            set mailboxName to name of aMailbox
+            $skipCondition
 
             try
                 set mailboxMessages to every message of aMailbox
@@ -293,6 +326,8 @@ tell application "Mail"
                     end try
                 end repeat
             end try
+
+            end if
         end repeat
     end repeat
 
@@ -305,9 +340,17 @@ tell application "Mail"
 end tell
 ''';
 
-  final result = await runAppleScript(script);
-  return CallToolResult.fromContent([TextContent(text: result)]);
+  try {
+    final result = await runAppleScript(script);
+    return CallToolResult.fromContent([TextContent(text: result)]);
+  } catch (e) {
+    return actionableError(
+      'Failed to get attachment: $e',
+      'Check that Apple Mail is running. The message may have been moved or deleted.',
+    );
+  }
 }
+
 
 /// Handles the get-statistics operation.
 ///
