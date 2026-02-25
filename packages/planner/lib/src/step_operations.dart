@@ -12,10 +12,12 @@ final _uuid = Uuid();
 class StepOperations {
   final Database database;
   final TransactionLogRepository transactionLogRepository;
+  final PromptPackService promptPackService;
 
   StepOperations({
     required this.database,
     required this.transactionLogRepository,
+    required this.promptPackService,
   });
 
   /// Add a new step to a task.
@@ -267,7 +269,7 @@ class StepOperations {
         [subTaskId]);
 
     final steps = stepsResult
-        .map((row) => {
+        .map((row) => <String, dynamic>{
               'id': row['id'],
               'title': row['title'],
               'details': row['details'],
@@ -276,15 +278,11 @@ class StepOperations {
             })
         .toList();
 
-    return jsonResult({
-      'id': task['id'],
-      'project_id': task['project_id'],
-      'title': task['title'],
-      'details': task['details'],
-      'status': task['status'],
-      'created_at': task['created_at'],
-      'updated_at': task['updated_at'],
-      'steps': steps,
-    });
+    // Render the prompt using the PromptPackService
+    final renderedPrompt = promptPackService.renderSubtaskPrompt(
+      task: Map<String, dynamic>.from(task),
+      steps: steps,
+    );
+    return textResult(renderedPrompt);
   }
 }
