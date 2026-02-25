@@ -22,7 +22,13 @@ export 'src/operations/search_advanced_batched.dart'
     show runBatchedGetEmailThread;
 export 'src/operations/attachments.dart' show getAttachmentOperations;
 export 'src/batch_helpers.dart'
-    show batchList, fetchMessageIds, buildMessageIdSet, fetchAccountNames;
+    show
+        batchList,
+        fetchMessageIds,
+        fetchEmailFiles,
+        fetchEmailMetadata,
+        buildMessageIdSet,
+        fetchAccountNames;
 export 'src/progress_wrapper.dart'
     show
         slowOperations,
