@@ -3,8 +3,6 @@ name: planner-do-parent-task
 description: Perform a parent task found in the planner tool. The user passes the id of the task.
 allowed-tools: planner, filesystem, git, fetch, convert, flutter-runner, dart-runner, code-index
 model: opus
-context: fork
-agent: task-agent
 ---
 ultrathink
 
