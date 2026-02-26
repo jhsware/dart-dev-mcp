@@ -22,3 +22,4 @@ This project provides mcp servers for agentic coding with strong guard rails.
 ## Resources
 - The Complete Guide to Building Skills for Claude: https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf?hsLang=en
 - Build an MCP server: https://modelcontextprotocol.io/docs/develop/build-server
+- mdfind examples https://yurisk.info/2023/03/28/mdfind-macos-examples-cheat-sheet
