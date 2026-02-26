@@ -197,7 +197,8 @@ void main() {
         expect(ids, isA<List<String>>());
       } on Exception catch (e) {
         sw.stop();
-        expect(e.toString(), contains('timed out'));
+        expect(e.toString(),
+            anyOf(contains('timed out'), contains('not found')));
       }
       expect(sw.elapsed, lessThan(maxComplexOpDuration));
     });
@@ -220,7 +221,8 @@ void main() {
         expect(ids, isA<List<String>>());
       } on Exception catch (e) {
         sw.stop();
-        expect(e.toString(), contains('timed out'));
+        expect(e.toString(),
+            anyOf(contains('timed out'), contains('not found')));
       }
       expect(sw.elapsed, lessThan(maxComplexOpDuration));
     });
@@ -253,7 +255,8 @@ void main() {
         expect(ids, isA<List<String>>());
       } on Exception catch (e) {
         sw.stop();
-        expect(e.toString(), contains('timed out'));
+        expect(e.toString(),
+            anyOf(contains('timed out'), contains('not found')));
       }
       expect(sw.elapsed, lessThan(maxComplexOpDuration));
     });

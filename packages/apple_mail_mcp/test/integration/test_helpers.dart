@@ -81,23 +81,33 @@ bool isTimeoutResult(CallToolResult result) {
 /// Runs an async operation and returns (result, elapsed duration).
 Future<(T, Duration)> timeOperation<T>(Future<T> Function() fn) async {
   final sw = Stopwatch()..start();
-  final result = await fn();
-  sw.stop();
-  return (result, sw.elapsed);
-}
-
-/// Like [timeOperation] but catches exceptions (e.g. AppleScript timeouts)
-/// and returns null instead ALONG with the exception message.
+/// Discovers the first available Apple Mail account name.
 ///
-/// Some handlers don't catch the AppleScript timeout exception internally,
-/// so it propagates as an unhandled Exception. This wrapper lets tests
-/// treat such timeouts as an acceptable outcome.
-Future<(CallToolResult?, Duration, String?)>
-    timeOperationTolerant(Future<CallToolResult> Function() fn) async {
-  final sw = Stopwatch()..start();
-  try {
-    final result = await fn();
-    sw.stop();
+/// Calls list-accounts handler (AppleScript-based) and parses the
+/// "  - AccountName" lines. Falls back to filesystem-based discovery
+/// via [fetchAccountNames] if AppleScript returns no accounts.
+/// Throws [TestFailure] if no accounts are found by either method.
+Future<String> discoverFirstAccount() async {
+  // Primary: AppleScript-based discovery
+  final handler = inboxHandlers['list-accounts']!;
+  final result = await handler({});
+  final text = extractText(result);
+  // Parse "  - AccountName" lines
+  final lines =
+      text.split('\n').where((l) => l.trimLeft().startsWith('- ')).toList();
+  if (lines.isNotEmpty) {
+    return lines.first.trimLeft().substring(2).trim();
+  }
+
+  // Fallback: filesystem-based discovery
+  final fsNames = await fetchAccountNames();
+  if (fsNames.isNotEmpty) {
+    return fsNames.first;
+  }
+
+  fail('No Apple Mail accounts found. Integration tests require at least '
+      'one configured account.');
+}
     return (result, sw.elapsed, null);
   } on Exception catch (e) {
     sw.stop();
