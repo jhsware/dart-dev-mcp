@@ -2,6 +2,9 @@
 //
 // Uses mdfind with kMDItemTitle for fast subject-based thread matching
 // via the Spotlight index, replacing the slow AppleScript batch approach.
+//
+// Requires Full Disk Access to search ~/Library/Mail/.
+
 
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
@@ -17,6 +20,9 @@ const _metadataBatchSize = 100;
 ///
 /// Thread/conversation view with Re:/Fwd: prefix stripping.
 /// Uses mdfind with kMDItemTitle to find thread messages by subject.
+///
+/// Requires Full Disk Access to return results via mdfind.
+
 Future<void> runBatchedGetEmailThread({
   required Map<String, dynamic> args,
   required ProcessSession session,
@@ -83,7 +89,11 @@ Future<void> runBatchedGetEmailThread({
     return;
   }
 
-  if (files.isEmpty) {
+  // Get metadata from mdfind results
+  final allMetadata = await fetchEmailMetadata(files);
+
+
+  if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
@@ -97,10 +107,10 @@ Future<void> runBatchedGetEmailThread({
   }
 
   await extra.sendProgress(0,
-      message: 'Found ${files.length} messages, fetching metadata...');
+      message: 'Found ${allMetadata.length} messages, processing...');
 
-  // Fetch metadata in batches, apply Dart-side thread subject filtering
-  final batches = batchList(files, _metadataBatchSize);
+  // Process metadata, apply Dart-side thread subject filtering
+  final batches = batchList(allMetadata, _metadataBatchSize);
   var matchedCount = 0;
   var scanned = 0;
 
@@ -110,45 +120,39 @@ Future<void> runBatchedGetEmailThread({
 
     final batch = batches[i];
 
-    try {
-      final metadataList = await fetchEmailMetadata(batch);
-
-      final batchOutput = StringBuffer();
-      for (final meta in metadataList) {
-        // Dart-side: strip thread prefixes from subject and verify match
-        var subject = meta['subject'] ?? '';
-        var cleanSubject = subject;
-        for (final prefix in threadPrefixes) {
-          cleanSubject = cleanSubject.replaceAll(prefix, '').trim();
-        }
-
-        if (!cleanSubject.toLowerCase().contains(
-              cleanedKeyword.toLowerCase(),
-            )) {
-          continue;
-        }
-
-        matchedCount++;
-        if (matchedCount <= maxMessages) {
-          final readIndicator = meta['read_status'] == 'read' ? '✓' : '✉';
-          batchOutput.writeln('$readIndicator $subject');
-          batchOutput.writeln('   From: ${meta['sender']}');
-          batchOutput.writeln('   Date: ${meta['date']}');
-          batchOutput.writeln('   ID: ${meta['message_id']}');
-          batchOutput.writeln();
-        }
+    final batchOutput = StringBuffer();
+    for (final meta in batch) {
+      // Dart-side: strip thread prefixes from subject and verify match
+      var subject = meta['subject'] ?? '';
+      var cleanSubject = subject;
+      for (final prefix in threadPrefixes) {
+        cleanSubject = cleanSubject.replaceAll(prefix, '').trim();
       }
 
-      if (batchOutput.isNotEmpty) {
-        session.chunks.add(batchOutput.toString());
+      if (!cleanSubject.toLowerCase().contains(
+            cleanedKeyword.toLowerCase(),
+          )) {
+        continue;
       }
-    } catch (e) {
-      session.chunks.add('Warning: Batch ${i + 1} error: $e\n');
+
+      matchedCount++;
+      if (matchedCount <= maxMessages) {
+        final readIndicator = meta['read_status'] == 'read' ? '✓' : '✉';
+        batchOutput.writeln('$readIndicator $subject');
+        batchOutput.writeln('   From: ${meta['sender']}');
+        batchOutput.writeln('   Date: ${meta['date']}');
+        batchOutput.writeln('   ID: ${meta['message_id']}');
+        batchOutput.writeln();
+      }
+    }
+
+    if (batchOutput.isNotEmpty) {
+      session.chunks.add(batchOutput.toString());
     }
 
     scanned += batch.length;
     await extra.sendProgress(0,
-        message: 'Processed $scanned of ${files.length} messages, '
+        message: 'Processed $scanned of ${allMetadata.length} messages, '
             'found $matchedCount thread matches');
   }
 

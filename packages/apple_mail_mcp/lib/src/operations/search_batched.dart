@@ -49,12 +49,12 @@ Future<void> runBatchedSearchEmails({
   await extra.sendProgress(0, message: 'Searching emails via Spotlight...');
 
   List<String> files;
-  try {
-    if (query != null && query.isNotEmpty) {
-      final keywords =
-          query.split(' ').where((k) => k.trim().isNotEmpty).toList();
+  final keywords = (query != null && query.isNotEmpty)
+      ? query.split(' ').where((k) => k.trim().isNotEmpty).toList()
+      : <String>[];
 
-      // Build keyword conditions based on search field and operator
+  try {
+    if (keywords.isNotEmpty) {
       files = await _searchWithKeywords(
         account: account,
         mailbox: mailbox,
@@ -66,7 +66,6 @@ Future<void> runBatchedSearchEmails({
         endDate: endDate,
       );
     } else {
-      // No query — just date/scope filtering
       files = await fetchEmailFiles(
         account: account,
         mailbox: mailbox,
@@ -82,7 +81,10 @@ Future<void> runBatchedSearchEmails({
     return;
   }
 
-  if (files.isEmpty) {
+  // Get metadata from mdfind results
+  final allMetadata = await fetchEmailMetadata(files);
+
+  if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
@@ -96,10 +98,10 @@ Future<void> runBatchedSearchEmails({
   }
 
   await extra.sendProgress(0,
-      message: 'Found ${files.length} messages, fetching metadata...');
+      message: 'Found ${allMetadata.length} messages, processing...');
 
-  // Fetch metadata in batches and apply post-filters
-  final batches = batchList(files, _metadataBatchSize);
+  // Process metadata — apply post-filters and format output
+  final batches = batchList(allMetadata, _metadataBatchSize);
   var matchedCount = 0;
   var resultCount = 0;
   var scanned = 0;
@@ -110,59 +112,53 @@ Future<void> runBatchedSearchEmails({
 
     final batch = batches[i];
 
-    try {
-      final metadataList = await fetchEmailMetadata(batch);
-
-      final batchOutput = StringBuffer();
-      for (final meta in metadataList) {
-        // Apply Dart-side post-filters
-        if (subjectKeyword != null &&
-            !(meta['subject'] ?? '')
-                .toLowerCase()
-                .contains(subjectKeyword.toLowerCase())) {
-          continue;
-        }
-        if (sender != null &&
-            !(meta['sender'] ?? '')
-                .toLowerCase()
-                .contains(sender.toLowerCase())) {
-          continue;
-        }
-        if (hasAttachments == true && meta['has_attachments'] != 'true') {
-          continue;
-        }
-        if (hasAttachments == false && meta['has_attachments'] == 'true') {
-          continue;
-        }
-        if (readStatus == 'read' && meta['read_status'] != 'read') continue;
-        if (readStatus == 'unread' && meta['read_status'] != 'unread') {
-          continue;
-        }
-
-        matchedCount++;
-        if (matchedCount > offset && resultCount < maxResults) {
-          final readIndicator =
-              meta['read_status'] == 'read' ? '✓' : '✉';
-          batchOutput.writeln('$readIndicator ${meta['subject']}');
-          batchOutput.writeln('   From: ${meta['sender']}');
-          batchOutput.writeln('   Date: ${meta['date']}');
-          batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
-          batchOutput.writeln('   ID: ${meta['message_id']}');
-          batchOutput.writeln();
-          resultCount++;
-        }
+    final batchOutput = StringBuffer();
+    for (final meta in batch) {
+      // Apply Dart-side post-filters
+      if (subjectKeyword != null &&
+          !(meta['subject'] ?? '')
+              .toLowerCase()
+              .contains(subjectKeyword.toLowerCase())) {
+        continue;
+      }
+      if (sender != null &&
+          !(meta['sender'] ?? '')
+              .toLowerCase()
+              .contains(sender.toLowerCase())) {
+        continue;
+      }
+      if (hasAttachments == true && meta['has_attachments'] != 'true') {
+        continue;
+      }
+      if (hasAttachments == false && meta['has_attachments'] == 'true') {
+        continue;
+      }
+      if (readStatus == 'read' && meta['read_status'] != 'read') continue;
+      if (readStatus == 'unread' && meta['read_status'] != 'unread') {
+        continue;
       }
 
-      if (batchOutput.isNotEmpty) {
-        session.chunks.add(batchOutput.toString());
+      matchedCount++;
+      if (matchedCount > offset && resultCount < maxResults) {
+        final readIndicator =
+            meta['read_status'] == 'read' ? '✓' : '✉';
+        batchOutput.writeln('$readIndicator ${meta['subject']}');
+        batchOutput.writeln('   From: ${meta['sender']}');
+        batchOutput.writeln('   Date: ${meta['date']}');
+        batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
+        batchOutput.writeln('   ID: ${meta['message_id']}');
+        batchOutput.writeln();
+        resultCount++;
       }
-    } catch (e) {
-      session.chunks.add('Warning: Batch ${i + 1} error: $e\n');
+    }
+
+    if (batchOutput.isNotEmpty) {
+      session.chunks.add(batchOutput.toString());
     }
 
     scanned += batch.length;
     await extra.sendProgress(0,
-        message: 'Processed $scanned of ${files.length} messages, '
+        message: 'Processed $scanned of ${allMetadata.length} messages, '
             'found $matchedCount matches');
   }
 
@@ -241,7 +237,10 @@ Future<void> runBatchedMultiSearch({
     return;
   }
 
-  if (files.isEmpty) {
+  // Get metadata from mdfind results
+  final allMetadata = await fetchEmailMetadata(files);
+
+  if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
@@ -256,10 +255,10 @@ Future<void> runBatchedMultiSearch({
   }
 
   await extra.sendProgress(0,
-      message: 'Found ${files.length} messages, fetching metadata...');
+      message: 'Found ${allMetadata.length} messages, processing...');
 
-  // Fetch metadata and tag with query groups
-  final batches = batchList(files, _metadataBatchSize);
+  // Process metadata and tag with query groups
+  final batches = batchList(allMetadata, _metadataBatchSize);
   var matchedCount = 0;
   var resultCount = 0;
   var scanned = 0;
@@ -270,54 +269,48 @@ Future<void> runBatchedMultiSearch({
 
     final batch = batches[i];
 
-    try {
-      final metadataList = await fetchEmailMetadata(batch);
+    final batchOutput = StringBuffer();
+    for (final meta in batch) {
+      matchedCount++;
+      if (matchedCount > offset && resultCount < maxResults) {
+        final readIndicator =
+            meta['read_status'] == 'read' ? '✓' : '✉';
+        final subject = meta['subject'] ?? '';
+        final senderVal = meta['sender'] ?? '';
 
-      final batchOutput = StringBuffer();
-      for (final meta in metadataList) {
-        matchedCount++;
-        if (matchedCount > offset && resultCount < maxResults) {
-          final readIndicator =
-              meta['read_status'] == 'read' ? '✓' : '✉';
-          final subject = meta['subject'] ?? '';
-          final senderVal = meta['sender'] ?? '';
-
-          // Dart-side group tagging
-          final lowerSubject = subject.toLowerCase();
-          final lowerSender = senderVal.toLowerCase();
-          final matchedGroups = <String>[];
-          for (final group in groups) {
-            final groupLabel = group.join(' ');
-            final matches = group.any((keyword) {
-              final lk = keyword.toLowerCase();
-              if (useSubject && lowerSubject.contains(lk)) return true;
-              if (useSender && lowerSender.contains(lk)) return true;
-              return false;
-            });
-            if (matches) matchedGroups.add('[$groupLabel]');
-          }
-
-          batchOutput.writeln('$readIndicator $subject');
-          batchOutput.writeln('   From: $senderVal');
-          batchOutput.writeln('   Date: ${meta['date']}');
-          batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
-          batchOutput.writeln('   Matched: ${matchedGroups.join(' ')}');
-          batchOutput.writeln('   ID: ${meta['message_id']}');
-          batchOutput.writeln();
-          resultCount++;
+        // Dart-side group tagging
+        final lowerSubject = subject.toLowerCase();
+        final lowerSender = senderVal.toLowerCase();
+        final matchedGroups = <String>[];
+        for (final group in groups) {
+          final groupLabel = group.join(' ');
+          final matches = group.any((keyword) {
+            final lk = keyword.toLowerCase();
+            if (useSubject && lowerSubject.contains(lk)) return true;
+            if (useSender && lowerSender.contains(lk)) return true;
+            return false;
+          });
+          if (matches) matchedGroups.add('[$groupLabel]');
         }
-      }
 
-      if (batchOutput.isNotEmpty) {
-        session.chunks.add(batchOutput.toString());
+        batchOutput.writeln('$readIndicator $subject');
+        batchOutput.writeln('   From: $senderVal');
+        batchOutput.writeln('   Date: ${meta['date']}');
+        batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
+        batchOutput.writeln('   Matched: ${matchedGroups.join(' ')}');
+        batchOutput.writeln('   ID: ${meta['message_id']}');
+        batchOutput.writeln();
+        resultCount++;
       }
-    } catch (e) {
-      session.chunks.add('Warning: Batch ${i + 1} error: $e\n');
+    }
+
+    if (batchOutput.isNotEmpty) {
+      session.chunks.add(batchOutput.toString());
     }
 
     scanned += batch.length;
     await extra.sendProgress(0,
-        message: 'Processed $scanned of ${files.length} messages, '
+        message: 'Processed $scanned of ${allMetadata.length} messages, '
             'found $matchedCount matches');
   }
 
