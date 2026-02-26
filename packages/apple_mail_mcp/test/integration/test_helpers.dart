@@ -83,20 +83,30 @@ Future<CallToolResult> runBatchedOperation(
 
 /// Discovers the first available Apple Mail account name.
 ///
-/// Calls list-accounts handler and parses the "  - AccountName" lines.
-/// Throws [TestFailure] if no accounts are found.
+/// Calls list-accounts handler (AppleScript-based) and parses the
+/// "  - AccountName" lines. Falls back to filesystem-based discovery
+/// via [fetchAccountNames] if AppleScript returns no accounts.
+/// Throws [TestFailure] if no accounts are found by either method.
 Future<String> discoverFirstAccount() async {
+  // Primary: AppleScript-based discovery
   final handler = inboxHandlers['list-accounts']!;
   final result = await handler({});
   final text = extractText(result);
   // Parse "  - AccountName" lines
   final lines =
       text.split('\n').where((l) => l.trimLeft().startsWith('- ')).toList();
-  if (lines.isEmpty) {
-    fail('No Apple Mail accounts found. Integration tests require at least '
-        'one configured account.');
+  if (lines.isNotEmpty) {
+    return lines.first.trimLeft().substring(2).trim();
   }
-  return lines.first.trimLeft().substring(2).trim();
+
+  // Fallback: filesystem-based discovery
+  final fsNames = await fetchAccountNames();
+  if (fsNames.isNotEmpty) {
+    return fsNames.first;
+  }
+
+  fail('No Apple Mail accounts found. Integration tests require at least '
+      'one configured account.');
 }
 
 /// Extracts all text content from a [CallToolResult].

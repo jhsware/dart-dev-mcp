@@ -223,8 +223,11 @@ Future<List<String>> mdfindEmails({
 /// Resolves Apple Mail account names to their filesystem directories.
 ///
 /// Scans `~/Library/Mail/V*/` for account subdirectories and reads
-/// each account's `Info.plist` to map display names to paths.
-/// Returns `{accountName: absolutePath}`.
+/// each account's plist files to map display names and email addresses
+/// to paths. Multiple name variants per account are stored so that
+/// AppleScript-discovered names (typically email addresses) can be
+/// resolved to filesystem paths.
+/// Returns `{nameVariant: absolutePath}`.
 Future<Map<String, String>> resolveAccountPaths() async {
   final homeDir = Platform.environment['HOME'] ?? '/tmp';
   final mailBaseDir = Directory('$homeDir/Library/Mail');
@@ -252,10 +255,12 @@ Future<Map<String, String>> resolveAccountPaths() async {
         continue;
       }
 
-      // Try to read account name from Info.plist or AccountInfo.plist
-      final accountName = await _readAccountName(accountDir.path);
-      if (accountName != null) {
-        result[accountName] = accountDir.path;
+      // Read all name variants from plists
+      final names = await _readAccountNames(accountDir.path);
+      if (names.isNotEmpty) {
+        for (final name in names) {
+          result[name] = accountDir.path;
+        }
       } else {
         // Fall back to directory name as account identifier
         result[accountDirName] = accountDir.path;
@@ -408,25 +413,88 @@ String _escapeSpotlight(String value) {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
 
-/// Reads the account display name from an account directory's plist files.
-Future<String?> _readAccountName(String accountPath) async {
-  // Try common plist file names
+/// Reads account name variants from an account directory's plist files.
+///
+/// Returns multiple name variants including AccountName, DisplayName,
+/// email addresses (from EmailAddresses array, AccountURL, or
+/// Username/Hostname keys). This ensures AppleScript-discovered names
+/// (typically email addresses) can be matched to filesystem paths.
+Future<List<String>> _readAccountNames(String accountPath) async {
+  final names = <String>{};
+
   for (final plistName in ['Info.plist', 'AccountInfo.plist']) {
     final plistFile = File('$accountPath/$plistName');
     if (await plistFile.exists()) {
       try {
         final content = await plistFile.readAsString();
-        // Simple XML plist parsing — look for AccountName or DisplayName key
-        final nameMatch = RegExp(
+
+        // 1. AccountName / DisplayName
+        final nameMatches = RegExp(
           r'<key>(?:AccountName|DisplayName)</key>\s*<string>([^<]+)</string>',
+        ).allMatches(content);
+        for (final m in nameMatches) {
+          final name = m.group(1)!.trim();
+          if (name.isNotEmpty) names.add(name);
+        }
+
+        // 2. EmailAddresses array
+        final emailArrayMatch = RegExp(
+          r'<key>EmailAddresses</key>\s*<array>(.*?)</array>',
+          dotAll: true,
         ).firstMatch(content);
-        if (nameMatch != null) {
-          return nameMatch.group(1);
+        if (emailArrayMatch != null) {
+          final strings = RegExp(r'<string>([^<]+)</string>')
+              .allMatches(emailArrayMatch.group(1)!)
+              .map((m) => m.group(1)!.trim())
+              .where((s) => s.isNotEmpty);
+          names.addAll(strings);
+        }
+
+        // 3. AccountURL — extract username (email) from URL
+        //    e.g. imap://user%40example.com@mail.example.com
+        final urlMatch = RegExp(
+          r'<key>AccountURL</key>\s*<string>([^<]+)</string>',
+        ).firstMatch(content);
+        if (urlMatch != null) {
+          final url = urlMatch.group(1)!;
+          // Extract the user info part (before the last @host)
+          final schemeStripped = url.replaceFirst(RegExp(r'^[a-z]+://'), '');
+          final atIndex = schemeStripped.lastIndexOf('@');
+          if (atIndex > 0) {
+            final userInfo = Uri.decodeComponent(
+              schemeStripped.substring(0, atIndex),
+            );
+            if (userInfo.isNotEmpty) names.add(userInfo);
+          }
+        }
+
+        // 4. Username (+ Hostname fallback)
+        final usernameMatch = RegExp(
+          r'<key>Username</key>\s*<string>([^<]+)</string>',
+        ).firstMatch(content);
+        if (usernameMatch != null) {
+          final username = usernameMatch.group(1)!.trim();
+          if (username.contains('@')) {
+            names.add(username);
+          } else if (username.isNotEmpty) {
+            // Try combining with Hostname
+            final hostMatch = RegExp(
+              r'<key>Hostname</key>\s*<string>([^<]+)</string>',
+            ).firstMatch(content);
+            if (hostMatch != null) {
+              final host = hostMatch.group(1)!.trim();
+              if (host.isNotEmpty) {
+                names.add('$username@$host');
+              }
+            }
+            names.add(username);
+          }
         }
       } catch (_) {
-        // Fall through to next plist or return null
+        // Fall through to next plist or return empty
       }
     }
   }
-  return null;
+
+  return names.toList();
 }
