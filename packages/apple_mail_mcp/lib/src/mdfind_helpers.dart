@@ -295,17 +295,21 @@ Future<String?> findMailboxDirectory({
     }
   }
 
-  // Try case-insensitive scan
-  final accountDir = Directory(accountPath);
-  if (!await accountDir.exists()) return null;
+  // Try case-insensitive scan (may fail without Full Disk Access)
+  try {
+    final accountDir = Directory(accountPath);
+    if (!await accountDir.exists()) return null;
 
-  final lowerMailbox = mailbox.toLowerCase();
-  await for (final entry in accountDir.list()) {
-    if (entry is! Directory) continue;
-    final dirName = entry.path.split('/').last;
-    if (dirName.toLowerCase() == '$lowerMailbox.mbox') {
-      return entry.path;
+    final lowerMailbox = mailbox.toLowerCase();
+    await for (final entry in accountDir.list()) {
+      if (entry is! Directory) continue;
+      final dirName = entry.path.split('/').last;
+      if (dirName.toLowerCase() == '$lowerMailbox.mbox') {
+        return entry.path;
+      }
     }
+  } catch (_) {
+    // PathAccessException — cannot list directory without Full Disk Access
   }
 
   return null;

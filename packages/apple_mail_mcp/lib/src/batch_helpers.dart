@@ -108,7 +108,9 @@ Future<List<String>> _fetchEmailFilesFromPath({
       mailbox: mailbox,
     );
     if (mailboxDir == null) {
-      throw Exception('Mailbox "$mailbox" not found in account');
+      // Mailbox not found (may not exist, or directory listing blocked
+      // by macOS privacy restrictions without Full Disk Access).
+      return [];
     }
     scopeDir = mailboxDir;
   }
