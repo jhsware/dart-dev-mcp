@@ -4,6 +4,7 @@
 // and mock classes for session-based operations.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:apple_mail_mcp/apple_mail_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
@@ -29,22 +30,83 @@ final searchHandlers = getSearchOperations();
 /// All attachment operation handlers keyed by operation name.
 final attachmentHandlers = getAttachmentOperations();
 
+/// All batched operation handlers keyed by operation name.
+final batchedHandlers = <String, BatchedHandler>{
+  'search-emails': runBatchedSearchEmails,
+  'search-email-content': runBatchedSearchEmailContent,
+  'multi-search': runBatchedMultiSearch,
+  'search-by-sender': runBatchedSearchBySender,
+  'search-all-accounts': runBatchedSearchAllAccounts,
+  'get-newsletters': runBatchedGetNewsletters,
+  'classify-emails': runBatchedClassifyEmails,
+  'get-email-thread': runBatchedGetEmailThread,
+};
+
+/// Runs a batched operation and waits for completion.
+///
+/// Creates a SessionManager + FakeRequestHandlerExtra, starts the operation
+/// via [runBatchedInBackground], waits for the session to complete, and
+/// returns the output wrapped in a [CallToolResult] so existing assertion
+/// helpers ([assertSuccessResult], [extractText], etc.) work unchanged.
+Future<CallToolResult> runBatchedOperation(
+  String operation,
+  Map<String, dynamic> args,
+) async {
+  final handler = batchedHandlers[operation];
+  if (handler == null) {
+    throw ArgumentError('No batched handler for operation: $operation');
+  }
+
+  final sessionManager = createTestSessionManager();
+  final extra = FakeRequestHandlerExtra();
+
+  final startResult = runBatchedInBackground(
+    extra: extra,
+    operation: operation,
+    args: args,
+    handler: handler,
+    sessionManager: sessionManager,
+  );
+
+  final startParsed =
+      jsonDecode(extractText(startResult)) as Map<String, dynamic>;
+  final sessionId = startParsed['session_id'] as String;
+
+  final output = await waitForSession(
+    sessionId: sessionId,
+    sessionManager: sessionManager,
+    timeout: maxBatchedOpDuration,
+  );
+
+  return CallToolResult.fromContent([TextContent(text: output)]);
+}
+
 /// Discovers the first available Apple Mail account name.
 ///
-/// Calls list-accounts handler and parses the "  - AccountName" lines.
-/// Throws [TestFailure] if no accounts are found.
+/// Calls list-accounts handler (AppleScript-based) and parses the
+/// "  - AccountName" lines. Falls back to filesystem-based discovery
+/// via [fetchAccountNames] if AppleScript returns no accounts.
+/// Throws [TestFailure] if no accounts are found by either method.
 Future<String> discoverFirstAccount() async {
+  // Primary: AppleScript-based discovery
   final handler = inboxHandlers['list-accounts']!;
   final result = await handler({});
   final text = extractText(result);
   // Parse "  - AccountName" lines
   final lines =
       text.split('\n').where((l) => l.trimLeft().startsWith('- ')).toList();
-  if (lines.isEmpty) {
-    fail('No Apple Mail accounts found. Integration tests require at least '
-        'one configured account.');
+  if (lines.isNotEmpty) {
+    return lines.first.trimLeft().substring(2).trim();
   }
-  return lines.first.trimLeft().substring(2).trim();
+
+  // Fallback: filesystem-based discovery
+  final fsNames = await fetchAccountNames();
+  if (fsNames.isNotEmpty) {
+    return fsNames.first;
+  }
+
+  fail('No Apple Mail accounts found. Integration tests require at least '
+      'one configured account.');
 }
 
 /// Extracts all text content from a [CallToolResult].
