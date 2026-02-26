@@ -92,7 +92,7 @@ void main() {
 
       for (var i = 0; i < 3; i++) {
         final (_, elapsed) = await timeOperation(
-          () => searchHandlers['search-emails']!({
+          () => runBatchedOperation('search-emails', {
             'account': account,
             'query': 'the',
             'max_results': 10,
@@ -109,7 +109,7 @@ void main() {
           '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
 
       for (final d in durations) {
-        expect(d, lessThan(maxComplexOpDuration));
+        expect(d, lessThan(maxBatchedOpDuration));
       }
     });
 
@@ -124,7 +124,7 @@ void main() {
 
       for (var i = 0; i < 3; i++) {
         final (_, elapsed) = await timeOperation(
-          () => searchHandlers['classify-emails']!({
+          () => runBatchedOperation('classify-emails', {
             'account': account,
             'classifiers': classifiers,
             'days_back': 30,
@@ -143,7 +143,7 @@ void main() {
           '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
 
       for (final d in durations) {
-        expect(d, lessThan(maxComplexOpDuration));
+        expect(d, lessThan(maxBatchedOpDuration));
       }
     });
 
@@ -168,7 +168,7 @@ void main() {
 
       for (final entry in configs.entries) {
         final (_, elapsed) = await timeOperation(
-          () => searchHandlers['classify-emails']!({
+          () => runBatchedOperation('classify-emails', {
             'account': account,
             'classifiers': entry.value,
             'days_back': 30,
@@ -185,9 +185,9 @@ void main() {
         print('  ${entry.key} categories: ${entry.value.inMilliseconds}ms');
       }
 
-      // All should complete within the complex op limit
+      // All should complete within the batched op limit
       for (final d in timings.values) {
-        expect(d, lessThan(maxComplexOpDuration));
+        expect(d, lessThan(maxBatchedOpDuration));
       }
     });
 

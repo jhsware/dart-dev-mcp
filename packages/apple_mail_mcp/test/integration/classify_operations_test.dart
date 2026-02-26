@@ -22,7 +22,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'days_back': 30,
@@ -42,7 +42,7 @@ void main() {
       final summary = parsed['summary'] as Map<String, dynamic>;
       expect(summary, isA<Map>());
 
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('three category classification works', () async {
@@ -53,7 +53,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'days_back': 30,
@@ -79,7 +79,7 @@ void main() {
         );
       }
 
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('five category classification works', () async {
@@ -92,7 +92,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'days_back': 30,
@@ -106,7 +106,7 @@ void main() {
       expect(parsed, contains('summary'));
       expect(parsed['total_emails_scanned'], isA<int>());
 
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('subject-only search_field works', () async {
@@ -115,7 +115,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'search_field': 'subject',
@@ -128,7 +128,7 @@ void main() {
       final text = extractText(result);
       final parsed = jsonDecode(text) as Map<String, dynamic>;
       expect(parsed, contains('summary'));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('sender-only search_field works', () async {
@@ -137,7 +137,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'search_field': 'sender',
@@ -150,7 +150,7 @@ void main() {
       final text = extractText(result);
       final parsed = jsonDecode(text) as Map<String, dynamic>;
       expect(parsed, contains('summary'));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('min_score filtering excludes low-scoring results', () async {
@@ -160,7 +160,7 @@ void main() {
 
       // Run with min_score = 0 to get all results
       final (resultNoFilter, _) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'min_score': 0.0,
@@ -171,7 +171,7 @@ void main() {
 
       // Run with high min_score to filter results
       final (resultFiltered, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'min_score': 5.0,
@@ -196,7 +196,7 @@ void main() {
       expect(filteredCount, lessThanOrEqualTo(noFilterCount),
           reason: 'Higher min_score should produce fewer or equal results');
 
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('include_unmatched=true includes unmatched emails', () async {
@@ -205,7 +205,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'include_unmatched': true,
@@ -220,7 +220,7 @@ void main() {
       expect(parsed, contains('unmatched'));
       final unmatched = parsed['unmatched'] as List;
       expect(unmatched, isA<List>());
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('include_unmatched=false omits unmatched emails', () async {
@@ -229,7 +229,7 @@ void main() {
       });
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'include_unmatched': false,
@@ -243,7 +243,7 @@ void main() {
       final parsed = jsonDecode(text) as Map<String, dynamic>;
       expect(parsed.containsKey('unmatched'), isFalse,
           reason: 'Should not contain unmatched key when false');
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('BM25 scores are present and positive for matching results',
@@ -253,7 +253,7 @@ void main() {
       });
 
       final (result, _) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'days_back': 30,
@@ -290,7 +290,7 @@ void main() {
 
       // Use a very short days_back with unlikely-to-match mailbox
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'mailbox': 'Trash',
@@ -303,7 +303,7 @@ void main() {
       final text = extractText(result);
       final parsed = jsonDecode(text) as Map<String, dynamic>;
       expect(parsed['total_emails_scanned'], isA<int>());
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     // --- Date range tests ---
@@ -322,7 +322,7 @@ void main() {
           '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'start_date': startStr,
@@ -339,7 +339,7 @@ void main() {
       expect(parsed['total_emails_scanned'], isA<int>());
       expect(parsed, contains('summary'));
       expect(parsed, contains('categories'));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('start_date without end_date works (open-ended range)', () async {
@@ -353,7 +353,7 @@ void main() {
           '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
 
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'start_date': startStr,
@@ -367,7 +367,7 @@ void main() {
       final parsed = jsonDecode(text) as Map<String, dynamic>;
       expect(parsed, contains('total_emails_scanned'));
       expect(parsed['total_emails_scanned'], isA<int>());
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('date range with no emails returns zero scanned', () async {
@@ -377,7 +377,7 @@ void main() {
 
       // Use a far-future date range where no emails exist
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'start_date': '2030-01-01',
@@ -391,7 +391,7 @@ void main() {
       final text = extractText(result);
       final parsed = jsonDecode(text) as Map<String, dynamic>;
       expect(parsed['total_emails_scanned'], equals(0));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('invalid start_date format returns error', () async {
@@ -400,7 +400,7 @@ void main() {
       });
 
       final (result, _) = await timeOperation(
-        () => searchHandlers['classify-emails']!({
+        () => runBatchedOperation('classify-emails', {
           'account': account,
           'classifiers': classifiers,
           'start_date': 'not-a-date',
@@ -409,12 +409,14 @@ void main() {
         }),
       );
 
-      // Should return an error about invalid date format
+      // Should return an error about invalid date format.
+      // The batched handler catches the FormatException and writes
+      // ERROR: to the session chunks.
       final text = extractText(result);
       expect(
         text.toLowerCase(),
-        contains('invalid'),
-        reason: 'Should report invalid date format',
+        anyOf(contains('invalid'), contains('error')),
+        reason: 'Should report invalid date format or error',
       );
     });
   });
