@@ -1,9 +1,11 @@
 // Batched classify-emails handler with progress between phases.
 //
 // Phase 1: mdfind query to find all matching .emlx files by date range.
+//          Requires Full Disk Access to search ~/Library/Mail/.
 // Phase 2: Batch-fetch metadata via mdls and .emlx parsing.
 // Phase 3: BM25 classification across all fetched emails.
 // Results are written to session chunks for polling.
+
 
 import 'dart:convert';
 
@@ -13,14 +15,16 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
 import '../batch_helpers.dart';
 
-/// Batch size for metadata fetches.
-const _metadataBatchSize = 100;
+
 
 /// Batched classify-emails handler with progress between phases.
 ///
 /// Uses mdfind to find all emails matching date criteria, then
 /// batch-fetches subject/sender metadata, and finally runs BM25
 /// classification.
+///
+/// Requires Full Disk Access for mdfind to return results.
+
 Future<void> runBatchedClassifyEmails({
   required Map<String, dynamic> args,
   required ProcessSession session,
@@ -63,7 +67,11 @@ Future<void> runBatchedClassifyEmails({
     return;
   }
 
-  if (files.isEmpty) {
+  // --- Phase 2: Batch-fetch metadata via mdls and .emlx parsing ---
+  final emails = await fetchEmailMetadata(files);
+
+
+  if (emails.isEmpty) {
     // Check if empty results are due to missing Full Disk Access
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     final output = {
@@ -72,46 +80,6 @@ Future<void> runBatchedClassifyEmails({
       if (includeUnmatched) 'unmatched': <Map<String, dynamic>>[],
       'total_emails_scanned': 0,
       if (fdaWarning != null) 'warning': fdaWarning,
-    };
-    session.chunks.add(const JsonEncoder.withIndent('  ').convert(output));
-    session.isComplete = true;
-    await extra.sendProgress(1, message: 'classify-emails completed');
-    return;
-  }
-
-  await extra.sendProgress(0,
-      message: 'Found ${files.length} messages, fetching metadata...');
-
-  // --- Phase 2: Batch-fetch email metadata via mdls ---
-  final emails = <Map<String, String>>[];
-  final batches = batchList(files, _metadataBatchSize);
-  var scanned = 0;
-
-  for (var i = 0; i < batches.length; i++) {
-    if (session.isComplete) return; // cancelled
-
-    final batch = batches[i];
-
-    try {
-      final metadataList = await fetchEmailMetadata(batch);
-      emails.addAll(metadataList);
-    } catch (e) {
-      // Log warning but continue with other batches
-      session.chunks.add('Warning: Batch ${i + 1} error: $e\n');
-    }
-
-    scanned += batch.length;
-    await extra.sendProgress(0,
-        message:
-            'Fetched metadata for $scanned of ${files.length} messages');
-  }
-
-  if (emails.isEmpty) {
-    final output = {
-      'summary': <String, int>{},
-      'categories': <String, List<Map<String, dynamic>>>{},
-      if (includeUnmatched) 'unmatched': <Map<String, dynamic>>[],
-      'total_emails_scanned': 0,
     };
     session.chunks.add(const JsonEncoder.withIndent('  ').convert(output));
     session.isComplete = true;

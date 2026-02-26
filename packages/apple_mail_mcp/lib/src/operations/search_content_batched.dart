@@ -135,7 +135,10 @@ Future<void> runBatchedSearchEmailContent({
     return;
   }
 
-  if (files.isEmpty) {
+  // Get metadata from mdfind results
+  final allMetadata = await fetchEmailMetadata(files);
+
+  if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
@@ -150,10 +153,10 @@ Future<void> runBatchedSearchEmailContent({
 
   await extra.sendProgress(0,
       message:
-          'Found ${files.length} matching messages, fetching metadata...');
+          'Found ${allMetadata.length} matching messages, processing...');
 
-  // Fetch metadata in batches
-  final batches = batchList(files, _metadataBatchSize);
+  // Process metadata in batches
+  final batches = batchList(allMetadata, _metadataBatchSize);
   var matchedCount = 0;
   var resultCount = 0;
   var scanned = 0;
@@ -164,35 +167,29 @@ Future<void> runBatchedSearchEmailContent({
 
     final batch = batches[i];
 
-    try {
-      final metadataList = await fetchEmailMetadata(batch);
-
-      final batchOutput = StringBuffer();
-      for (final meta in metadataList) {
-        matchedCount++;
-        if (matchedCount > offset && resultCount < maxResults) {
-          final readIndicator =
-              meta['read_status'] == 'read' ? '✓' : '✉';
-          batchOutput.writeln('$readIndicator ${meta['subject']}');
-          batchOutput.writeln('   From: ${meta['sender']}');
-          batchOutput.writeln('   Date: ${meta['date']}');
-          batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
-          batchOutput.writeln('   ID: ${meta['message_id']}');
-          batchOutput.writeln();
-          resultCount++;
-        }
+    final batchOutput = StringBuffer();
+    for (final meta in batch) {
+      matchedCount++;
+      if (matchedCount > offset && resultCount < maxResults) {
+        final readIndicator =
+            meta['read_status'] == 'read' ? '✓' : '✉';
+        batchOutput.writeln('$readIndicator ${meta['subject']}');
+        batchOutput.writeln('   From: ${meta['sender']}');
+        batchOutput.writeln('   Date: ${meta['date']}');
+        batchOutput.writeln('   Mailbox: ${meta['mailbox']}');
+        batchOutput.writeln('   ID: ${meta['message_id']}');
+        batchOutput.writeln();
+        resultCount++;
       }
+    }
 
-      if (batchOutput.isNotEmpty) {
-        session.chunks.add(batchOutput.toString());
-      }
-    } catch (e) {
-      session.chunks.add('Warning: Batch ${i + 1} error: $e\n');
+    if (batchOutput.isNotEmpty) {
+      session.chunks.add(batchOutput.toString());
     }
 
     scanned += batch.length;
     await extra.sendProgress(0,
-        message: 'Processed $scanned of ${files.length} messages, '
+        message: 'Processed $scanned of ${allMetadata.length} messages, '
             'found $matchedCount matches');
   }
 

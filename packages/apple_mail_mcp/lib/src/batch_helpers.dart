@@ -237,6 +237,7 @@ Future<String?> getFullDiskAccessWarningIfNeeded() async {
   return null;
 }
 
+
 // ──────────────────────── Private helpers ────────────────────────
 
 /// System folder names to skip when searching "All" mailboxes.
