@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:apple_mail_mcp/apple_mail_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
@@ -41,6 +42,67 @@ final batchedHandlers = <String, BatchedHandler>{
   'classify-emails': runBatchedClassifyEmails,
   'get-email-thread': runBatchedGetEmailThread,
 };
+
+// ---------------------------------------------------------------------------
+// Full Disk Access (FDA) status tracking
+// ---------------------------------------------------------------------------
+
+/// Cached result of the FDA check. `null` means not yet checked or
+/// indeterminate (e.g. ~/Library/Mail does not exist).
+bool? _fdaStatus;
+
+/// Whether Full Disk Access is confirmed granted.
+///
+/// Only valid after [checkFullDiskAccessOrWarn] has been called (typically in
+/// `setUpAll`). Returns `false` when FDA is denied **or** indeterminate.
+bool get hasFullDiskAccess => _fdaStatus == true;
+
+/// Checks whether Full Disk Access is granted by attempting to list
+/// the contents of `~/Library/Mail`.
+///
+/// Returns `true` if the directory exists and is listable (FDA granted),
+/// `false` if listing throws a permission error (FDA denied), or `null`
+/// if `~/Library/Mail` does not exist (indeterminate — Mail may not be
+/// configured).
+Future<bool?> checkFullDiskAccess() async {
+  final home = Platform.environment['HOME'];
+  if (home == null) return null;
+
+  final mailDir = Directory('$home/Library/Mail');
+  if (!mailDir.existsSync()) return null;
+
+  try {
+    // Attempt to list the directory contents — this fails without FDA.
+    await mailDir.list().first;
+    return true;
+  } on FileSystemException {
+    return false;
+  } on StateError {
+    // Directory exists but is empty — still means we have access.
+    return true;
+  }
+}
+
+/// Extracts the count from "FOUND: N" or "FOUND:N" patterns in output text.
+///
+/// Returns `null` if no FOUND pattern is found.
+int? extractFoundCount(String text) {
+  final match = RegExp(r'FOUND:\s*(\d+)').firstMatch(text);
+  if (match == null) return null;
+  return int.tryParse(match.group(1)!);
+}
+
+/// Asserts that [count] > 0 when Full Disk Access is granted.
+///
+/// This is a no-op when FDA is not granted or indeterminate, allowing tests
+/// to pass with 0 results on CI / sandboxed environments.
+void expectNonZeroIfFdaGranted(int count, {required String reason}) {
+  if (hasFullDiskAccess) {
+    expect(count, greaterThan(0), reason: reason);
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 /// Runs a batched operation and waits for completion.
 ///
@@ -193,6 +255,37 @@ class FakeRequestHandlerExtra implements RequestHandlerExtra {
 /// use it since sessions are identified by unique IDs.
 SessionManager createTestSessionManager() {
   return SessionManager();
+}
+/// Checks Full Disk Access and prints a warning if not granted.
+///
+/// Call this in setUpAll() so the test output clearly explains why
+/// mdfind-based operations return 0 results.
+///
+/// Stores the result in [_fdaStatus] so [hasFullDiskAccess] can be
+/// used for conditional assertions throughout the test suite.
+Future<void> checkFullDiskAccessOrWarn() async {
+  _fdaStatus = await checkFullDiskAccess();
+  if (_fdaStatus == false) {
+    // ignore: avoid_print
+    print('\n'
+        '╔══════════════════════════════════════════════════════════════╗\n'
+        '║  WARNING: Full Disk Access is NOT granted.                  ║\n'
+        '║                                                             ║\n'
+        '║  Spotlight (mdfind) operations will return 0 results.       ║\n'
+        '║  Tests will pass but with empty data.                       ║\n'
+        '║                                                             ║\n'
+        '║  To test with real data, grant Full Disk Access to your     ║\n'
+        '║  terminal/IDE in:                                           ║\n'
+        '║  System Settings > Privacy & Security > Full Disk Access    ║\n'
+        '╚══════════════════════════════════════════════════════════════╝\n');
+  } else if (_fdaStatus == true) {
+    // ignore: avoid_print
+    print('✓ Full Disk Access is granted — mdfind operations will work.');
+  } else {
+    // ignore: avoid_print
+    print('⚠ Could not determine Full Disk Access status '
+        '(~/Library/Mail may not exist).');
+  }
 }
 
 /// Waits for a session to complete by polling.

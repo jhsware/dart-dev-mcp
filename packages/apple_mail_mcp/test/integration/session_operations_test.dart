@@ -13,6 +13,7 @@ void main() {
   late String account;
 
   setUpAll(() async {
+    await checkFullDiskAccessOrWarn();
     account = await discoverFirstAccount();
   });
 
@@ -54,6 +55,14 @@ void main() {
       );
 
       expect(output, isNotEmpty, reason: 'Session should produce output');
+      // When FDA is granted, verify the session found actual results
+      if (hasFullDiskAccess) {
+        final foundCount = extractFoundCount(output);
+        if (foundCount != null) {
+          expect(foundCount, greaterThan(0),
+              reason: 'Session search-emails should find emails when FDA is granted');
+        }
+      }
 
       // Test get_output handler
       final getOutputResult = handleGetOutput(
@@ -141,6 +150,19 @@ void main() {
       );
 
       expect(output, isNotEmpty);
+      // When FDA is granted, verify emails were actually scanned
+      if (hasFullDiskAccess) {
+        try {
+          final parsed = jsonDecode(output) as Map<String, dynamic>;
+          final scanned = parsed['total_emails_scanned'] as int?;
+          if (scanned != null) {
+            expect(scanned, greaterThan(0),
+                reason: 'Classify session should scan emails when FDA is granted');
+          }
+        } catch (_) {
+          // Output may not be pure JSON if it contains warning text
+        }
+      }
 
       // Verify progress was reported
       expect(extra.progressCalls, isNotEmpty,
@@ -221,6 +243,15 @@ void main() {
       );
 
       expect(output, isNotEmpty, reason: 'Session should produce output');
+      // When FDA is granted, verify thread search found messages
+      if (hasFullDiskAccess) {
+        final foundMatch = RegExp(r'FOUND\s+(\d+)\s+MESSAGE').firstMatch(output);
+        if (foundMatch != null) {
+          final count = int.tryParse(foundMatch.group(1)!) ?? 0;
+          expect(count, greaterThan(0),
+              reason: 'Thread search for "the" should find messages when FDA is granted');
+        }
+      }
 
       final getOutputResult = handleGetOutput(
         {'session_id': sessionId, 'chunk_index': 0},
