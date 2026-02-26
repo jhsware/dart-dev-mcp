@@ -10,6 +10,7 @@ void main() {
   late String account;
 
   setUpAll(() async {
+    await checkFullDiskAccessOrWarn();
     account = await discoverFirstAccount();
   });
 
@@ -17,7 +18,7 @@ void main() {
     test('returns results for common sender pattern', () async {
       // Use a generic pattern that is likely to match something
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['search-by-sender']!({
+        () => runBatchedOperation('search-by-sender', {
           'sender': '@',
           'account': account,
           'max_results': 5,
@@ -29,12 +30,17 @@ void main() {
       final text = extractText(result);
       expect(text, contains('EMAILS FROM SENDER:'));
       expect(text, contains('FOUND:'));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      final foundCount = extractFoundCount(text);
+      if (foundCount != null) {
+        expectNonZeroIfFdaGranted(foundCount,
+            reason: 'search-by-sender with "@" should find emails when FDA is granted');
+      }
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('with mailbox=All searches across mailboxes', () async {
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['search-by-sender']!({
+        () => runBatchedOperation('search-by-sender', {
           'sender': '@',
           'account': account,
           'mailbox': 'All',
@@ -48,7 +54,7 @@ void main() {
       if (!isTimeoutResult(result) && !text.startsWith('Error:')) {
         assertSuccessResult(result);
       }
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
   });
 
@@ -68,6 +74,11 @@ void main() {
       expect(text, contains('EMAILS FROM:'));
       expect(text, contains('Time range:'));
       expect(text, contains('FOUND:'));
+      final foundCount = extractFoundCount(text);
+      if (foundCount != null) {
+        expectNonZeroIfFdaGranted(foundCount,
+            reason: 'get-recent-from-sender with "@" should find emails when FDA is granted');
+      }
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
 
@@ -91,7 +102,7 @@ void main() {
   group('get-newsletters', () {
     test('returns newsletter detection results', () async {
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['get-newsletters']!({
+        () => runBatchedOperation('get-newsletters', {
           'account': account,
           'days_back': 30,
           'max_results': 10,
@@ -102,26 +113,26 @@ void main() {
       final text = extractText(result);
       expect(text, contains('NEWSLETTER DETECTION'));
       expect(text, contains('FOUND:'));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('without account searches all accounts', () async {
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['get-newsletters']!({
+        () => runBatchedOperation('get-newsletters', {
           'days_back': 7,
           'max_results': 5,
         }),
       );
 
       assertSuccessResult(result);
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
   });
 
   group('search-all-accounts', () {
     test('returns cross-account search results', () async {
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['search-all-accounts']!({
+        () => runBatchedOperation('search-all-accounts', {
           'days_back': 7,
           'max_results': 5,
         }),
@@ -135,12 +146,12 @@ void main() {
         isTrue,
         reason: 'Should contain results or no-results message',
       );
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
     test('with subject keyword filter', () async {
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['search-all-accounts']!({
+        () => runBatchedOperation('search-all-accounts', {
           'subject_keyword': 'the',
           'days_back': 30,
           'max_results': 5,
@@ -148,14 +159,14 @@ void main() {
       );
 
       assertSuccessResult(result);
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
   });
 
   group('get-email-thread', () {
     test('returns thread view for subject keyword', () async {
       final (result, elapsed) = await timeOperation(
-        () => searchHandlers['get-email-thread']!({
+        () => runBatchedOperation('get-email-thread', {
           'account': account,
           'subject_keyword': 'the',
         }),
@@ -166,7 +177,7 @@ void main() {
       expect(text, contains('EMAIL THREAD VIEW'));
       expect(text, contains('FOUND'));
       expect(text, contains('MESSAGE(S) IN THREAD'));
-      expect(elapsed, lessThan(maxComplexOpDuration));
+      expect(elapsed, lessThan(maxBatchedOpDuration));
     });
   });
 }
