@@ -4,6 +4,7 @@
 // and mock classes for session-based operations.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:apple_mail_mcp/apple_mail_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
@@ -28,6 +29,57 @@ final searchHandlers = getSearchOperations();
 
 /// All attachment operation handlers keyed by operation name.
 final attachmentHandlers = getAttachmentOperations();
+
+/// All batched operation handlers keyed by operation name.
+final batchedHandlers = <String, BatchedHandler>{
+  'search-emails': runBatchedSearchEmails,
+  'search-email-content': runBatchedSearchEmailContent,
+  'multi-search': runBatchedMultiSearch,
+  'search-by-sender': runBatchedSearchBySender,
+  'search-all-accounts': runBatchedSearchAllAccounts,
+  'get-newsletters': runBatchedGetNewsletters,
+  'classify-emails': runBatchedClassifyEmails,
+  'get-email-thread': runBatchedGetEmailThread,
+};
+
+/// Runs a batched operation and waits for completion.
+///
+/// Creates a SessionManager + FakeRequestHandlerExtra, starts the operation
+/// via [runBatchedInBackground], waits for the session to complete, and
+/// returns the output wrapped in a [CallToolResult] so existing assertion
+/// helpers ([assertSuccessResult], [extractText], etc.) work unchanged.
+Future<CallToolResult> runBatchedOperation(
+  String operation,
+  Map<String, dynamic> args,
+) async {
+  final handler = batchedHandlers[operation];
+  if (handler == null) {
+    throw ArgumentError('No batched handler for operation: $operation');
+  }
+
+  final sessionManager = createTestSessionManager();
+  final extra = FakeRequestHandlerExtra();
+
+  final startResult = runBatchedInBackground(
+    extra: extra,
+    operation: operation,
+    args: args,
+    handler: handler,
+    sessionManager: sessionManager,
+  );
+
+  final startParsed =
+      jsonDecode(extractText(startResult)) as Map<String, dynamic>;
+  final sessionId = startParsed['session_id'] as String;
+
+  final output = await waitForSession(
+    sessionId: sessionId,
+    sessionManager: sessionManager,
+    timeout: maxBatchedOpDuration,
+  );
+
+  return CallToolResult.fromContent([TextContent(text: output)]);
+}
 
 /// Discovers the first available Apple Mail account name.
 ///
