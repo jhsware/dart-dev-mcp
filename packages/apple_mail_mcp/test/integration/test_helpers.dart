@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:apple_mail_mcp/apple_mail_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
@@ -55,6 +56,32 @@ bool? _fdaStatus;
 /// Only valid after [checkFullDiskAccessOrWarn] has been called (typically in
 /// `setUpAll`). Returns `false` when FDA is denied **or** indeterminate.
 bool get hasFullDiskAccess => _fdaStatus == true;
+
+/// Checks whether Full Disk Access is granted by attempting to list
+/// the contents of `~/Library/Mail`.
+///
+/// Returns `true` if the directory exists and is listable (FDA granted),
+/// `false` if listing throws a permission error (FDA denied), or `null`
+/// if `~/Library/Mail` does not exist (indeterminate — Mail may not be
+/// configured).
+Future<bool?> checkFullDiskAccess() async {
+  final home = Platform.environment['HOME'];
+  if (home == null) return null;
+
+  final mailDir = Directory('$home/Library/Mail');
+  if (!mailDir.existsSync()) return null;
+
+  try {
+    // Attempt to list the directory contents — this fails without FDA.
+    await mailDir.list().first;
+    return true;
+  } on FileSystemException {
+    return false;
+  } on StateError {
+    // Directory exists but is empty — still means we have access.
+    return true;
+  }
+}
 
 /// Extracts the count from "FOUND: N" or "FOUND:N" patterns in output text.
 ///
