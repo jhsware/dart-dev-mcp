@@ -83,9 +83,11 @@ Future<void> runBatchedSearchEmails({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 matching email(s), showing 0 (offset: $offset)\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}'
       '========================================\n',
     );
     session.isComplete = true;
@@ -240,10 +242,12 @@ Future<void> runBatchedMultiSearch({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 matching email(s), showing 0 (offset: $offset)\n'
       'Query groups searched: ${groups.length}\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}'
       '========================================\n',
     );
     session.isComplete = true;

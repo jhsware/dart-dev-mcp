@@ -5,11 +5,47 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'core.dart';
+
 /// Default base directory for Apple Mail message storage.
 const String defaultMailDirectory = '~/Library/Mail';
 
 /// The Spotlight content type for Apple Mail .emlx files.
 const String emlxContentType = 'com.apple.mail.emlx';
+
+/// Warning message when Full Disk Access is not granted.
+///
+/// mdfind and direct file listing require Full Disk Access to read
+/// ~/Library/Mail/. Without it, operations return empty results.
+const String fullDiskAccessWarning =
+    'Full Disk Access is required for email search operations. '
+    'Without it, Spotlight (mdfind) cannot index ~/Library/Mail/ and '
+    'file listing is blocked by macOS privacy restrictions. '
+    'Grant Full Disk Access to your terminal (or IDE) in '
+    'System Settings > Privacy & Security > Full Disk Access, '
+    'then restart the application.';
+
+/// Checks whether the current process has Full Disk Access to read
+/// Apple Mail data in ~/Library/Mail/.
+///
+/// Attempts to list the Mail directory. Returns `true` if listing
+/// succeeds, `false` if a [PathAccessException] is thrown.
+/// Returns `null` if ~/Library/Mail/ does not exist (no Mail data).
+Future<bool?> checkFullDiskAccess() async {
+  final homeDir = Platform.environment['HOME'] ?? '/tmp';
+  final mailBaseDir = Directory('$homeDir/Library/Mail');
+
+  if (!await mailBaseDir.exists()) return null;
+
+  try {
+    await mailBaseDir.list().first;
+    return true;
+  } on PathAccessException {
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
 
 /// Runs `mdfind` with the given Spotlight query string.
 ///
@@ -222,53 +258,55 @@ Future<List<String>> mdfindEmails({
 
 /// Resolves Apple Mail account names to their filesystem directories.
 ///
-/// Scans `~/Library/Mail/V*/` for account subdirectories and reads
-/// each account's plist files to map display names and email addresses
-/// to paths. Multiple name variants per account are stored so that
-/// AppleScript-discovered names (typically email addresses) can be
-/// resolved to filesystem paths.
-/// Returns `{nameVariant: absolutePath}`.
+/// Uses AppleScript to query Mail.app for each account's name and
+/// `account directory` property (POSIX path). This approach works
+/// without Full Disk Access because AppleScript runs through Mail.app
+/// which already has file access.
+///
+/// Returns `{accountName: absolutePath}`.
 Future<Map<String, String>> resolveAccountPaths() async {
-  final homeDir = Platform.environment['HOME'] ?? '/tmp';
-  final mailBaseDir = Directory('$homeDir/Library/Mail');
+  try {
+    final script = '''
+tell application "Mail"
+    set outputLines to {}
+    set allAccounts to every account
+    repeat with anAccount in allAccounts
+        set accountName to name of anAccount
+        try
+            set acctDir to account directory of anAccount
+            set dirPath to POSIX path of acctDir
+            set end of outputLines to accountName & "|" & dirPath
+        on error
+            set end of outputLines to accountName & "|"
+        end try
+    end repeat
+    set AppleScript's text item delimiters to "\\n"
+    return outputLines as string
+end tell
+''';
+    final result = await runAppleScript(script);
+    final paths = <String, String>{};
 
-  if (!await mailBaseDir.exists()) {
-    return {};
-  }
-
-  final result = <String, String>{};
-
-  // Find V* version directories (e.g. V10)
-  await for (final versionDir in mailBaseDir.list()) {
-    if (versionDir is! Directory) continue;
-    final versionName = versionDir.path.split('/').last;
-    if (!versionName.startsWith('V')) continue;
-
-    // Each subdirectory is an account
-    await for (final accountDir in versionDir.list()) {
-      if (accountDir is! Directory) continue;
-      final accountDirName = accountDir.path.split('/').last;
-
-      // Skip non-account directories
-      if (accountDirName.startsWith('.') ||
-          accountDirName == 'Mailboxes') {
-        continue;
-      }
-
-      // Read all name variants from plists
-      final names = await _readAccountNames(accountDir.path);
-      if (names.isNotEmpty) {
-        for (final name in names) {
-          result[name] = accountDir.path;
-        }
-      } else {
-        // Fall back to directory name as account identifier
-        result[accountDirName] = accountDir.path;
+    for (final line in result.split('\n')) {
+      if (line.trim().isEmpty) continue;
+      final sepIndex = line.indexOf('|');
+      if (sepIndex < 0) continue;
+      final name = line.substring(0, sepIndex).trim();
+      final path = line.substring(sepIndex + 1).trim();
+      if (name.isNotEmpty && path.isNotEmpty) {
+        // Remove trailing slash for consistency
+        paths[name] = path.endsWith('/')
+            ? path.substring(0, path.length - 1)
+            : path;
       }
     }
-  }
 
-  return result;
+    return paths;
+  } catch (_) {
+    // AppleScript failed (Mail not running, etc.) — fall back to
+    // filesystem-based discovery
+    return _resolveAccountPathsFromFilesystem();
+  }
 }
 
 /// Finds the absolute directory path for a given mailbox within an account.
@@ -291,17 +329,21 @@ Future<String?> findMailboxDirectory({
     }
   }
 
-  // Try case-insensitive scan
-  final accountDir = Directory(accountPath);
-  if (!await accountDir.exists()) return null;
+  // Try case-insensitive scan (may fail without Full Disk Access)
+  try {
+    final accountDir = Directory(accountPath);
+    if (!await accountDir.exists()) return null;
 
-  final lowerMailbox = mailbox.toLowerCase();
-  await for (final entry in accountDir.list()) {
-    if (entry is! Directory) continue;
-    final dirName = entry.path.split('/').last;
-    if (dirName.toLowerCase() == '$lowerMailbox.mbox') {
-      return entry.path;
+    final lowerMailbox = mailbox.toLowerCase();
+    await for (final entry in accountDir.list()) {
+      if (entry is! Directory) continue;
+      final dirName = entry.path.split('/').last;
+      if (dirName.toLowerCase() == '$lowerMailbox.mbox') {
+        return entry.path;
+      }
     }
+  } catch (_) {
+    // PathAccessException — cannot list directory without Full Disk Access
   }
 
   return null;
@@ -413,88 +455,42 @@ String _escapeSpotlight(String value) {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
 
-/// Reads account name variants from an account directory's plist files.
+/// Fallback: resolves account paths by listing ~/Library/Mail/V* directories.
 ///
-/// Returns multiple name variants including AccountName, DisplayName,
-/// email addresses (from EmailAddresses array, AccountURL, or
-/// Username/Hostname keys). This ensures AppleScript-discovered names
-/// (typically email addresses) can be matched to filesystem paths.
-Future<List<String>> _readAccountNames(String accountPath) async {
-  final names = <String>{};
+/// This requires Full Disk Access for the running process. Used only when
+/// AppleScript-based resolution fails (e.g. Mail.app is not running).
+Future<Map<String, String>> _resolveAccountPathsFromFilesystem() async {
+  final homeDir = Platform.environment['HOME'] ?? '/tmp';
+  final mailBaseDir = Directory('$homeDir/Library/Mail');
 
-  for (final plistName in ['Info.plist', 'AccountInfo.plist']) {
-    final plistFile = File('$accountPath/$plistName');
-    if (await plistFile.exists()) {
-      try {
-        final content = await plistFile.readAsString();
-
-        // 1. AccountName / DisplayName
-        final nameMatches = RegExp(
-          r'<key>(?:AccountName|DisplayName)</key>\s*<string>([^<]+)</string>',
-        ).allMatches(content);
-        for (final m in nameMatches) {
-          final name = m.group(1)!.trim();
-          if (name.isNotEmpty) names.add(name);
-        }
-
-        // 2. EmailAddresses array
-        final emailArrayMatch = RegExp(
-          r'<key>EmailAddresses</key>\s*<array>(.*?)</array>',
-          dotAll: true,
-        ).firstMatch(content);
-        if (emailArrayMatch != null) {
-          final strings = RegExp(r'<string>([^<]+)</string>')
-              .allMatches(emailArrayMatch.group(1)!)
-              .map((m) => m.group(1)!.trim())
-              .where((s) => s.isNotEmpty);
-          names.addAll(strings);
-        }
-
-        // 3. AccountURL — extract username (email) from URL
-        //    e.g. imap://user%40example.com@mail.example.com
-        final urlMatch = RegExp(
-          r'<key>AccountURL</key>\s*<string>([^<]+)</string>',
-        ).firstMatch(content);
-        if (urlMatch != null) {
-          final url = urlMatch.group(1)!;
-          // Extract the user info part (before the last @host)
-          final schemeStripped = url.replaceFirst(RegExp(r'^[a-z]+://'), '');
-          final atIndex = schemeStripped.lastIndexOf('@');
-          if (atIndex > 0) {
-            final userInfo = Uri.decodeComponent(
-              schemeStripped.substring(0, atIndex),
-            );
-            if (userInfo.isNotEmpty) names.add(userInfo);
-          }
-        }
-
-        // 4. Username (+ Hostname fallback)
-        final usernameMatch = RegExp(
-          r'<key>Username</key>\s*<string>([^<]+)</string>',
-        ).firstMatch(content);
-        if (usernameMatch != null) {
-          final username = usernameMatch.group(1)!.trim();
-          if (username.contains('@')) {
-            names.add(username);
-          } else if (username.isNotEmpty) {
-            // Try combining with Hostname
-            final hostMatch = RegExp(
-              r'<key>Hostname</key>\s*<string>([^<]+)</string>',
-            ).firstMatch(content);
-            if (hostMatch != null) {
-              final host = hostMatch.group(1)!.trim();
-              if (host.isNotEmpty) {
-                names.add('$username@$host');
-              }
-            }
-            names.add(username);
-          }
-        }
-      } catch (_) {
-        // Fall through to next plist or return empty
-      }
-    }
+  if (!await mailBaseDir.exists()) {
+    return {};
   }
 
-  return names.toList();
+  final result = <String, String>{};
+
+  try {
+    await for (final versionDir in mailBaseDir.list()) {
+      if (versionDir is! Directory) continue;
+      final versionName = versionDir.path.split('/').last;
+      if (!versionName.startsWith('V')) continue;
+
+      await for (final accountDir in versionDir.list()) {
+        if (accountDir is! Directory) continue;
+        final accountDirName = accountDir.path.split('/').last;
+
+        if (accountDirName.startsWith('.') ||
+            accountDirName == 'Mailboxes') {
+          continue;
+        }
+
+        // Use directory name as account identifier
+        result[accountDirName] = accountDir.path;
+      }
+    }
+  } catch (_) {
+    // PathAccessException or similar — return whatever we found so far
+  }
+
+  return result;
 }

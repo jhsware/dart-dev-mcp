@@ -84,9 +84,11 @@ Future<void> runBatchedGetEmailThread({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
       'FOUND 0 MESSAGE(S) IN THREAD\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}'
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n',
     );
     session.isComplete = true;

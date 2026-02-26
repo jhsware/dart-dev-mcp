@@ -28,7 +28,8 @@ export 'src/batch_helpers.dart'
         fetchEmailFiles,
         fetchEmailMetadata,
         buildMessageIdSet,
-        fetchAccountNames;
+        fetchAccountNames,
+        getFullDiskAccessWarningIfNeeded;
 export 'src/progress_wrapper.dart'
     show
         slowOperations,
@@ -59,6 +60,8 @@ export 'src/mdfind_helpers.dart'
         mdfindEmails,
         resolveAccountPaths,
         findMailboxDirectory,
+        checkFullDiskAccess,
+        fullDiskAccessWarning,
         parseMdlsOutput,
         parseMdlsBatchOutput,
         defaultMailDirectory,

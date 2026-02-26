@@ -108,7 +108,9 @@ Future<List<String>> _fetchEmailFilesFromPath({
       mailbox: mailbox,
     );
     if (mailboxDir == null) {
-      throw Exception('Mailbox "$mailbox" not found in account');
+      // Mailbox not found (may not exist, or directory listing blocked
+      // by macOS privacy restrictions without Full Disk Access).
+      return [];
     }
     scopeDir = mailboxDir;
   }
@@ -222,6 +224,17 @@ Future<List<Map<String, String>>> fetchEmailMetadata(
 Future<List<String>> fetchAccountNames() async {
   final accountPaths = await resolveAccountPaths();
   return accountPaths.keys.toList();
+}
+
+
+/// Returns the Full Disk Access warning if FDA is not granted, or `null`.
+///
+/// Call this when an operation returns zero results to inform the user
+/// that results may be missing due to macOS privacy restrictions.
+Future<String?> getFullDiskAccessWarningIfNeeded() async {
+  final fdaStatus = await checkFullDiskAccess();
+  if (fdaStatus == false) return fullDiskAccessWarning;
+  return null;
 }
 
 // ──────────────────────── Private helpers ────────────────────────

@@ -15,6 +15,7 @@ import 'package:sqlite3/sqlite3.dart';
 void main(List<String> arguments) async {
   String? projectDir;
   String? dbPath;
+  String? promptsFilePath;
 
   // Parse arguments
   for (final arg in arguments) {
@@ -22,6 +23,8 @@ void main(List<String> arguments) async {
       projectDir = arg.substring('--project-dir='.length);
     } else if (arg.startsWith('--db-path=')) {
       dbPath = arg.substring('--db-path='.length);
+    } else if (arg.startsWith('--prompts-file=')) {
+      promptsFilePath = arg.substring('--prompts-file='.length);
     } else if (arg == '--help' || arg == '-h') {
       _printUsage();
       exit(0);
@@ -65,6 +68,12 @@ void main(List<String> arguments) async {
   final transactionLogRepository = TransactionLogRepository(database);
   transactionLogRepository.initializeTable();
 
+  // Initialize prompt pack service
+  final promptPackService = PromptPackService(
+    promptsFilePath: promptsFilePath,
+  );
+  promptPackService.initialize();
+
   // Create operation handlers
   final taskOps = TaskOperations(
     database: database,
@@ -73,6 +82,7 @@ void main(List<String> arguments) async {
   final stepOps = StepOperations(
     database: database,
     transactionLogRepository: transactionLogRepository,
+    promptPackService: promptPackService,
   );
   final timelineOps = TimelineOperations(
     transactionLogRepository: transactionLogRepository,
@@ -214,12 +224,16 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
 }
 
 void _printUsage() {
-  stderr.writeln('Usage: planner_mcp --project-dir=PATH');
+  stderr.writeln('Usage: planner_mcp --project-dir=PATH --db-path=PATH');
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH  Path to the project directory (required)');
-  stderr.writeln('  --help, -h          Show this help message');
+      '  --project-dir=PATH    Path to the project directory (required)');
+  stderr.writeln(
+      '  --db-path=PATH        Path to the SQLite database file (required)');
+  stderr.writeln(
+      '  --prompts-file=PATH   Path to prompts YAML file (optional, uses defaults)');
+  stderr.writeln('  --help, -h            Show this help message');
   stderr.writeln('');
   stderr.writeln('The planner stores data in .ai_coding_tool/db.sqlite');
   stderr.writeln(

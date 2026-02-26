@@ -136,9 +136,11 @@ Future<void> runBatchedSearchEmailContent({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 emails matching "$query"\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}'
       '========================================\n',
     );
     session.isComplete = true;

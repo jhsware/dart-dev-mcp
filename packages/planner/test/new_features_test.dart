@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:planner_mcp/planner_mcp.dart';
@@ -29,6 +30,7 @@ void main() {
     stepOps = StepOperations(
       database: db,
       transactionLogRepository: transactionLogRepo,
+      promptPackService: PromptPackService(),
     );
     gitLogOps = GitLogOperations(
       database: db,

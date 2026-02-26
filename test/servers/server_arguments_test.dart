@@ -186,7 +186,7 @@ void main() {
       expect(result.exitCode, 0);
       expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
       expect(result.stderr, contains('.ai_coding_tool/db.sqlite'));
-      expect(result.stderr, contains('INSTRUCTIONS.md'));
+expect(result.stderr, contains('AGENTS.md'));
     });
 
     test('fails with non-existent project directory', () async {
