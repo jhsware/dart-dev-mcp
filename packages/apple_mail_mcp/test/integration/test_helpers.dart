@@ -42,6 +42,41 @@ final batchedHandlers = <String, BatchedHandler>{
   'get-email-thread': runBatchedGetEmailThread,
 };
 
+// ---------------------------------------------------------------------------
+// Full Disk Access (FDA) status tracking
+// ---------------------------------------------------------------------------
+
+/// Cached result of the FDA check. `null` means not yet checked or
+/// indeterminate (e.g. ~/Library/Mail does not exist).
+bool? _fdaStatus;
+
+/// Whether Full Disk Access is confirmed granted.
+///
+/// Only valid after [checkFullDiskAccessOrWarn] has been called (typically in
+/// `setUpAll`). Returns `false` when FDA is denied **or** indeterminate.
+bool get hasFullDiskAccess => _fdaStatus == true;
+
+/// Extracts the count from "FOUND: N" or "FOUND:N" patterns in output text.
+///
+/// Returns `null` if no FOUND pattern is found.
+int? extractFoundCount(String text) {
+  final match = RegExp(r'FOUND:\s*(\d+)').firstMatch(text);
+  if (match == null) return null;
+  return int.tryParse(match.group(1)!);
+}
+
+/// Asserts that [count] > 0 when Full Disk Access is granted.
+///
+/// This is a no-op when FDA is not granted or indeterminate, allowing tests
+/// to pass with 0 results on CI / sandboxed environments.
+void expectNonZeroIfFdaGranted(int count, {required String reason}) {
+  if (hasFullDiskAccess) {
+    expect(count, greaterThan(0), reason: reason);
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 /// Runs a batched operation and waits for completion.
 ///
 /// Creates a SessionManager + FakeRequestHandlerExtra, starts the operation
@@ -193,6 +228,37 @@ class FakeRequestHandlerExtra implements RequestHandlerExtra {
 /// use it since sessions are identified by unique IDs.
 SessionManager createTestSessionManager() {
   return SessionManager();
+}
+/// Checks Full Disk Access and prints a warning if not granted.
+///
+/// Call this in setUpAll() so the test output clearly explains why
+/// mdfind-based operations return 0 results.
+///
+/// Stores the result in [_fdaStatus] so [hasFullDiskAccess] can be
+/// used for conditional assertions throughout the test suite.
+Future<void> checkFullDiskAccessOrWarn() async {
+  _fdaStatus = await checkFullDiskAccess();
+  if (_fdaStatus == false) {
+    // ignore: avoid_print
+    print('\n'
+        '╔══════════════════════════════════════════════════════════════╗\n'
+        '║  WARNING: Full Disk Access is NOT granted.                  ║\n'
+        '║                                                             ║\n'
+        '║  Spotlight (mdfind) operations will return 0 results.       ║\n'
+        '║  Tests will pass but with empty data.                       ║\n'
+        '║                                                             ║\n'
+        '║  To test with real data, grant Full Disk Access to your     ║\n'
+        '║  terminal/IDE in:                                           ║\n'
+        '║  System Settings > Privacy & Security > Full Disk Access    ║\n'
+        '╚══════════════════════════════════════════════════════════════╝\n');
+  } else if (_fdaStatus == true) {
+    // ignore: avoid_print
+    print('✓ Full Disk Access is granted — mdfind operations will work.');
+  } else {
+    // ignore: avoid_print
+    print('⚠ Could not determine Full Disk Access status '
+        '(~/Library/Mail may not exist).');
+  }
 }
 
 /// Waits for a session to complete by polling.
