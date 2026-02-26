@@ -93,15 +93,14 @@ void main() {
       final parentStepData = parseResult(parentStepResult);
       final parentStepId = parentStepData['step']['id'] as String;
 
-      // Call get-subtask-prompt
+      // Call get-subtask-prompt — now returns rendered text, not JSON
       final result = stepOps.getSubtaskPrompt({'id': parentStepId});
-      final data = parseResult(result);
+      final text = resultText(result);
 
-      expect(data['id'], subTaskId);
-      expect(data['title'], 'Implement feature X');
-      expect(data['steps'], hasLength(2));
-      expect(data['steps'][0]['title'], 'Sub-step 1');
-      expect(data['steps'][1]['title'], 'Sub-step 2');
+      expect(text, contains(subTaskId));
+      expect(text, contains('Implement feature X'));
+      expect(text, contains('Sub-step 1'));
+      expect(text, contains('Sub-step 2'));
     });
 
     test('returns error when step has no sub_task_id', () {
@@ -163,11 +162,12 @@ void main() {
       final parentStepData = parseResult(parentStepResult);
       final parentStepId = parentStepData['step']['id'] as String;
 
+      // get-subtask-prompt now returns rendered text, not JSON
       final result = stepOps.getSubtaskPrompt({'id': parentStepId});
-      final data = parseResult(result);
+      final text = resultText(result);
 
-      expect(data['steps'], hasLength(1));
-      expect(data['steps'][0]['sub_task_id'], subSubTaskId);
+      expect(text, contains('Nested step'));
+      expect(text, contains('sub_task_id: $subSubTaskId'));
     });
   });
 
