@@ -3,7 +3,7 @@
 /// Extracts imports, exports (classes, enums, mixins, extensions, typedefs,
 /// functions, methods, class members), variables, and annotations from
 /// Dart source code using regex and brace-counting — no analyzer dependency.
-library dart_parser;
+library;
 
 /// Result of parsing a Dart source file.
 class DartParseResult {

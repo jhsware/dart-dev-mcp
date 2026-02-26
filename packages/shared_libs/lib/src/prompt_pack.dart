@@ -15,7 +15,7 @@ class PromptTemplate {
 
   /// Creates a [PromptTemplate] from a map (typically parsed from YAML).
   ///
-  /// Expected keys: `template` (String), `variables` (List<String>).
+  /// Expected keys: `template` (String), `variables` (`List<String>`).
   factory PromptTemplate.fromMap(Map<String, dynamic> map) {
     final template = map['template'] as String? ?? '';
     final variables = (map['variables'] as List?)
@@ -134,9 +134,12 @@ class PromptPack {
 
   static const _defaultTaskPrompt = '''Task ID: {{task_id}}
 Task: {{task_title}}
+
 {{task_details}}
+
 Steps:
 {{steps}}
+
 Implement this task. Use planner (dart-dev-mcp-planner) to find the task and steps. Start by updating the task status to started. Double check that the step hasn't been completed by another task. When working on a step first change step status to started.
 - Use show-task in planner to understand how we have progressed so far.
 - Summarise progress in task memory and update planner as you progress, especially if the step is complex, both updating status of steps and task memory as needed so it is easy to continue if we get interrupted.
@@ -144,21 +147,31 @@ Implement this task. Use planner (dart-dev-mcp-planner) to find the task and ste
 - Analyse code using filesystem tool to further understand how to complete the task.
 - Edit files using filesystem tool.
 - Do not work in a sandbox, the filesystem tool has restricted access.
-IMPORTANT! Use skill /planner-do-sub-task to perform this task.
+
+IMPORTANT! Use skill /planner-do-task to perform this task.
+
 Go.''';
 
   static const _defaultParentTaskPrompt = '''Task ID: {{task_id}}
 Task: {{task_title}}
+
 {{task_details}}
+
+This is a PARENT TASK. Each step below references a sub-task (via sub_task_id) that contains the detailed implementation instructions.
+
+To work on this parent task, process each step in order:
+1. Use planner with operation "get-subtask-prompt" and the step's ID to fetch the linked sub-task details.
+2. Complete the sub-task fully (implement, test, commit) before marking the step as done.
+3. Update task memory with progress after each step.
+
 Steps:
 {{steps}}
-Implement this task. Use planner (dart-dev-mcp-planner) to find the task and steps. Start by updating the task status to started. Double check that the step hasn't been completed by another task. When working on a step first change step status to started.
-- Use show-task in planner to understand how we have progressed so far.
-- Summarise progress in task memory and update planner as you progress, especially if the step is complex, both updating status of steps and task memory as needed so it is easy to continue if we get interrupted.
-- Commit each step to git, and commit sub steps to git too if appropriate.
-- Analyse code using filesystem tool to further understand how to complete the task.
-- Edit files using filesystem tool.
-- Do not work in a sandbox, the filesystem tool has restricted access.
-IMPORTANT! Use skill /planner-do-sub-task to perform this task.
+
+Implement this parent task. Use planner (dart-dev-mcp-planner) to find the task and steps. Start by updating the task status to started. For each step, use get-subtask-prompt to fetch the sub-task details, then complete the sub-task before marking the step as done. Update task memory as you progress.
+
+Delegate all work on this task to the sub-tasks. This is only an orchestrating task that makes sure we perform multiple independent sub-tasks in the correct order and provide a bit of context.
+
+IMPORTANT! Use skill /planner-do-parent-task to perform this task.
+
 Go.''';
 }
