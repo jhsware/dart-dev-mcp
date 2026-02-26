@@ -10,6 +10,7 @@ void main() {
   late String account;
 
   setUpAll(() async {
+    await checkFullDiskAccessOrWarn();
     account = await discoverFirstAccount();
   });
 

@@ -97,10 +97,12 @@ Future<void> runBatchedSearchBySender({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 matching email(s) from sender, '
       'showing 0 (offset: $offset)\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}'
       '========================================\n',
     );
     session.isComplete = true;
@@ -224,8 +226,10 @@ Future<void> runBatchedSearchAllAccounts({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
-      'No emails found matching your criteria across all accounts.\n',
+      'No emails found matching your criteria across all accounts.\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}',
     );
     session.isComplete = true;
     await extra.sendProgress(1, message: 'search-all-accounts completed');
@@ -366,9 +370,11 @@ Future<void> runBatchedGetNewsletters({
   }
 
   if (files.isEmpty) {
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
       '========================================\n'
       'FOUND: 0 newsletter(s)\n'
+      '${fdaWarning != null ? 'WARNING: $fdaWarning\n' : ''}'
       '========================================\n',
     );
     session.isComplete = true;

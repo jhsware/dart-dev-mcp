@@ -13,6 +13,40 @@ const String defaultMailDirectory = '~/Library/Mail';
 /// The Spotlight content type for Apple Mail .emlx files.
 const String emlxContentType = 'com.apple.mail.emlx';
 
+/// Warning message when Full Disk Access is not granted.
+///
+/// mdfind and direct file listing require Full Disk Access to read
+/// ~/Library/Mail/. Without it, operations return empty results.
+const String fullDiskAccessWarning =
+    'Full Disk Access is required for email search operations. '
+    'Without it, Spotlight (mdfind) cannot index ~/Library/Mail/ and '
+    'file listing is blocked by macOS privacy restrictions. '
+    'Grant Full Disk Access to your terminal (or IDE) in '
+    'System Settings > Privacy & Security > Full Disk Access, '
+    'then restart the application.';
+
+/// Checks whether the current process has Full Disk Access to read
+/// Apple Mail data in ~/Library/Mail/.
+///
+/// Attempts to list the Mail directory. Returns `true` if listing
+/// succeeds, `false` if a [PathAccessException] is thrown.
+/// Returns `null` if ~/Library/Mail/ does not exist (no Mail data).
+Future<bool?> checkFullDiskAccess() async {
+  final homeDir = Platform.environment['HOME'] ?? '/tmp';
+  final mailBaseDir = Directory('$homeDir/Library/Mail');
+
+  if (!await mailBaseDir.exists()) return null;
+
+  try {
+    await mailBaseDir.list().first;
+    return true;
+  } on PathAccessException {
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Runs `mdfind` with the given Spotlight query string.
 ///
 /// Optionally scopes results to [directory] via the `-onlyin` flag.

@@ -64,11 +64,14 @@ Future<void> runBatchedClassifyEmails({
   }
 
   if (files.isEmpty) {
+    // Check if empty results are due to missing Full Disk Access
+    final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     final output = {
       'summary': <String, int>{},
       'categories': <String, List<Map<String, dynamic>>>{},
       if (includeUnmatched) 'unmatched': <Map<String, dynamic>>[],
       'total_emails_scanned': 0,
+      if (fdaWarning != null) 'warning': fdaWarning,
     };
     session.chunks.add(const JsonEncoder.withIndent('  ').convert(output));
     session.isComplete = true;

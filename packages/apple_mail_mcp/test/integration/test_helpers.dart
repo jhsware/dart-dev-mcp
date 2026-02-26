@@ -194,6 +194,34 @@ class FakeRequestHandlerExtra implements RequestHandlerExtra {
 SessionManager createTestSessionManager() {
   return SessionManager();
 }
+/// Checks Full Disk Access and prints a warning if not granted.
+///
+/// Call this in setUpAll() so the test output clearly explains why
+/// mdfind-based operations return 0 results.
+Future<void> checkFullDiskAccessOrWarn() async {
+  final fdaStatus = await checkFullDiskAccess();
+  if (fdaStatus == false) {
+    // ignore: avoid_print
+    print('\n'
+        '╔══════════════════════════════════════════════════════════════╗\n'
+        '║  WARNING: Full Disk Access is NOT granted.                  ║\n'
+        '║                                                             ║\n'
+        '║  Spotlight (mdfind) operations will return 0 results.       ║\n'
+        '║  Tests will pass but with empty data.                       ║\n'
+        '║                                                             ║\n'
+        '║  To test with real data, grant Full Disk Access to your     ║\n'
+        '║  terminal/IDE in:                                           ║\n'
+        '║  System Settings > Privacy & Security > Full Disk Access    ║\n'
+        '╚══════════════════════════════════════════════════════════════╝\n');
+  } else if (fdaStatus == true) {
+    // ignore: avoid_print
+    print('✓ Full Disk Access is granted — mdfind operations will work.');
+  } else {
+    // ignore: avoid_print
+    print('⚠ Could not determine Full Disk Access status '
+        '(~/Library/Mail may not exist).');
+  }
+}
 
 /// Waits for a session to complete by polling.
 ///
