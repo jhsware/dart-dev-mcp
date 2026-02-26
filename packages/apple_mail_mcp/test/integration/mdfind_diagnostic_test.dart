@@ -3,12 +3,9 @@
 library;
 
 import 'dart:io';
-import 'dart:convert';
 
 import 'package:apple_mail_mcp/apple_mail_mcp.dart';
 import 'package:test/test.dart';
-
-import 'test_helpers.dart';
 
 /// Diagnostic test suite to isolate mdfind behavior and identify why
 /// Spotlight-based email search returns 0 results.
@@ -62,7 +59,6 @@ void main() {
         return;
       }
 
-      // Try to find .emlx files by walking the directory tree
       var emlxCount = 0;
       String? firstEmlxPath;
 
@@ -72,7 +68,7 @@ void main() {
           if (entity is File && entity.path.endsWith('.emlx')) {
             emlxCount++;
             firstEmlxPath ??= entity.path;
-            if (emlxCount >= 10) break; // Don't scan everything
+            if (emlxCount >= 10) break;
           }
         }
       } catch (e) {
@@ -99,7 +95,6 @@ void main() {
         return;
       }
 
-      // Find a .emlx file
       String? emlxPath;
       try {
         await for (final entity
@@ -120,7 +115,6 @@ void main() {
         return;
       }
 
-      // Run mdls on it
       // ignore: avoid_print
       print('Running mdls on: $emlxPath');
       try {
@@ -153,8 +147,7 @@ void main() {
       }
     });
 
-    test('4. Raw mdfind without directory scoping', () async {
-      // Simplest possible mdfind query — no directory scoping
+    test('4. Raw mdfind — simplest possible query (no scoping)', () async {
       // ignore: avoid_print
       print('Running: mdfind \'kMDItemContentType == "com.apple.mail.emlx"\'');
 
@@ -196,17 +189,53 @@ void main() {
       }
     });
 
-    test('5. Raw mdfind WITH directory scoping', () async {
-      final expandedPath = '$homeDir/Library/Mail';
+    test('5. mdfind with -name flag for .emlx files', () async {
+      // From cheat sheet: -name flag searches file names only
       // ignore: avoid_print
-      print(
-          'Running: mdfind -onlyin "$expandedPath" \'kMDItemContentType == "com.apple.mail.emlx"\'');
+      print('Running: mdfind -name ".emlx"');
+
+      try {
+        final result = await Process.run('mdfind', ['-name', '.emlx']);
+
+        final stdout = (result.stdout as String).trim();
+        final stderr = (result.stderr as String).trim();
+        final lines =
+            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+        // ignore: avoid_print
+        print('Exit code: ${result.exitCode}');
+        // ignore: avoid_print
+        print('Result count: ${lines.length}');
+        if (lines.isNotEmpty) {
+          // ignore: avoid_print
+          print('First 3 results:');
+          for (final line in lines.take(3)) {
+            // ignore: avoid_print
+            print('  $line');
+          }
+        }
+        if (stderr.isNotEmpty) {
+          // ignore: avoid_print
+          print('Stderr: $stderr');
+        }
+
+        // ignore: avoid_print
+        print(
+            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind -name returned ${lines.length} results');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdfind error: $e');
+      }
+    });
+
+    test('6. mdfind with kMDItemFSName (single quotes)', () async {
+      // From cheat sheet: kMDItemFSName uses single quotes inside double quotes
+      // ignore: avoid_print
+      print('Running: mdfind "kMDItemFSName == \'*.emlx\'"');
 
       try {
         final result = await Process.run('mdfind', [
-          '-onlyin',
-          expandedPath,
-          'kMDItemContentType == "com.apple.mail.emlx"',
+          "kMDItemFSName == '*.emlx'",
         ]);
 
         final stdout = (result.stdout as String).trim();
@@ -233,17 +262,89 @@ void main() {
 
         // ignore: avoid_print
         print(
+            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — kMDItemFSName returned ${lines.length} results');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdfind error: $e');
+      }
+    });
+
+    test('7. mdfind with kind:email (cheat sheet syntax)', () async {
+      // From cheat sheet: kind:email should find email messages
+      // ignore: avoid_print
+      print('Running: mdfind kind:email');
+
+      try {
+        final result = await Process.run('mdfind', ['kind:email']);
+
+        final stdout = (result.stdout as String).trim();
+        final stderr = (result.stderr as String).trim();
+        final lines =
+            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+        // ignore: avoid_print
+        print('Exit code: ${result.exitCode}');
+        // ignore: avoid_print
+        print('Result count: ${lines.length}');
+        if (lines.isNotEmpty) {
+          // ignore: avoid_print
+          print('First 3 results:');
+          for (final line in lines.take(3)) {
+            // ignore: avoid_print
+            print('  $line');
+          }
+        }
+        if (stderr.isNotEmpty) {
+          // ignore: avoid_print
+          print('Stderr: $stderr');
+        }
+
+        // ignore: avoid_print
+        print(
+            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — kind:email returned ${lines.length} results');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdfind error: $e');
+      }
+    });
+
+    test('8. mdfind with -onlyin expanded path', () async {
+      final expandedPath = '$homeDir/Library/Mail';
+      // ignore: avoid_print
+      print(
+          'Running: mdfind -onlyin "$expandedPath" \'kMDItemContentType == "com.apple.mail.emlx"\'');
+
+      try {
+        final result = await Process.run('mdfind', [
+          '-onlyin',
+          expandedPath,
+          'kMDItemContentType == "com.apple.mail.emlx"',
+        ]);
+
+        final stdout = (result.stdout as String).trim();
+        final stderr = (result.stderr as String).trim();
+        final lines =
+            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+        // ignore: avoid_print
+        print('Exit code: ${result.exitCode}');
+        // ignore: avoid_print
+        print('Result count: ${lines.length}');
+        if (stderr.isNotEmpty) {
+          // ignore: avoid_print
+          print('Stderr: $stderr');
+        }
+
+        // ignore: avoid_print
+        print(
             'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind (scoped) returned ${lines.length} results');
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
-        // ignore: avoid_print
-        print('RESULT: FAIL — mdfind threw exception');
       }
     });
 
-    test('6. mdfind with unexpanded tilde path (bug check)', () async {
-      // This tests if the tilde causes issues
+    test('9. mdfind with unexpanded tilde path (bug check)', () async {
       // ignore: avoid_print
       print(
           'Running: mdfind -onlyin "~/Library/Mail" \'kMDItemContentType == "com.apple.mail.emlx"\'');
@@ -251,7 +352,7 @@ void main() {
       try {
         final result = await Process.run('mdfind', [
           '-onlyin',
-          '~/Library/Mail', // NOT expanded — this is what happens if _expandHome fails
+          '~/Library/Mail',
           'kMDItemContentType == "com.apple.mail.emlx"',
         ]);
 
@@ -275,76 +376,75 @@ void main() {
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
-        // ignore: avoid_print
-        print('RESULT: FAIL — mdfind threw exception with unexpanded tilde');
       }
     });
 
-    test('7. Alternative content type queries', () async {
-      // Try different content type queries to see what works
-      final queries = [
-        'kMDItemContentType == "com.apple.mail.emlx"',
-        'kMDItemContentType == "com.apple.mail.email"',
-        'kMDItemKind == "Email Message"',
-        'kMDItemFSName == "*.emlx"',
-        'kMDItemContentType == "com.apple.mail.emlx"c',
-      ];
-
-      for (final query in queries) {
-        try {
-          final result = await Process.run('mdfind', [query]);
-          final stdout = (result.stdout as String).trim();
-          final count =
-              stdout.split('\n').where((l) => l.trim().isNotEmpty).length;
-          // ignore: avoid_print
-          print('Query: $query → $count results');
-        } catch (e) {
-          // ignore: avoid_print
-          print('Query: $query → ERROR: $e');
-        }
-      }
-
+    test('10. Check Spotlight privacy exclusion list', () async {
+      // Check if ~/Library/Mail/ is excluded from Spotlight indexing
       // ignore: avoid_print
-      print('RESULT: INFO — check which queries return results above');
-    });
+      print('Checking Spotlight privacy exclusions...');
 
-    test('8. Test runMdfind() from mdfind_helpers.dart', () async {
-      // Test the actual function used by the production code
-      // ignore: avoid_print
-      print('Testing runMdfind() with defaultMailDirectory...');
-
+      // The privacy list is stored in Spotlight preferences
       try {
-        final query = buildMdfindQuery();
+        final result = await Process.run('defaults', [
+          'read',
+          '/.Spotlight-V100/VolumeConfiguration',
+          'Exclusions',
+        ]);
         // ignore: avoid_print
-        print('Query: $query');
-        // ignore: avoid_print
-        print('Directory: $defaultMailDirectory');
-
-        final results =
-            await runMdfind(query, directory: defaultMailDirectory);
-        // ignore: avoid_print
-        print('Results: ${results.length}');
-        if (results.isNotEmpty) {
+        print('Volume exclusions: ${(result.stdout as String).trim()}');
+        if ((result.stderr as String).trim().isNotEmpty) {
           // ignore: avoid_print
-          print('First 3:');
-          for (final r in results.take(3)) {
-            // ignore: avoid_print
-            print('  $r');
-          }
+          print('Stderr: ${(result.stderr as String).trim()}');
         }
-
-        // ignore: avoid_print
-        print(
-            'RESULT: ${results.isNotEmpty ? "PASS" : "FAIL"} — runMdfind returned ${results.length} results');
       } catch (e) {
         // ignore: avoid_print
-        print('runMdfind error: $e');
-        // ignore: avoid_print
-        print('RESULT: FAIL — runMdfind threw exception');
+        print('Could not read volume exclusions: $e');
       }
+
+      // Also check user-level Spotlight privacy
+      try {
+        final result = await Process.run('defaults', [
+          'read',
+          'com.apple.Spotlight',
+          'Exclusions',
+        ]);
+        // ignore: avoid_print
+        print('User exclusions: ${(result.stdout as String).trim()}');
+      } catch (e) {
+        // ignore: avoid_print
+        print('No user exclusions or error: $e');
+      }
+
+      // Check mdutil status
+      try {
+        final result =
+            await Process.run('mdutil', ['-s', '$homeDir/Library/Mail']);
+        // ignore: avoid_print
+        print('mdutil -s Mail: ${(result.stdout as String).trim()}');
+        if ((result.stderr as String).trim().isNotEmpty) {
+          // ignore: avoid_print
+          print('mdutil stderr: ${(result.stderr as String).trim()}');
+        }
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdutil error: $e');
+      }
+
+      try {
+        final result = await Process.run('mdutil', ['-s', '/']);
+        // ignore: avoid_print
+        print('mdutil -s /: ${(result.stdout as String).trim()}');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdutil / error: $e');
+      }
+
+      // ignore: avoid_print
+      print('RESULT: INFO — check output above');
     });
 
-    test('9. Test resolveAccountPaths()', () async {
+    test('11. Test resolveAccountPaths()', () async {
       // ignore: avoid_print
       print('Testing resolveAccountPaths()...');
 
@@ -358,7 +458,6 @@ void main() {
           // ignore: avoid_print
           print('  ${entry.key} → ${entry.value} (exists: $exists)');
 
-          // Count .emlx files in this account directory
           if (exists) {
             var count = 0;
             try {
@@ -386,36 +485,7 @@ void main() {
       }
     });
 
-    test('10. Test mdfindEmails() high-level function', () async {
-      // ignore: avoid_print
-      print('Testing mdfindEmails() with no filters...');
-
-      try {
-        final results = await mdfindEmails();
-        // ignore: avoid_print
-        print('Results: ${results.length}');
-        if (results.isNotEmpty) {
-          // ignore: avoid_print
-          print('First 3:');
-          for (final r in results.take(3)) {
-            // ignore: avoid_print
-            print('  $r');
-          }
-        }
-
-        // ignore: avoid_print
-        print(
-            'RESULT: ${results.isNotEmpty ? "PASS" : "FAIL"} — mdfindEmails returned ${results.length} results');
-      } catch (e) {
-        // ignore: avoid_print
-        print('mdfindEmails error: $e');
-        // ignore: avoid_print
-        print('RESULT: FAIL — mdfindEmails threw exception');
-      }
-    });
-
-    test('11. Test mdfind scoped to account directory', () async {
-      // Test scoping to an actual account directory instead of ~/Library/Mail
+    test('12. mdfind scoped to account directory', () async {
       try {
         final paths = await resolveAccountPaths();
         if (paths.isEmpty) {
@@ -428,14 +498,32 @@ void main() {
         // ignore: avoid_print
         print('Testing mdfind scoped to account: $accountPath');
 
+        // Test with content type query
         final query = buildMdfindQuery();
         final results = await runMdfind(query, directory: accountPath);
         // ignore: avoid_print
-        print('Results: ${results.length}');
+        print('Content type query results: ${results.length}');
+
+        // Test with -name flag scoped to account
+        final result2 = await Process.run('mdfind', [
+          '-onlyin', accountPath, '-name', '.emlx',
+        ]);
+        final nameResults = (result2.stdout as String).trim()
+            .split('\n').where((l) => l.trim().isNotEmpty).toList();
+        // ignore: avoid_print
+        print('-name .emlx results: ${nameResults.length}');
+
+        // Test with kMDItemFSName scoped to account
+        final result3 = await Process.run('mdfind', [
+          '-onlyin', accountPath, "kMDItemFSName == '*.emlx'",
+        ]);
+        final fsNameResults = (result3.stdout as String).trim()
+            .split('\n').where((l) => l.trim().isNotEmpty).toList();
+        // ignore: avoid_print
+        print('kMDItemFSName results: ${fsNameResults.length}');
 
         // ignore: avoid_print
-        print(
-            'RESULT: ${results.isNotEmpty ? "PASS" : "FAIL"} — account-scoped mdfind returned ${results.length} results');
+        print('RESULT: INFO — compare counts above');
       } catch (e) {
         // ignore: avoid_print
         print('Error: $e');
@@ -444,102 +532,188 @@ void main() {
       }
     });
 
-    test('12. Check Spotlight indexing status', () async {
-      // Check if Spotlight is enabled/disabled for the volume
+    test('13. mdfind with -interpret flag', () async {
+      // The -interpret flag uses natural language interpretation
       // ignore: avoid_print
-      print('Checking Spotlight indexing status...');
+      print('Running: mdfind -interpret "email messages"');
 
       try {
-        final result =
-            await Process.run('mdutil', ['-s', '$homeDir/Library/Mail']);
+        final result = await Process.run('mdfind', [
+          '-interpret', 'email messages',
+        ]);
+
+        final stdout = (result.stdout as String).trim();
+        final lines =
+            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
         // ignore: avoid_print
-        print('mdutil -s output: ${(result.stdout as String).trim()}');
-        if ((result.stderr as String).trim().isNotEmpty) {
+        print('Exit code: ${result.exitCode}');
+        // ignore: avoid_print
+        print('Result count: ${lines.length}');
+        if (lines.isNotEmpty) {
           // ignore: avoid_print
-          print('mdutil stderr: ${(result.stderr as String).trim()}');
+          print('First 3 results:');
+          for (final line in lines.take(3)) {
+            // ignore: avoid_print
+            print('  $line');
+          }
+        }
+
+        // ignore: avoid_print
+        print(
+            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — -interpret returned ${lines.length} results');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdfind error: $e');
+      }
+    });
+
+    test('14. mdfind for ANY file in ~/Library/Mail (test FDA)', () async {
+      // This tests if mdfind can access ANYTHING in ~/Library/Mail
+      // If even a wildcard search returns 0 results, FDA is the blocker
+      final expandedPath = '$homeDir/Library/Mail';
+      // ignore: avoid_print
+      print('Running: mdfind -onlyin "$expandedPath" "*"');
+
+      try {
+        final result = await Process.run('mdfind', [
+          '-onlyin', expandedPath, '*',
+        ]);
+
+        final stdout = (result.stdout as String).trim();
+        final stderr = (result.stderr as String).trim();
+        final lines =
+            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+        // ignore: avoid_print
+        print('Exit code: ${result.exitCode}');
+        // ignore: avoid_print
+        print('Result count: ${lines.length}');
+        if (stderr.isNotEmpty) {
+          // ignore: avoid_print
+          print('Stderr: $stderr');
+        }
+        if (lines.isNotEmpty) {
+          // ignore: avoid_print
+          print('First 3 results:');
+          for (final line in lines.take(3)) {
+            // ignore: avoid_print
+            print('  $line');
+          }
+        }
+
+        // ignore: avoid_print
+        print(
+            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — wildcard in ~/Library/Mail returned ${lines.length} results');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdfind error: $e');
+      }
+    });
+
+    test('15. mdfind for .emlx OUTSIDE ~/Library/Mail', () async {
+      // Test if mdfind works at all for .emlx files anywhere on disk
+      // If this returns results but scoped search doesn't, it's a scoping issue
+      // ignore: avoid_print
+      print('Running: mdfind -onlyin / \'kMDItemContentType == "com.apple.mail.emlx"\' (first 5 only)');
+
+      try {
+        final result = await Process.run('mdfind', [
+          'kMDItemContentType == "com.apple.mail.emlx"',
+        ]);
+
+        final stdout = (result.stdout as String).trim();
+        final lines =
+            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+        // Separate by location
+        final inMail = lines.where((l) => l.contains('/Library/Mail/')).length;
+        final outsideMail = lines.where((l) => !l.contains('/Library/Mail/')).length;
+
+        // ignore: avoid_print
+        print('Total results: ${lines.length}');
+        // ignore: avoid_print
+        print('  In ~/Library/Mail: $inMail');
+        // ignore: avoid_print
+        print('  Outside ~/Library/Mail: $outsideMail');
+
+        if (lines.isNotEmpty) {
+          // ignore: avoid_print
+          print('First 5 results:');
+          for (final line in lines.take(5)) {
+            // ignore: avoid_print
+            print('  $line');
+          }
+        }
+
+        // ignore: avoid_print
+        print(
+            'RESULT: INFO — total=${lines.length}, inMail=$inMail, outside=$outsideMail');
+      } catch (e) {
+        // ignore: avoid_print
+        print('mdfind error: $e');
+      }
+    });
+
+    test('16. Compare mdfind vs direct listing counts', () async {
+      // If mdfind returns 0 but filesystem listing finds files,
+      // the issue is Spotlight indexing, not FDA
+      final mailDir = Directory('$homeDir/Library/Mail');
+      if (!await mailDir.exists()) {
+        // ignore: avoid_print
+        print('RESULT: SKIP — ~/Library/Mail does not exist');
+        return;
+      }
+
+      var fsCount = 0;
+      try {
+        await for (final entity
+            in mailDir.list(recursive: true, followLinks: false)) {
+          if (entity is File && entity.path.endsWith('.emlx')) {
+            fsCount++;
+            if (fsCount >= 100) break;
+          }
         }
       } catch (e) {
         // ignore: avoid_print
-        print('mdutil error: $e');
+        print('Filesystem error: $e');
       }
 
-      // Also check the root volume
+      int mdfindCount;
       try {
-        final result = await Process.run('mdutil', ['-s', '/']);
-        // ignore: avoid_print
-        print('mdutil -s / output: ${(result.stdout as String).trim()}');
-      } catch (e) {
-        // ignore: avoid_print
-        print('mdutil / error: $e');
+        final result = await Process.run('mdfind', [
+          '-onlyin', '$homeDir/Library/Mail',
+          'kMDItemContentType == "com.apple.mail.emlx"',
+        ]);
+        final lines = (result.stdout as String).trim()
+            .split('\n').where((l) => l.trim().isNotEmpty).toList();
+        mdfindCount = lines.length;
+      } catch (_) {
+        mdfindCount = -1;
       }
 
       // ignore: avoid_print
-      print('RESULT: INFO — check output above');
-    });
-
-    test('13. Verify _expandHome behavior', () async {
-      // Manually verify the path expansion logic
-      final tildeExpanded = defaultMailDirectory.replaceFirst(
-          '~', homeDir);
+      print('Filesystem count: $fsCount+ .emlx files');
       // ignore: avoid_print
-      print('defaultMailDirectory: $defaultMailDirectory');
-      // ignore: avoid_print
-      print('After expansion: $tildeExpanded');
-      // ignore: avoid_print
-      print('Directory exists: ${await Directory(tildeExpanded).exists()}');
+      print('mdfind count: $mdfindCount .emlx files');
 
-      // Check if HOME env var is set
-      // ignore: avoid_print
-      print('HOME env var: ${Platform.environment['HOME']}');
-
-      // ignore: avoid_print
-      print('RESULT: INFO');
-    });
-
-    test('14. Test mdfind with date filter', () async {
-      // The failing tests use date filters — test if dates cause the issue
-      final now = DateTime.now();
-      final thirtyDaysAgo = now.subtract(const Duration(days: 30));
-
-      final queryNoDate = 'kMDItemContentType == "com.apple.mail.emlx"';
-      final queryWithDate =
-          'kMDItemContentType == "com.apple.mail.emlx" && '
-          'kMDItemContentCreationDate >= \$time.iso(${thirtyDaysAgo.toUtc().toIso8601String()})';
-
-      // ignore: avoid_print
-      print('Query without date: $queryNoDate');
-      try {
-        final result = await Process.run('mdfind', [queryNoDate]);
-        final count = (result.stdout as String)
-            .trim()
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .length;
+      if (fsCount > 0 && mdfindCount == 0) {
         // ignore: avoid_print
-        print('  → $count results');
-      } catch (e) {
+        print('DIAGNOSIS: Files exist but mdfind can\'t find them');
         // ignore: avoid_print
-        print('  → ERROR: $e');
+        print('  → Likely cause: Spotlight index issue or FDA blocking mdfind');
+      } else if (fsCount == 0 && mdfindCount == 0) {
+        // ignore: avoid_print
+        print('DIAGNOSIS: No .emlx files found by either method');
+        // ignore: avoid_print
+        print('  → Likely cause: FDA blocking both filesystem and Spotlight');
+      } else if (fsCount > 0 && mdfindCount > 0) {
+        // ignore: avoid_print
+        print('DIAGNOSIS: Both methods work — mdfind is functional');
       }
 
       // ignore: avoid_print
-      print('Query with date: $queryWithDate');
-      try {
-        final result = await Process.run('mdfind', [queryWithDate]);
-        final count = (result.stdout as String)
-            .trim()
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .length;
-        // ignore: avoid_print
-        print('  → $count results');
-      } catch (e) {
-        // ignore: avoid_print
-        print('  → ERROR: $e');
-      }
-
-      // ignore: avoid_print
-      print('RESULT: INFO — compare counts above');
+      print('RESULT: INFO — fs=$fsCount, mdfind=$mdfindCount');
     });
   });
 }
