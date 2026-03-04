@@ -16,6 +16,8 @@ When working on a task:
 - [ ] Step 4: When all steps are done, set task to done
 - [ ] Step 5: If coding task - offer to merge the branch
 - [ ] Step 6: If coding task - when code is merged to master, set task to merged
+- [ ] Step 7: Make sure the parent task step status is updated
+
 
 When processing a step:
 - [ ] Step 1: Set step status to started
