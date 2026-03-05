@@ -15,6 +15,7 @@ Before doing anything else:
 
 1. **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
 2. **List existing tasks**: Call `planner` with operation `list-tasks` (optionally filter by `project_id`) to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
+3. **Ask user** if they want the created task/tasks to have status draft or todo.
 
 ## Phase 2 — Research & Exploration
 
