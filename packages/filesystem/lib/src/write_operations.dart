@@ -238,7 +238,7 @@ class FileWriteOperations {
     final sourceContent = await sourceFile.readAsString();
     final sourceLineEnding = sourceContent.isNotEmpty
         ? detectLineEndings(sourceContent)
-        : '\n';
+        : LineEndingStyle.unix;
     final normalizedSource = normalizeLineEndings(sourceContent);
     final sourceLines = normalizedSource.split('\n');
 
@@ -261,7 +261,7 @@ class FileWriteOperations {
     final destFile = File(absDestPath);
     final destExists = await destFile.exists();
 
-    String destLineEnding;
+    LineEndingStyle destLineEnding;
     List<String> destLines;
 
     if (destExists) {
