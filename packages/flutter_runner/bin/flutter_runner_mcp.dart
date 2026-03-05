@@ -68,7 +68,7 @@ void main(List<String> arguments) async {
     description: '''Run Flutter commands via FVM with support for long-running processes.
 
 Operations:
-- analyze: Run 'fvm flutter analyze' to check for errors
+- analyze: Run 'fvm flutter analyze' to check for errors (supports target file/directory)
 - test: Run 'fvm flutter test' to execute tests
 - run: Run 'fvm flutter run' to run the app
 - build: Run 'fvm flutter build' to build the app
@@ -100,7 +100,7 @@ Use get_output with the session_id to poll for output.''',
         ),
         'target': JsonSchema.string(
           description:
-              'Target file, directory, or build type (e.g., "apk", "ios", "web"). Default varies by operation.',
+              'Target file, directory, or build type. Used by analyze, test, run, build, and format.',
         ),
         'device': JsonSchema.string(
           description: 'Device ID to run on (for run operation)',
@@ -172,13 +172,14 @@ Future<CallToolResult> _handleFlutterRunner(
   try {
     switch (operation) {
       case 'analyze':
+        final target = args['target'] as String?;
         return _startFlutterCommandWithProgress(
           extra,
           workingDir,
           sessionManager,
           useFvm,
           'analyze',
-          ['analyze', ...?_getExtraArgs(args)],
+          ['analyze', ?target, ...?_getExtraArgs(args)],
         );
 
       case 'test':
