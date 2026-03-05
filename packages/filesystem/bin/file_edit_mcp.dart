@@ -108,7 +108,8 @@ Operations:
 - search-text: Search for text pattern (regex) in files
 - create-directory: Create a new directory
 - create-file: Create a new file with content
-- edit-file: Edit file content (overwrite, insert, or replace lines)''',
+- edit-file: Edit file content (overwrite, insert, or replace lines)
+- extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)''',
     inputSchema: ToolInputSchema(
       properties: {
         'operation': JsonSchema.string(
@@ -142,6 +143,18 @@ Operations:
           description:
               'For edit-file: ending line number (1-indexed, inclusive)',
         ),
+        'destination': JsonSchema.string(
+          description:
+              'Destination file path for extract operation (relative path)',
+        ),
+        'insert_at': JsonSchema.integer(
+          description:
+              'Line number in destination file to insert at (1-indexed). For extract: omit to append to existing file or write from start of new file',
+        ),
+        'remove_from_source': JsonSchema.boolean(
+          description:
+              'For extract: whether to remove extracted lines from source file. Default: true (cut). Set false to copy.',
+        ),
       },
     ),
     callback: (args, extra) => _handleFileSystem(args, readOps, writeOps),
@@ -163,7 +176,6 @@ void _printUsage() {
   stderr.writeln('Arguments:');
   stderr.writeln('  allowed_paths       Paths that can be accessed (relative to project-dir)');
 }
-
 const _validOperations = [
   'list-content',
   'read-file',
@@ -172,7 +184,9 @@ const _validOperations = [
   'create-directory',
   'create-file',
   'edit-file',
+  'extract',
 ];
+
 
 Future<CallToolResult> _handleFileSystem(
   Map<String, dynamic> args,
@@ -210,6 +224,15 @@ Future<CallToolResult> _handleFileSystem(
         final startLine = args['startLine'] as int?;
         final endLine = args['endLine'] as int?;
         return await writeOps.editFile(path, content, startLine, endLine);
+      case 'extract':
+        final destination = args['destination'] as String?;
+        final startLine = args['startLine'] as int?;
+        final endLine = args['endLine'] as int?;
+        final insertAt = args['insert_at'] as int?;
+        final removeFromSource = args['remove_from_source'] as bool? ?? true;
+        return await writeOps.extractLines(
+          path, destination, startLine, endLine, insertAt, removeFromSource,
+        );
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
