@@ -169,4 +169,156 @@ class FileWriteOperations {
 
     return textResult('Success: $operationDesc in $path');
   }
+
+  /// Extract lines from source file and insert into destination file.
+  ///
+  /// This performs the operation server-side without content passing through
+  /// the LLM context, making it efficient for refactoring large files.
+  Future<CallToolResult> extractLines(
+    String sourcePath,
+    String? destinationPath,
+    int? startLine,
+    int? endLine,
+    int? insertAt,
+    bool removeFromSource,
+  ) async {
+    // 1. Validate required parameters
+    if (requireString(destinationPath, 'destination') case final error?) {
+      return error;
+    }
+    if (startLine == null) {
+      return validationError('startLine', 'startLine is required for extract');
+    }
+    if (endLine == null) {
+      return validationError('endLine', 'endLine is required for extract');
+    }
+    if (startLine < 1) {
+      return validationError('startLine', 'startLine must be >= 1');
+    }
+    if (endLine < 1) {
+      return validationError('endLine', 'endLine must be >= 1');
+    }
+    if (endLine < startLine) {
+      return validationError('endLine', 'endLine must be >= startLine');
+    }
+    if (insertAt != null && insertAt < 1) {
+      return validationError('insert_at', 'insert_at must be >= 1');
+    }
+
+    // 2. Validate source path
+    final sourcePathError = validateRelativePath(sourcePath);
+    if (sourcePathError != null) {
+      return validationError('path', '$sourcePathError. $_allowedPathsHint');
+    }
+    final absSourcePath = getAbsolutePath(workingDir, sourcePath);
+    if (!isAllowedPath(allowedPaths, absSourcePath)) {
+      return validationError(
+          'path', 'Not allowed for: $sourcePath. $_allowedPathsHint');
+    }
+
+    // 3. Validate destination path
+    final destPathError = validateRelativePath(destinationPath!);
+    if (destPathError != null) {
+      return validationError(
+          'destination', '$destPathError. $_allowedPathsHint');
+    }
+    final absDestPath = getAbsolutePath(workingDir, destinationPath);
+    if (!isAllowedPath(allowedPaths, absDestPath)) {
+      return validationError(
+          'destination',
+          'Not allowed for: $destinationPath. $_allowedPathsHint');
+    }
+
+    // 4. Read source file
+    final sourceFile = File(absSourcePath);
+    if (!await sourceFile.exists()) {
+      return notFoundError('File', sourcePath);
+    }
+
+    final sourceContent = await sourceFile.readAsString();
+    final sourceLineEnding = sourceContent.isNotEmpty
+        ? detectLineEndings(sourceContent)
+        : '\n';
+    final normalizedSource = normalizeLineEndings(sourceContent);
+    final sourceLines = normalizedSource.split('\n');
+
+    // 5. Validate line range against source
+    if (startLine > sourceLines.length) {
+      return validationError(
+        'startLine',
+        'startLine ($startLine) exceeds file length (${sourceLines.length} lines)',
+      );
+    }
+    final actualEndLine =
+        endLine > sourceLines.length ? sourceLines.length : endLine;
+
+    // 6. Extract lines (1-indexed to 0-indexed)
+    final extractedLines =
+        sourceLines.sublist(startLine - 1, actualEndLine);
+    final extractedCount = extractedLines.length;
+
+    // 7. Handle destination file
+    final destFile = File(absDestPath);
+    final destExists = await destFile.exists();
+
+    String destLineEnding;
+    List<String> destLines;
+
+    if (destExists) {
+      final destContent = await destFile.readAsString();
+      destLineEnding = destContent.isNotEmpty
+          ? detectLineEndings(destContent)
+          : sourceLineEnding;
+      destLines = normalizeLineEndings(destContent).split('\n');
+    } else {
+      destLineEnding = sourceLineEnding;
+      destLines = <String>[];
+    }
+
+    // Insert extracted lines into destination
+    if (insertAt != null) {
+      final insertIndex = insertAt - 1;
+      if (insertIndex > destLines.length) {
+        // Pad with empty lines if needed
+        final padding =
+            List.filled(insertIndex - destLines.length, '');
+        destLines.addAll(padding);
+      }
+      destLines.insertAll(insertIndex, extractedLines);
+    } else if (destExists) {
+      // Append to existing file
+      destLines.addAll(extractedLines);
+    } else {
+      // New file — just use extracted lines
+      destLines = extractedLines;
+    }
+
+    // Write destination file (create parent dirs if needed)
+    if (!destExists) {
+      await destFile.create(recursive: true);
+    }
+    final destResult = destLines.join('\n');
+    await destFile.writeAsString(
+        applyLineEndings(destResult, destLineEnding));
+
+    // 8. Remove from source if requested
+    if (removeFromSource) {
+      sourceLines.removeRange(startLine - 1, actualEndLine);
+      final sourceResult = sourceLines.join('\n');
+      await sourceFile.writeAsString(
+          applyLineEndings(sourceResult, sourceLineEnding));
+    }
+
+    // 9. Return summary
+    final action = removeFromSource ? 'removed from source' : 'kept in source';
+    final destAction = destExists
+        ? (insertAt != null
+            ? 'inserted at line $insertAt'
+            : 'appended')
+        : 'new file created';
+    return textResult(
+      'Extracted lines $startLine-$actualEndLine from $sourcePath → '
+      '$destinationPath ($extractedCount lines, $action, $destAction)',
+    );
+  }
 }
