@@ -12,6 +12,7 @@ DEFAULT_ALLOWED_PATHS=(
   "./lib"
   "./bin"
   "./test"
+  "./docs"
   "./pubspec.yaml"
   "./README.md"
   "./CHANGELOG.md"
