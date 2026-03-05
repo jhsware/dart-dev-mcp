@@ -59,7 +59,7 @@ void main(List<String> arguments) async {
     description: '''Run Dart commands with support for long-running processes.
 
 Operations:
-- analyze: Run 'dart analyze' to check for errors
+- analyze: Run 'dart analyze' to check for errors (supports target file/directory)
 - test: Run 'dart test' to execute tests
 - run: Run 'dart run' to execute a Dart program
 - format: Run 'dart format' to format code
@@ -87,7 +87,7 @@ Use get_output with the session_id to poll for output.''',
         ),
         'target': JsonSchema.string(
           description:
-              'Target file or directory for run/test/format operations. Default: current directory',
+              'Target file or directory for run/test/analyze/format operations. Default: current directory',
         ),
         'args': JsonSchema.array(
           items: JsonSchema.string(),
@@ -150,12 +150,13 @@ Future<CallToolResult> _handleDartRunner(
   try {
     switch (operation) {
       case 'analyze':
+        final target = args['target'] as String?;
         return _startDartCommandWithProgress(
           extra,
           workingDir,
           sessionManager,
           'analyze',
-          ['analyze', ...?_getExtraArgs(args)],
+          ['analyze', ?target, ...?_getExtraArgs(args)],
         );
 
       case 'test':
