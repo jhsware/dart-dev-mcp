@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 3;
+const int currentSchemaVersion = 4;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -71,6 +71,82 @@ Database initializeDatabase(String dbPath) {
   database.execute(
       'CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(status)');
 
+  // Create items table (backlog items)
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT,
+      type TEXT NOT NULL DEFAULT 'feature',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id)');
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_items_type ON items(type)');
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_items_status ON items(status)');
+
+  // Create item_history table
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS item_history (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      changed_at TEXT NOT NULL,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    )
+  ''');
+
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
+
+  // Create releases table
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS releases (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+
+  // Create release_items junction table
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS release_items (
+      release_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (release_id, item_id),
+      FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    )
+  ''');
+
+  // Create task_items junction table (links tasks to backlog items)
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS task_items (
+      task_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (task_id, item_id),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    )
+  ''');
+
   // Run migrations to ensure schema is up to date
   _runMigrations(database);
 
@@ -126,6 +202,85 @@ void _runMigrations(Database database) {
     database.execute('ALTER TABLE steps ADD COLUMN sub_task_id TEXT');
     _setSchemaVersion(database, 3);
     logInfo('planner', 'Migration to schema version 3 complete.');
+  }
+
+  // Migration from version 3 to version 4
+  // Add backlog tables: items, item_history, releases, release_items, task_items
+  // Uses CREATE TABLE IF NOT EXISTS for compatibility with viewer app
+  if (currentVersion < 4) {
+    logInfo('planner', 'Running migration to schema version 4...');
+
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        details TEXT,
+        type TEXT NOT NULL DEFAULT 'feature',
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    database.execute(
+        'CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id)');
+    database.execute(
+        'CREATE INDEX IF NOT EXISTS idx_items_type ON items(type)');
+    database.execute(
+        'CREATE INDEX IF NOT EXISTS idx_items_status ON items(status)');
+
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS item_history (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        changed_at TEXT NOT NULL,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      )
+    ''');
+    database.execute(
+        'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
+
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS releases (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    database.execute(
+        'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS release_items (
+        release_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (release_id, item_id),
+        FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      )
+    ''');
+
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS task_items (
+        task_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (task_id, item_id),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      )
+    ''');
+
+    _setSchemaVersion(database, 4);
+    logInfo('planner', 'Migration to schema version 4 complete.');
+  }
   }
 
   // Verify we're at the expected version
