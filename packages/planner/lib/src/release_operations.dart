@@ -19,13 +19,9 @@ class ReleaseOperations {
 
   /// Add a new release.
   CallToolResult addRelease(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String?;
+    final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final notes = args?['notes'] as String?;
-
-    if (requireString(projectId, 'project_id') case final error?) {
-      return error;
-    }
 
     if (requireString(title, 'title') case final error?) {
       return error;
@@ -201,10 +197,8 @@ class ReleaseOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-    if (projectId != null && projectId.isNotEmpty) {
-      conditions.add('r.project_id = ?');
-      values.add(projectId);
-    }
+
+
 
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
