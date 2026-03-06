@@ -109,13 +109,14 @@ void main() {
         expect(text, contains('title is required'));
       });
 
-      test('validates required project_id', () {
+      test('defaults project_id to empty string when not provided', () {
         final result = itemOps.addItem({
           'title': 'Some item',
         });
 
-        final text = resultText(result);
-        expect(text, contains('project_id is required'));
+        final data = parseResult(result);
+        expect(data['success'], isTrue);
+        expect(data['item']['project_id'], '');
       });
 
       test('validates type enum', () {
@@ -336,7 +337,7 @@ void main() {
         expect(items[1]['title'], 'First item');
       });
 
-      test('filters by project_id', () {
+      test('returns all items regardless of project_id filter (deprecated)', () {
         itemOps.addItem({
           'project_id': 'project-a',
           'title': 'Item A',
@@ -346,11 +347,11 @@ void main() {
           'title': 'Item B',
         });
 
+        // project_id filter is deprecated — all items should be returned
         final result = itemOps.listItems({'project_id': 'project-a'});
         final data = parseResult(result);
 
-        expect(data['count'], 1);
-        expect((data['items'] as List)[0]['title'], 'Item A');
+        expect(data['count'], 2);
       });
 
       test('filters by type', () {
@@ -470,11 +471,15 @@ void main() {
         expect(data['release']['id'], isNotEmpty);
       });
 
-      test('validates required fields', () {
+      test('validates required fields and defaults project_id', () {
+        // project_id is no longer required — should default to empty string
         final result1 = releaseOps.addRelease({'title': 'v1.0'});
-        expect(resultText(result1), contains('project_id is required'));
+        final data1 = parseResult(result1);
+        expect(data1['success'], isTrue);
+        expect(data1['release']['project_id'], '');
 
-        final result2 = releaseOps.addRelease({'project_id': 'test-project'});
+        // title is still required
+        final result2 = releaseOps.addRelease({});
         expect(resultText(result2), contains('title is required'));
       });
 
@@ -580,7 +585,7 @@ void main() {
         expect(releases[0]['title'], 'v2.0');
       });
 
-      test('filters by project_id', () {
+      test('returns all releases regardless of project_id filter (deprecated)', () {
         releaseOps.addRelease({
           'project_id': 'project-a',
           'title': 'Release A',
@@ -590,11 +595,11 @@ void main() {
           'title': 'Release B',
         });
 
+        // project_id filter is deprecated — all releases should be returned
         final result = releaseOps.listReleases({'project_id': 'project-a'});
         final data = parseResult(result);
 
-        expect(data['count'], 1);
-        expect((data['releases'] as List)[0]['title'], 'Release A');
+        expect(data['count'], 2);
       });
 
       test('includes item count per release', () {
