@@ -50,6 +50,7 @@ Options:
   --help              Show this help message
   --development       Use dart run with source files (for development)
   --project-dir=PATH  Working directory for the project (default: current directory)
+  --access-default    Include all default allowed paths, append any extra paths
 
 Arguments:
   allowed_paths   Paths that fs and git servers can access (relative to project-dir)
@@ -94,6 +95,12 @@ Examples:
 
   # Allow editing lib/bin/test but only git staging for docs
   $0 all ./lib ./bin ./test git:./docs git:./scripts
+
+  # Launch with default paths plus extra directories
+  $0 all --access-default ./agentic-plugins/my-plugin /extra/dir
+
+  # Launch with default paths only (same as no paths)
+  $0 all --access-default
 EOF
 )
 
