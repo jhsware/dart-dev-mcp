@@ -55,7 +55,6 @@ class TimelineOperations {
     // Build query
     final query = TransactionLogQuery(
       entityType: entityType,
-      projectId: projectId,
       before: before,
       after: after,
       limit: limit,
