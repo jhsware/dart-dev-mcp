@@ -1,6 +1,6 @@
 ---
 name: planner-plan
-description: Create a plan and use the planner tool to create one or more tasks with steps that describe how to perform the plan.
+description: Create a plan and use the planner tool to create one or more tasks with steps that describe how to perform the plan. Can also create tasks from releases, linking tasks to backlog items.
 allowed-tools: planner, filesystem, git, fetch, convert, flutter-runner, dart-runner, code-index
 model: opus
 context: fork
@@ -16,6 +16,7 @@ Before doing anything else:
 1. **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
 2. **List existing tasks**: Call `planner` with operation `list-tasks` (optionally filter by `project_id`) to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
 3. **Ask user** if they want the created task/tasks to have status draft or todo.
+4. **Check for release context**: If the user mentions a release or passes a release_id, call `planner` with operation `show-release` to get the release details and its items. This enables release-based planning (see Phase 2a).
 
 ## Phase 2 — Research & Exploration
 
@@ -89,6 +90,32 @@ Summarize your findings before moving to Phase 3. You should understand:
 - TODOs or annotations related to the task area (use `search-annotations`)
 - Any risks or cross-cutting concerns
 
+## Phase 2a — Release-based Planning
+
+When creating tasks from a release (user mentions a release or passes a release_id):
+
+1. **Get the release and its items**: Call `planner show-release` with the release ID to get the release details and all assigned items.
+
+2. **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
+   - Items that affect the same files or modules
+   - Items that have logical dependencies on each other
+   - Items of the same type that can be batched (e.g. multiple bugs in one area)
+
+3. **Still do Phase 2 exploration**: Codebase exploration is still needed to create accurate tasks with correct file references. Use the item descriptions to guide your exploration — focus on files and areas mentioned in the items.
+
+4. **Create tasks linked to items**: For each task created in Phase 3:
+   - Reference the backlog items it addresses in the task details
+   - After creating the task and its steps, link each relevant item using `planner` with operation `add-item-to-task` (requires `task_id` and `item_id`)
+   - A single task can address multiple related items
+   - An item can be linked to multiple tasks if needed
+
+5. **For complex releases with many items**:
+   - Consider using the parent task pattern
+   - Group items by theme/area into sub-tasks
+   - Each sub-task links to its specific items via `add-item-to-task`
+
+
+
 ## Phase 3 — Plan & Create Tasks
 
 ### Choosing the task pattern
@@ -108,6 +135,7 @@ Create tasks using `planner` with operation `add-task`. Each task must have:
   - `## Purpose` — what this achieves
   - `## Files involved` — list key files that will be modified (from your research)
   - `## Acceptance Criteria` — bullet list of what "done" looks like
+  - If planning from a release: `## Backlog Items` — list the item IDs and titles this task addresses
 - **status**: Set to `draft`
 
 ### Adding steps to tasks
@@ -117,6 +145,18 @@ Add steps using `planner` with operation `add-step`. Each step should have:
 - **title**: Action-oriented description
 - **details**: Enough information to complete the step without ambiguity. Include specific file paths, what to change, and expected outcomes.
 - **status**: Set to `todo`
+
+
+### Linking items to tasks (release-based planning)
+
+After creating a task and its steps, link backlog items to it:
+
+```
+planner: add-item-to-task (task_id: "<task-id>", item_id: "<item-id>")
+```
+
+This creates a many-to-many relationship — a task can have multiple items and an item can be linked to multiple tasks.
+
 
 ### CRITICAL: Parent task step creation
 
@@ -138,6 +178,7 @@ After creating all tasks:
 4. Verify acceptance criteria are clear and testable
 5. For parent tasks: verify every step has a `sub_task_id` set
 6. For parent tasks: verify sub-tasks have their own steps defined
+7. For release-based tasks: verify all release items are linked to at least one task via `add-item-to-task`
 
 ## Error Handling
 
@@ -293,6 +334,55 @@ add-step (to parent task):
   title: "Update UI auth components for JWT flow"
   sub_task_id: "<id-of-sub-task-2>"
 ```
+
+### Example 3 — Planning from a release
+
+A user says "Plan tasks for release X" or passes a release_id:
+
+```
+# Step 1: Get release details
+planner: show-release (id: "<release-id>")
+# → Release: "v2.1 — Performance & Polish"
+# → Items:
+# →   item-1: [improvement] "Speed up dashboard loading"
+# →   item-2: [improvement] "Add caching to API responses"
+# →   item-3: [bug] "Fix memory leak in chart component"
+# →   item-4: [feature] "Add export to CSV"
+
+# Step 2: Group related items
+# Items 1+2 are both about performance → single task
+# Item 3 is an independent bug fix → single task
+# Item 4 is independent → single task
+
+# Step 3: Explore codebase (Phase 2) for each group...
+
+# Step 4: Create tasks and link items
+add-task:
+  title: "Improve dashboard and API performance"
+  details: |
+    ## Background
+    ...
+    ## Backlog Items
+    - item-1: Speed up dashboard loading
+    - item-2: Add caching to API responses
+  ...
+
+# After task creation:
+planner: add-item-to-task (task_id: "<perf-task-id>", item_id: "<item-1-id>")
+planner: add-item-to-task (task_id: "<perf-task-id>", item_id: "<item-2-id>")
+
+add-task:
+  title: "Fix memory leak in chart component"
+  ...
+planner: add-item-to-task (task_id: "<fix-task-id>", item_id: "<item-3-id>")
+
+add-task:
+  title: "Add CSV export functionality"
+  ...
+planner: add-item-to-task (task_id: "<csv-task-id>", item_id: "<item-4-id>")
+```
+
+## Tool Reference
 
 ## Tool Reference
 
