@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default to production mode (installed binaries)
 DEV_MODE=false
 PROJECT_DIR=""
+ACCESS_DEFAULT=false
 
 # Default allowed paths for fs and git operations
 DEFAULT_ALLOWED_PATHS=(
@@ -114,6 +115,10 @@ while [[ $# -gt 0 ]]; do
       PROJECT_DIR="${1#*=}"
       shift
       ;;
+    --access-default)
+      ACCESS_DEFAULT=true
+      shift
+      ;;
     --*)
       echo "Unknown option: $1" >&2
       exit 1
@@ -134,8 +139,11 @@ if [ -z "$SERVERS" ]; then
   exit 0
 fi
 
-# Use default paths if none specified
-if [ ${#PATHS[@]} -eq 0 ]; then
+# Resolve allowed paths based on --access-default flag
+if [ "$ACCESS_DEFAULT" = true ]; then
+  # Prepend default paths to any user-provided paths
+  PATHS=("${DEFAULT_ALLOWED_PATHS[@]}" "${PATHS[@]}")
+elif [ ${#PATHS[@]} -eq 0 ]; then
   PATHS=("${DEFAULT_ALLOWED_PATHS[@]}")
 fi
 
