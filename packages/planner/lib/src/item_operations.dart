@@ -25,15 +25,11 @@ class ItemOperations {
 
   /// Add a new backlog item.
   CallToolResult addItem(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String?;
+    final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final details = args?['details'] as String?;
     final type = args?['type'] as String? ?? 'feature';
     final status = args?['status'] as String? ?? 'open';
-
-    if (requireString(projectId, 'project_id') case final error?) {
-      return error;
-    }
 
     if (requireString(title, 'title') case final error?) {
       return error;
@@ -288,10 +284,8 @@ class ItemOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-    if (projectId != null && projectId.isNotEmpty) {
-      conditions.add('i.project_id = ?');
-      values.add(projectId);
-    }
+
+
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
       conditions.add('(i.title LIKE ? OR i.details LIKE ?)');
