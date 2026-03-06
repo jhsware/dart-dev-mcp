@@ -293,15 +293,13 @@ void main() {
         }
       });
 
-      test('filters by project', () {
+      test('project_id filter is deprecated (returns all entries)', () {
         final entries = repo.getTimeline(
           TransactionLogQuery(projectId: 'project-a', limit: 10),
         );
 
-        expect(entries, hasLength(3));
-        for (final entry in entries) {
-          expect(entry.projectId, 'project-a');
-        }
+        // project_id filtering has been removed — all entries are returned
+        expect(entries, hasLength(10));
       });
 
       test('filters by time range', () {
