@@ -91,6 +91,14 @@ void main(List<String> arguments) async {
     database: database,
     transactionLogRepository: transactionLogRepository,
   );
+  final itemOps = ItemOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
+  final releaseOps = ReleaseOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
 
   logInfo('planner', 'Planner MCP Server starting...');
   logInfo('planner', 'Project path: ${workingDir.path}');
@@ -125,6 +133,18 @@ Operations:
 - show-step: Show step details
 - update-step: Update step properties
 - get-subtask-prompt: Get the sub-task details for a step in a parent task. Use this operation to fetch the sub-task details when ready to work on it. Requires: id (step ID). Returns error if step has no linked sub-task.
+- add-item: Create a new backlog item. Requires: title, project_id. Optional: details, type, status.
+- show-item: Show item details with edit history. Requires: id.
+- update-item: Update item fields. Requires: id. Optional: title, details, type, status.
+- list-items: List items with filters. Optional: project_id, search_query, type, status.
+- add-release: Create a new release. Requires: title, project_id. Optional: notes.
+- show-release: Show release with its items. Requires: id.
+- update-release: Update release fields. Requires: id. Optional: title, notes.
+- list-releases: List releases. Optional: project_id.
+- add-item-to-release: Assign item to release. Requires: release_id, item_id.
+- remove-item-from-release: Remove item from release. Requires: release_id, item_id.
+- add-item-to-task: Link a backlog item to a task. Requires: task_id, item_id.
+- remove-item-from-task: Unlink a backlog item from a task. Requires: task_id, item_id.
 - log-commit: Log a git commit to the timeline. Records commits so they appear in the timeline viewer alongside task activity. Requires: commit_hash, branch, task_id. Optional: step_id, message.
 - log-merge: Log a git branch merge to the timeline. Records merges so they appear in the timeline viewer. Requires: commit_hash, source_branch, target_branch, task_id.
 - get-timeline: Get recent activity timeline (optional: limit, project_id, entity_type, before, after)
@@ -132,6 +152,8 @@ Operations:
 
 Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done
+Item types: feature, improvement, bug, change
+Item statuses: open, closed
 
 Parent task pattern: Prefix parent task title with "Parent:". Each step references a sub-task via sub_task_id. Use get-subtask-prompt to fetch the sub-task details for a step when ready to work on it.''',
     inputSchema: ToolInputSchema(
@@ -179,8 +201,8 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'entity_type': JsonSchema.string(
           description:
-              "Entity type filter: 'task' or 'step' (for timeline/audit-trail)",
-          enumValues: ['task', 'step'],
+              "Entity type filter: 'task', 'step', 'item', or 'release' (for timeline/audit-trail)",
+          enumValues: ['task', 'step', 'item', 'release'],
         ),
         'limit': JsonSchema.integer(
           description:
@@ -212,10 +234,26 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         'step_id': JsonSchema.string(
           description: 'Step ID associated with a git commit (for log-commit, optional)',
         ),
+        'type': JsonSchema.string(
+          description: 'Item type: feature, improvement, bug, change',
+          enumValues: ['feature', 'improvement', 'bug', 'change'],
+        ),
+        'notes': JsonSchema.string(
+          description: 'Release notes (markdown)',
+        ),
+        'search_query': JsonSchema.string(
+          description: 'Search query for filtering items by title and details',
+        ),
+        'release_id': JsonSchema.string(
+          description: 'Release ID (for add/remove-item-to/from-release)',
+        ),
+        'item_id': JsonSchema.string(
+          description: 'Item ID (for add/remove-item-to/from-release, add/remove-item-to/from-task)',
+        ),
       },
     ),
     callback: (args, extra) => _handlePlanner(
-        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps),
+        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps, itemOps, releaseOps),
   );
 
   final transport = StdioServerTransport();
@@ -252,6 +290,18 @@ const _validOperations = [
   'show-step',
   'update-step',
   'get-subtask-prompt',
+  'add-item',
+  'show-item',
+  'update-item',
+  'list-items',
+  'add-release',
+  'show-release',
+  'update-release',
+  'list-releases',
+  'add-item-to-release',
+  'remove-item-from-release',
+  'add-item-to-task',
+  'remove-item-from-task',
   'log-commit',
   'log-merge',
   'get-timeline',
@@ -266,6 +316,8 @@ Future<CallToolResult> _handlePlanner(
   StepOperations stepOps,
   TimelineOperations timelineOps,
   GitLogOperations gitLogOps,
+  ItemOperations itemOps,
+  ReleaseOperations releaseOps,
 ) async {
   final operation = args['operation'] as String?;
 
@@ -298,6 +350,30 @@ Future<CallToolResult> _handlePlanner(
         return stepOps.updateStep(args);
       case 'get-subtask-prompt':
         return stepOps.getSubtaskPrompt(args);
+      case 'add-item':
+        return itemOps.addItem(args);
+      case 'show-item':
+        return itemOps.showItem(args);
+      case 'update-item':
+        return itemOps.updateItem(args);
+      case 'list-items':
+        return itemOps.listItems(args);
+      case 'add-release':
+        return releaseOps.addRelease(args);
+      case 'show-release':
+        return releaseOps.showRelease(args);
+      case 'update-release':
+        return releaseOps.updateRelease(args);
+      case 'list-releases':
+        return releaseOps.listReleases(args);
+      case 'add-item-to-release':
+        return releaseOps.addItemToRelease(args);
+      case 'remove-item-from-release':
+        return releaseOps.removeItemFromRelease(args);
+      case 'add-item-to-task':
+        return releaseOps.addItemToTask(args);
+      case 'remove-item-from-task':
+        return releaseOps.removeItemFromTask(args);
       case 'log-commit':
         return gitLogOps.logCommit(args);
       case 'log-merge':
