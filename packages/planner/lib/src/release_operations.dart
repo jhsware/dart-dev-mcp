@@ -241,7 +241,7 @@ class ReleaseOperations {
       'releases': releases,
       'count': releases.length,
       'filters': {
-        if (projectId != null) 'project_id': projectId,
+        'project_id': ?projectId,
       },
     });
   }

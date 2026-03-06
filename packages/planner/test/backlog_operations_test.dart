@@ -13,7 +13,6 @@ void main() {
   late Directory tempDir;
   late Database db;
   late TransactionLogRepository transactionLogRepo;
-  late TaskOperations taskOps;
   late ItemOperations itemOps;
   late ReleaseOperations releaseOps;
 
@@ -25,10 +24,6 @@ void main() {
     db = initializeDatabase(dbPath);
     transactionLogRepo = TransactionLogRepository(db);
     transactionLogRepo.initializeTable();
-    taskOps = TaskOperations(
-      database: db,
-      transactionLogRepository: transactionLogRepo,
-    );
     itemOps = ItemOperations(
       database: db,
       transactionLogRepository: transactionLogRepo,

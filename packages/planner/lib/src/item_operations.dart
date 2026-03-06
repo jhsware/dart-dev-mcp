@@ -346,10 +346,10 @@ class ItemOperations {
       'items': items,
       'count': items.length,
       'filters': {
-        if (projectId != null) 'project_id': projectId,
-        if (searchQuery != null) 'search_query': searchQuery,
-        if (type != null) 'type': type,
-        if (status != null) 'status': status,
+        'project_id': ?projectId,
+        'search_query': ?searchQuery,
+        'type': ?type,
+        'status': ?status,
       },
     });
   }

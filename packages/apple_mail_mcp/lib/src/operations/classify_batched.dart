@@ -79,7 +79,7 @@ Future<void> runBatchedClassifyEmails({
       'categories': <String, List<Map<String, dynamic>>>{},
       if (includeUnmatched) 'unmatched': <Map<String, dynamic>>[],
       'total_emails_scanned': 0,
-      if (fdaWarning != null) 'warning': fdaWarning,
+      'warning': ?fdaWarning,
     };
     session.chunks.add(const JsonEncoder.withIndent('  ').convert(output));
     session.isComplete = true;
