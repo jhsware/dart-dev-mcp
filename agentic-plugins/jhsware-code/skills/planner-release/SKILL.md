@@ -23,8 +23,8 @@ Parse what the user wants:
 
 ### Step 2 — Get project context
 
-1. Call `planner` with operation `get-project-instructions` to understand project conventions and the project_id to use.
-2. Call `planner` with operation `list-releases` (optionally filter by `project_id`) to see existing releases.
+1. Call `planner` with operation `get-project-instructions` to understand project conventions.
+2. Call `planner` with operation `list-releases` to see existing releases.
 3. Call `planner` with operation `list-items` to see the full backlog. Items with status `open` are available for assignment to releases.
 
 ### Step 3 — Execute the requested operation
@@ -33,7 +33,6 @@ Parse what the user wants:
 
 Use `planner` with operation `add-release`:
 - `title`: Clear release name (e.g. "v2.0 — Authentication Overhaul", "Sprint 12")
-- `project_id`: From project instructions
 - `notes`: Markdown describing release goals, scope, and any constraints
 
 #### Selecting items for a release
@@ -67,7 +66,6 @@ Use `planner` with operation `update-release`:
 #### Listing releases
 
 Use `planner` with operation `list-releases`:
-- Optional filter: `project_id`
 - Returns releases with item counts
 
 ### Step 4 — Review

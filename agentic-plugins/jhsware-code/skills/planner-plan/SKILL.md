@@ -14,7 +14,7 @@ ultrathink
 Before doing anything else:
 
 1. **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
-2. **List existing tasks**: Call `planner` with operation `list-tasks` (optionally filter by `project_id`) to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
+2. **List existing tasks**: Call `planner` with operation `list-tasks` to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
 3. **Ask user** if they want the created task/tasks to have status draft or todo.
 4. **Check for release context**: If the user mentions a release or passes a release_id, call `planner` with operation `show-release` to get the release details and its items. This enables release-based planning (see Phase 2a).
 
@@ -129,7 +129,6 @@ When creating tasks from a release (user mentions a release or passes a release_
 Create tasks using `planner` with operation `add-task`. Each task must have:
 
 - **title**: Clear, concise description of the work. Prefix with "Parent:" for parent tasks.
-- **project_id**: Must match the project conventions (check project instructions).
 - **details**: Structured description including:
   - `## Background` — context and motivation
   - `## Purpose` — what this achieves
@@ -182,8 +181,7 @@ After creating all tasks:
 
 ## Error Handling
 
-- **project_id mismatch**: If `get-project-instructions` returns nothing or the project_id convention is unclear, ask the user to clarify or check the `AGENTS.md` file in the project root.
-- **Task creation fails**: Check that required fields (title, project_id) are provided. Retry once, then report the error to the user.
+- **Task creation fails**: Check that required fields (title) are provided. Retry once, then report the error to the user.
 - **Duplicate task found**: If `list-tasks` shows a similar task already exists, inform the user and ask whether to update the existing task or create a new one.
 - **code-index returns no results**: The index may be stale — use `code-index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
 - **code-index show-file returns nothing**: The file may not be indexed. Fall back to `filesystem read-file` for that specific file.
@@ -237,7 +235,6 @@ After research, create the task:
 ```
 add-task:
   title: "Add input validation to user registration form"
-  project_id: "my-project"
   details: |
     ## Background
     The user registration form at `./src/components/RegisterForm.tsx` currently accepts any input without validation.
@@ -286,7 +283,6 @@ First create the sub-tasks:
 ```
 add-task (sub-task 1):
   title: "Refactor auth API layer to use JWT tokens"
-  project_id: "my-project"
   details: |
     ## Background
     The auth API currently uses session cookies. We need to switch to JWT tokens.
@@ -299,7 +295,6 @@ add-task (sub-task 1):
 
 add-task (sub-task 2):
   title: "Update UI auth components for JWT flow"  
-  project_id: "my-project"
   details: |
     ## Background
     After the API layer is updated to JWT, the UI components need to handle token storage and refresh.
@@ -316,7 +311,6 @@ Then create the parent task with steps referencing sub-tasks:
 ```
 add-task (parent):
   title: "Parent: Refactor authentication system to JWT"
-  project_id: "my-project"
   details: |
     ## Background
     Complete auth system refactoring from session cookies to JWT tokens.

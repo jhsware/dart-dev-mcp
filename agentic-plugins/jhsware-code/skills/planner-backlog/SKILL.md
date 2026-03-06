@@ -23,8 +23,8 @@ Parse what the user wants to add to or do with the backlog. They may:
 
 ### Step 2 — Get project context
 
-1. Call `planner` with operation `get-project-instructions` to understand project conventions and the project_id to use.
-2. Call `planner` with operation `list-items` (optionally filter by `project_id`, `type`, or `status`) to see existing backlog items and avoid duplicates.
+1. Call `planner` with operation `get-project-instructions` to understand project conventions.
+2. Call `planner` with operation `list-items` (optionally filter by `type` or `status`) to see existing backlog items and avoid duplicates.
 
 ### Step 3 — Execute the requested operation
 
@@ -36,13 +36,11 @@ For each item to add:
   - `title`: Clear, concise description (imperative form, e.g. "Add user authentication")
   - `details`: Markdown with context, motivation, and acceptance criteria where relevant
   - `type`: One of the valid types
-  - `project_id`: From project instructions
   - Status defaults to `open`
 
 #### Listing items
 
 Use `planner` with operation `list-items`. Available filters:
-- `project_id` — filter by project
 - `type` — filter by type (feature, improvement, bug, change)
 - `status` — filter by status (open, closed)
 - `search_query` — full-text search across title and details
