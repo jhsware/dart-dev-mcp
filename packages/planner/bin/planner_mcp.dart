@@ -128,26 +128,26 @@ Operations:
 - update-task: Update task properties
 - show-task-memory: Show task memory/notes
 - update-task-memory: Update task memory/notes
-- list-tasks: List all tasks (optional filters: project_id, status)
+- list-tasks: List all tasks (optional filter: status)
 - add-step: Add a step to a task. Use sub_task_id to link the step to a sub-task (for parent task pattern).
 - show-step: Show step details
 - update-step: Update step properties
 - get-subtask-prompt: Get the sub-task details for a step in a parent task. Use this operation to fetch the sub-task details when ready to work on it. Requires: id (step ID). Returns error if step has no linked sub-task.
-- add-item: Create a new backlog item. Requires: title, project_id. Optional: details, type, status.
+- add-item: Create a new backlog item. Requires: title. Optional: details, type, status, project_id (deprecated).
 - show-item: Show item details with edit history. Requires: id.
 - update-item: Update item fields. Requires: id. Optional: title, details, type, status.
-- list-items: List items with filters. Optional: project_id, search_query, type, status.
-- add-release: Create a new release. Requires: title, project_id. Optional: notes.
+- list-items: List items with filters. Optional: search_query, type, status.
+- add-release: Create a new release. Requires: title. Optional: notes, project_id (deprecated).
 - show-release: Show release with its items. Requires: id.
 - update-release: Update release fields. Requires: id. Optional: title, notes.
-- list-releases: List releases. Optional: project_id.
+- list-releases: List all releases.
 - add-item-to-release: Assign item to release. Requires: release_id, item_id.
 - remove-item-from-release: Remove item from release. Requires: release_id, item_id.
 - add-item-to-task: Link a backlog item to a task. Requires: task_id, item_id.
 - remove-item-from-task: Unlink a backlog item from a task. Requires: task_id, item_id.
 - log-commit: Log a git commit to the timeline. Records commits so they appear in the timeline viewer alongside task activity. Requires: commit_hash, branch, task_id. Optional: step_id, message.
 - log-merge: Log a git branch merge to the timeline. Records merges so they appear in the timeline viewer. Requires: commit_hash, source_branch, target_branch, task_id.
-- get-timeline: Get recent activity timeline (optional: limit, project_id, entity_type, before, after)
+- get-timeline: Get recent activity timeline (optional: limit, entity_type, before, after)
 - get-audit-trail: Get detailed change history for an entity (requires: entity_type, id)
 
 Task statuses: backlog, todo, draft, started, canceled, done, merged
@@ -171,7 +171,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'project_id': JsonSchema.string(
           description:
-              'Project identifier (for add-task, list-tasks filter, timeline filter)',
+              'DEPRECATED: No longer used for filtering. Kept for backward compatibility. Defaults to empty string if not provided.',
         ),
         'title': JsonSchema.string(
           description: 'Title for task or step',
