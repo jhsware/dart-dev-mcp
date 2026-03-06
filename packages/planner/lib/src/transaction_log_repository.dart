@@ -127,10 +127,7 @@ class TransactionLogRepository {
       values.add(query.transactionType!.toDbValue());
     }
 
-    if (query.projectId != null) {
-      conditions.add('project_id = ?');
-      values.add(query.projectId);
-    }
+
 
     if (query.after != null) {
       conditions.add('created_at > ?');
@@ -206,10 +203,7 @@ class TransactionLogRepository {
       values.add(query.transactionType!.toDbValue());
     }
 
-    if (query.projectId != null) {
-      conditions.add('project_id = ?');
-      values.add(query.projectId);
-    }
+
 
     if (query.after != null) {
       conditions.add('created_at > ?');

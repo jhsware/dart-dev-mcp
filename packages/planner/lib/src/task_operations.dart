@@ -39,15 +39,12 @@ class TaskOperations {
 
   /// Add a new task.
   CallToolResult addTask(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String?;
+    final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final details = args?['details'] as String?;
     final status = args?['status'] as String? ?? 'todo';
     final memory = args?['memory'] as String?;
 
-    if (requireString(projectId, 'project_id') case final error?) {
-      return error;
-    }
 
     if (requireString(title, 'title') case final error?) {
       return error;
@@ -339,10 +336,8 @@ class TaskOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-    if (projectId != null && projectId.isNotEmpty) {
-      conditions.add('t.project_id = ?');
-      values.add(projectId);
-    }
+
+
 
     if (status != null && status.isNotEmpty) {
       conditions.add('t.status = ?');
