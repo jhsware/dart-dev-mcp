@@ -152,7 +152,7 @@ void main() {
         expect(result.first['memory'], 'Updated memory content');
       });
 
-      test('can query tasks by project_id', () {
+      test('project_id column exists but filtering is deprecated at operations level', () {
         final now = DateTime.now().toUtc().toIso8601String();
         
         db.execute('''
@@ -170,17 +170,31 @@ void main() {
           VALUES (?, ?, ?, ?, ?, ?)
         ''', [uuid.v4(), 'project-b', 'Task B1', 'todo', now, now]);
         
+        // All tasks are returned when listing (no project_id filter at operations level)
+        final allTasks = db.select('SELECT * FROM tasks');
+        expect(allTasks, hasLength(3));
+        
+        // project_id is still stored in the database for backward compatibility
         final projectATasks = db.select(
           'SELECT * FROM tasks WHERE project_id = ?',
           ['project-a']
         );
         expect(projectATasks, hasLength(2));
+      });
+
+      test('can add a task with empty project_id (default behavior)', () {
+        final id = uuid.v4();
+        final now = DateTime.now().toUtc().toIso8601String();
         
-        final projectBTasks = db.select(
-          'SELECT * FROM tasks WHERE project_id = ?',
-          ['project-b']
-        );
-        expect(projectBTasks, hasLength(1));
+        db.execute('''
+          INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [id, '', 'Task with empty project_id', 'todo', now, now]);
+        
+        final result = db.select('SELECT * FROM tasks WHERE id = ?', [id]);
+        expect(result, hasLength(1));
+        expect(result.first['project_id'], '');
+        expect(result.first['title'], 'Task with empty project_id');
       });
 
       test('can query tasks by status', () {
