@@ -21,12 +21,17 @@ String generateSummary({
   String? taskTitle,
   Map<String, dynamic>? changes,
 }) {
-  final entityName = entityType == EntityType.task ? 'Task' : 'Step';
+  final entityName = switch (entityType) {
+    EntityType.task => 'Task',
+    EntityType.step => 'Step',
+    EntityType.item => 'Item',
+    EntityType.release => 'Release',
+  };
   final truncatedTitle = _truncateTitle(entityTitle);
 
   switch (transactionType) {
     case TransactionType.create:
-      if (entityType == EntityType.task) {
+      if (entityType == EntityType.task || entityType == EntityType.item || entityType == EntityType.release) {
         return projectId != null
             ? "$entityName '$truncatedTitle' created in project '$projectId'"
             : "$entityName '$truncatedTitle' created";
@@ -72,12 +77,25 @@ String? _describeChanges(Map<String, dynamic>? changes) {
     return "status changed to $newStatus";
   }
 
+  if (after.containsKey('type')) {
+    final newType = after['type'];
+    final oldType = before?['type'];
+    if (oldType != null) {
+      return "type changed from $oldType to $newType";
+    }
+    return "type changed to $newType";
+  }
+
   if (after.containsKey('title')) {
     return 'title updated';
   }
 
   if (after.containsKey('details')) {
     return 'details updated';
+  }
+
+  if (after.containsKey('notes')) {
+    return 'notes updated';
   }
 
   if (after.containsKey('memory')) {
@@ -210,7 +228,6 @@ Map<String, dynamic> taskToLoggable(Map<String, dynamic> task) {
 }
 
 /// Helper to create a loggable entity from step data.
-/// Helper to create a loggable entity from step data.
 Map<String, dynamic> stepToLoggable(Map<String, dynamic> step) {
   return {
     'id': step['id'],
@@ -221,5 +238,31 @@ Map<String, dynamic> stepToLoggable(Map<String, dynamic> step) {
     'sub_task_id': step['sub_task_id'],
     'created_at': step['created_at'],
     'updated_at': step['updated_at'],
+  };
+}
+
+/// Helper to create a loggable entity from item data.
+Map<String, dynamic> itemToLoggable(Map<String, dynamic> item) {
+  return {
+    'id': item['id'],
+    'project_id': item['project_id'],
+    'title': item['title'],
+    'details': item['details'],
+    'type': item['type'],
+    'status': item['status'],
+    'created_at': item['created_at'],
+    'updated_at': item['updated_at'],
+  };
+}
+
+/// Helper to create a loggable entity from release data.
+Map<String, dynamic> releaseToLoggable(Map<String, dynamic> release) {
+  return {
+    'id': release['id'],
+    'project_id': release['project_id'],
+    'title': release['title'],
+    'notes': release['notes'],
+    'created_at': release['created_at'],
+    'updated_at': release['updated_at'],
   };
 }

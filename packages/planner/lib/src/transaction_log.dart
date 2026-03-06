@@ -28,7 +28,9 @@ enum TransactionType {
 /// Entity types that can be tracked in the transaction log.
 enum EntityType {
   task,
-  step;
+  step,
+  item,
+  release;
 
   /// Convert to string for database storage.
   String toDbValue() => name;
