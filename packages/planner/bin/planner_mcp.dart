@@ -185,7 +185,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'status': JsonSchema.string(
           description:
-              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Also used for list-tasks filter.',
+              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed. Also used for list-tasks filter.',
           enumValues: [
             'backlog',
             'todo',
@@ -193,7 +193,9 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
             'started',
             'canceled',
             'done',
-            'merged'
+            'merged',
+            'open',
+            'closed'
           ],
         ),
         'memory': JsonSchema.string(
