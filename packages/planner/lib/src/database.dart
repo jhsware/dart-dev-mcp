@@ -281,7 +281,6 @@ void _runMigrations(Database database) {
     _setSchemaVersion(database, 4);
     logInfo('planner', 'Migration to schema version 4 complete.');
   }
-  }
 
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);
