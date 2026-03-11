@@ -13,10 +13,10 @@ ultrathink
 
 Before doing anything else:
 
-1. **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
-2. **List existing tasks**: Call `planner` with operation `list-tasks` to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
-3. **Ask user** if they want the created task/tasks to have status draft or todo.
-4. **Check for release context**: If the user mentions a release or passes a release_id, call `planner` with operation `show-release` to get the release details and its items. This enables release-based planning (see Phase 2a).
+- [ ] Step 1: **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
+- [ ] Step 2: **List existing tasks**: Call `planner` with operation `list-tasks` to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
+- [ ] Step 3:. **Ask user** if they want the created task/tasks to have status draft or todo.
+- [ ] Step 4: **Check for release context**: If the user mentions a release or passes a release_id, call `planner` with operation `show-release` to get the release details and its items. This enables release-based planning (see Phase 2a).
 
 ## Phase 2 — Research & Exploration
 
@@ -24,62 +24,12 @@ Before creating any tasks, explore the codebase to understand scope and identify
 
 ### Token-Efficient Exploration Workflow
 
-Use code-index operations in this order to minimize context consumption. Each step narrows focus before you spend tokens reading full files.
-
-**Step 0 — Ensure index freshness with `diff` + re-index:**
-ALWAYS start by running `code-index diff` to detect changed or added files. If there are changed or added files, index/re-index them using the code-index skill (spawn a code-index-agent sub-agent for batches). This ensures all subsequent operations work with up-to-date data. When omitted, `directories` defaults to `["."]` (project root).
-
-```
-code-index: diff
-# → Scans entire project from root
-# If changed/added files found → spawn code-index-agent to index them
-
-# Or filter to specific directories:
-code-index: diff (directories: ["lib", "test"], file_extensions: [".dart"])
-```
-
-**Step 1 — Get codebase overview with `overview`:**
-Use `code-index overview` to get a compact listing of all indexed files with descriptions and export names. This gives you a "table of contents" in ~50-100 tokens. Use optional `path_pattern` or `file_type` filters to narrow scope.
-
-**Step 2 — Discover relevant files with `search`:**
-Use `code-index search` to find files related to the task. Search supports FTS5 full-text queries across file names, descriptions, export names, and variable names. You can also filter by:
-- `export_name` / `export_kind` — find specific classes, functions, or methods
-- `file_type` — restrict to e.g. "dart" files only
-- `import_pattern` — find files importing a specific package
-- `path_pattern` — restrict to a directory subtree
-
-> **Search limitations:** `search` uses FTS5 full-text indexing. It works well for individual keywords and prefix matching (e.g., "valid", "User", "database"). It does NOT support phrase search — multi-word queries are treated as independent keywords joined by AND. For exact phrase matching or regex patterns, use `filesystem search-text` instead.
-
-**Step 3 — Understand file API with `file-summary` or `show-file`:**
-Use `code-index file-summary` to get a file's exports grouped by class, with descriptions and parameters. This is lighter than `show-file` — use it when you only need to understand what a file provides. Use `code-index show-file` when you also need imports, annotations, and timestamps.
-
-**Step 4 — Map relationships with `dependents` and `dependencies`:**
-- `code-index dependents` (path) — find all files that import a given path. Critical for impact analysis when planning changes.
-- `code-index dependencies` (path) — get all imports for a file, classified as internal (indexed) or external. Helps understand what a file relies on.
-
-**Step 5 — Find TODOs and annotations with `search-annotations`:**
-Use `code-index search-annotations` to find TODO, FIXME, HACK, NOTE, and DEPRECATED annotations. Filter by kind, file path pattern, or message content. Useful for discovering existing plans, known issues, and technical debt related to the task area.
-
-### Fallback Tools
-
-Use these when code-index doesn't cover what you need:
-
 - **filesystem list-content**: Use to explore directory structure or find files in unindexed directories.
 - **filesystem read-file**: Use to examine specific files in detail — but only AFTER using show-file to confirm the file is relevant.
 - **filesystem search-text**: Use for regex-based searching when you need pattern matching (code-index search is keyword/FTS-based, not regex).
 - **git log/diff**: Use to understand recent changes and what areas of code are actively being modified.
 
 ### Token Economy
-
-Prefer code-index operations to save context for planning decisions:
-
-| Instead of... | Use... | Token savings |
-|---|---|---|
-| `filesystem list-content` on large dirs | `code-index overview` | ~50-100 tokens for entire codebase |
-| `filesystem read-file` to understand a file | `code-index file-summary` | Lighter than `show-file` (no imports/annotations/timestamps) |
-| `filesystem read-file` for full file details | `code-index show-file` | ~100-200 vs ~500-5000+ tokens |
-| `filesystem search-text` scanning all files | `code-index search` with filters | Targeted results vs full-line matches |
-| Manually searching imports to find dependents | `code-index dependents` | Instant reverse lookup |
 
 **For large codebases**: If you need to analyze many files, consider spawning code-index-agent sub-agents to analyze batches of files to avoid running out of context.
 
@@ -94,22 +44,22 @@ Summarize your findings before moving to Phase 3. You should understand:
 
 When creating tasks from a release (user mentions a release or passes a release_id):
 
-1. **Get the release and its items**: Call `planner show-release` with the release ID to get the release details and all assigned items.
+- [ ] Step 1: **Get the release and its items**: Call `planner show-release` with the release ID to get the release details and all assigned items.
 
-2. **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
+- [ ] Step 2: **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
    - Items that affect the same files or modules
    - Items that have logical dependencies on each other
    - Items of the same type that can be batched (e.g. multiple bugs in one area)
 
-3. **Still do Phase 2 exploration**: Codebase exploration is still needed to create accurate tasks with correct file references. Use the item descriptions to guide your exploration — focus on files and areas mentioned in the items.
+- [ ] Step 3: **Still do Phase 2 exploration**: Codebase exploration is still needed to create accurate tasks with correct file references. Use the item descriptions to guide your exploration — focus on files and areas mentioned in the items.
 
-4. **Create tasks linked to items**: For each task created in Phase 3:
+- [ ] Step 4: **Create tasks linked to items**: For each task created in Phase 3:
    - Reference the backlog items it addresses in the task details
    - After creating the task and its steps, link each relevant item using `planner` with operation `add-item-to-task` (requires `task_id` and `item_id`)
    - A single task can address multiple related items
    - An item can be linked to multiple tasks if needed
 
-5. **For complex releases with many items**:
+- [ ] Step 5: **For complex releases with many items**:
    - Consider using the parent task pattern
    - Group items by theme/area into sub-tasks
    - Each sub-task links to its specific items via `add-item-to-task`
@@ -161,9 +111,9 @@ This creates a many-to-many relationship — a task can have multiple items and 
 
 When adding steps to a parent task, you MUST follow this exact order:
 
-1. First, create ALL sub-tasks using `add-task` (each with their own steps)
-2. Then, add steps to the parent task using `add-step` with the `sub_task_id` parameter set to the corresponding sub-task's id
-3. Each parent task step title should match the sub-task title
+- [ ] Step 1: First, create ALL sub-tasks using `add-task` (each with their own steps)
+- [ ] Step 2: Then, add steps to the parent task using `add-step` with the `sub_task_id` parameter set to the corresponding sub-task's id
+- [ ] Step 3: Each parent task step title should match the sub-task title
 
 Without `sub_task_id`, the planner-do-parent-task skill cannot use `get-subtask-prompt` to fetch the sub-task details, breaking the parent task execution flow.
 
@@ -171,13 +121,13 @@ Without `sub_task_id`, the planner-do-parent-task skill cannot use `get-subtask-
 
 After creating all tasks:
 
-1. Use `show-task` to review each created task
-2. Verify steps are in logical order
-3. Verify details are sufficient for someone to complete each step without additional context
-4. Verify acceptance criteria are clear and testable
-5. For parent tasks: verify every step has a `sub_task_id` set
-6. For parent tasks: verify sub-tasks have their own steps defined
-7. For release-based tasks: verify all release items are linked to at least one task via `add-item-to-task`
+- [ ] Step 1: Use `show-task` to review each created task
+- [ ] Step 2: Verify steps are in logical order
+- [ ] Step 3: Verify details are sufficient for someone to complete each step without additional context
+- [ ] Step 4: Verify acceptance criteria are clear and testable
+- [ ] Step 5: For parent tasks: verify every step has a `sub_task_id` set
+- [ ] Step 6: For parent tasks: verify sub-tasks have their own steps defined
+- [ ] Step 7: For release-based tasks: verify all release items are linked to at least one task via `add-item-to-task`
 
 ## Error Handling
 
@@ -375,8 +325,6 @@ add-task:
   ...
 planner: add-item-to-task (task_id: "<csv-task-id>", item_id: "<item-4-id>")
 ```
-
-## Tool Reference
 
 ## Tool Reference
 
