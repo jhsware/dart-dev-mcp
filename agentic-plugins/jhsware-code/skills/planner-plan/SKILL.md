@@ -46,20 +46,22 @@ When creating tasks from a release (user mentions a release or passes a release_
 
 - [ ] Step 1: **Get the release and its items**: Call `planner show-release` with the release ID to get the release details and all assigned items.
 
-- [ ] Step 2: **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
+- [ ] Step 2: **Change status of release to started**
+
+- [ ] Step 3: **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
    - Items that affect the same files or modules
    - Items that have logical dependencies on each other
    - Items of the same type that can be batched (e.g. multiple bugs in one area)
 
-- [ ] Step 3: **Still do Phase 2 exploration**: Codebase exploration is still needed to create accurate tasks with correct file references. Use the item descriptions to guide your exploration — focus on files and areas mentioned in the items.
+- [ ] Step 4: **Still do Phase 2 exploration**: Codebase exploration is still needed to create accurate tasks with correct file references. Use the item descriptions to guide your exploration — focus on files and areas mentioned in the items.
 
-- [ ] Step 4: **Create tasks linked to items**: For each task created in Phase 3:
+- [ ] Step 5: **Create tasks linked to items**: For each task created in Phase 3:
    - Reference the backlog items it addresses in the task details
    - After creating the task and its steps, link each relevant item using `planner` with operation `add-item-to-task` (requires `task_id` and `item_id`)
    - A single task can address multiple related items
    - An item can be linked to multiple tasks if needed
 
-- [ ] Step 5: **For complex releases with many items**:
+- [ ] Step 6: **For complex releases with many items**:
    - Consider using the parent task pattern
    - Group items by theme/area into sub-tasks
    - Each sub-task links to its specific items via `add-item-to-task`
