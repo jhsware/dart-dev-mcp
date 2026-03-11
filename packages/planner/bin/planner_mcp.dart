@@ -136,11 +136,11 @@ Operations:
 - add-item: Create a new backlog item. Requires: title. Optional: details, type, status, project_id (deprecated).
 - show-item: Show item details with edit history. Requires: id.
 - update-item: Update item fields. Requires: id. Optional: title, details, type, status.
-- list-items: List items with filters. Optional: search_query, type, status.
-- add-release: Create a new release. Requires: title. Optional: notes, project_id (deprecated).
-- show-release: Show release with its items. Requires: id.
-- update-release: Update release fields. Requires: id. Optional: title, notes.
-- list-releases: List all releases.
+- list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any release).
+- add-release: Create a new release. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date), project_id (deprecated).
+- show-release: Show release with its items (includes status and release_date). Requires: id.
+- update-release: Update release fields. Requires: id. Optional: title, notes, status, release_date.
+- list-releases: List all releases. Optional: status filter.
 - add-item-to-release: Assign item to release. Requires: release_id, item_id.
 - remove-item-from-release: Remove item from release. Requires: release_id, item_id.
 - add-item-to-task: Link a backlog item to a task. Requires: task_id, item_id.
@@ -154,6 +154,7 @@ Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done
 Item types: feature, improvement, bug, change
 Item statuses: open, closed
+Release statuses: draft, todo, started, done, released
 
 Parent task pattern: Prefix parent task title with "Parent:". Each step references a sub-task via sub_task_id. Use get-subtask-prompt to fetch the sub-task details for a step when ready to work on it.''',
     inputSchema: ToolInputSchema(
@@ -185,7 +186,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'status': JsonSchema.string(
           description:
-              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed. Also used for list-tasks filter.',
+              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed. Status for releases: draft, todo, started, done, released. Also used for list-tasks and list-releases filter.',
           enumValues: [
             'backlog',
             'todo',
@@ -195,7 +196,8 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
             'done',
             'merged',
             'open',
-            'closed'
+            'closed',
+            'released'
           ],
         ),
         'memory': JsonSchema.string(
@@ -251,6 +253,12 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'item_id': JsonSchema.string(
           description: 'Item ID (for add/remove-item-to/from-release, add/remove-item-to/from-task)',
+        ),
+        'release_date': JsonSchema.string(
+          description: 'Target release date in ISO 8601 format (for add-release, update-release)',
+        ),
+        'backlog_only': JsonSchema.boolean(
+          description: 'When true, list-items returns only items not assigned to any release',
         ),
       },
     ),
