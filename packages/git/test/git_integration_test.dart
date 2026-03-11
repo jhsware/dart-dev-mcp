@@ -113,6 +113,73 @@ void main() {
       );
       expect(result.stdout, contains('Add main.dart'));
     });
+
+    test('branch-create auto-switches to the new branch', () async {
+      // Init repo and create initial commit
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['config', 'user.email', 'test@example.com'],
+        workingDirectory: repoDir.path,
+      );
+      await Process.run(
+        'git', ['config', 'user.name', 'Test User'],
+        workingDirectory: repoDir.path,
+      );
+
+      final testFile = File(p.join(repoDir.path, 'init.txt'));
+      await testFile.writeAsString('initial\n');
+
+      await Process.run(
+        'git', ['add', 'init.txt'],
+        workingDirectory: repoDir.path,
+      );
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Initial commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Verify we start on master/main
+      var result = await Process.run(
+        'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      final defaultBranch = (result.stdout as String).trim();
+      expect(defaultBranch, anyOf('master', 'main'));
+
+      // Simulate branchCreate: use checkout -b (the new behavior)
+      result = await Process.run(
+        'git', ['checkout', '-b', 'feature-test'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0, reason: 'checkout -b failed: ${result.stderr}');
+
+      // Verify we are now on the new branch
+      result = await Process.run(
+        'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      expect((result.stdout as String).trim(), 'feature-test');
+
+      // Also test with 'from' parameter (checkout -b <name> <from>)
+      result = await Process.run(
+        'git', ['checkout', defaultBranch],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+
+      result = await Process.run(
+        'git', ['checkout', '-b', 'feature-from-test', defaultBranch],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0, reason: 'checkout -b with from failed: ${result.stderr}');
+
+      result = await Process.run(
+        'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      expect((result.stdout as String).trim(), 'feature-from-test');
+    });
+
   });
 
   group('SSH Signing Tests', () {

@@ -42,13 +42,13 @@ class GitOperations {
     return textResult(output);
   }
 
-  /// Create a new branch.
+  /// Create a new branch and switch to it.
   Future<CallToolResult> branchCreate(String? branch, String? from) async {
     if (requireString(branch, 'branch') case final error?) {
       return error;
     }
 
-    final args = ['branch', branch!];
+    final args = ['checkout', '-b', branch!];
     if (from != null && from.isNotEmpty) {
       args.add(from);
     }
@@ -59,7 +59,7 @@ class GitOperations {
       return textResult('Error creating branch: ${result.stderr}');
     }
 
-    return textResult('Created branch: $branch');
+    return textResult('Created and switched to branch: $branch');
   }
 
   /// List all branches.

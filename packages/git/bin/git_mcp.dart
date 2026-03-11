@@ -103,7 +103,7 @@ void main(List<String> arguments) async {
 
 Operations:
 - status: Show working tree status
-- branch-create: Create a new branch
+- branch-create: Create a new branch and switch to it
 - branch-list: List all branches
 - branch-switch: Switch to a branch
 - merge: Merge a branch into current branch
