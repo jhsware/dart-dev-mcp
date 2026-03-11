@@ -344,7 +344,30 @@ class GitOperations {
   }
 
   /// Show diff.
-  Future<CallToolResult> diff() async {
+  ///
+  /// When [target] is null, shows staged and unstaged changes (default behavior).
+  /// When [target] is provided, runs `git diff <target>` which supports:
+  /// - Branch name: e.g. `main` (compare working tree to that branch)
+  /// - Commit range: e.g. `main..feature` (compare two refs)
+  /// - Commit hash: e.g. `abc123` (compare working tree to that commit)
+  Future<CallToolResult> diff({String? target}) async {
+    if (target != null && target.isNotEmpty) {
+      // Targeted diff: compare against branch, commit, or range
+      final result = await runGit(workingDir, ['diff', target]);
+
+      if (result.exitCode != 0) {
+        return textResult('Error: ${result.stderr}');
+      }
+
+      final output = result.stdout as String;
+      if (output.isEmpty) {
+        return textResult('No differences');
+      }
+
+      return textResult(output);
+    }
+
+    // Default behavior: show staged + unstaged changes
     final stagedResult = await runGit(workingDir, ['diff', '--cached']);
     final unstagedResult = await runGit(workingDir, ['diff']);
 

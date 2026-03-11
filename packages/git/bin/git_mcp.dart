@@ -116,7 +116,7 @@ Operations:
 - tag-create: Create a new tag
 - tag-list: List all tags
 - log: Show commit history
-- diff: Show changes
+- diff: Show changes (optionally compare branches/commits with target parameter)
 - signing-status: Check SSH/GPG signing configuration and status''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -158,6 +158,9 @@ Operations:
         ),
         'max_count': JsonSchema.integer(
           description: 'Maximum number of commits to show (for log). Default: 10',
+        ),
+        'target': JsonSchema.string(
+          description: 'Target for diff comparison (for diff). Supports branch name (e.g. "main"), commit range (e.g. "main..feature"), or commit hash. When omitted, shows staged and unstaged changes.',
         ),
       },
     ),
@@ -254,7 +257,7 @@ Future<CallToolResult> _handleGit(
       case 'log':
         return gitOps.log((args['max_count'] as num?)?.toInt() ?? 10);
       case 'diff':
-        return gitOps.diff();
+        return gitOps.diff(target: args['target'] as String?);
       case 'signing-status':
         return signingStatus(workingDir, signingInfo);
       default:

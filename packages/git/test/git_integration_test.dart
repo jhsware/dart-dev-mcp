@@ -182,6 +182,194 @@ void main() {
 
   });
 
+  group('Diff Operation Tests', () {
+    late Directory tempDir;
+    late Directory repoDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('git_diff_test_');
+      repoDir = Directory(p.join(tempDir.path, 'test_repo'));
+      await repoDir.create();
+
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['config', 'user.email', 'test@example.com'],
+        workingDirectory: repoDir.path,
+      );
+      await Process.run(
+        'git', ['config', 'user.name', 'Test User'],
+        workingDirectory: repoDir.path,
+      );
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('default diff shows staged and unstaged changes', () async {
+      // Create initial commit
+      final testFile = File(p.join(repoDir.path, 'file.txt'));
+      await testFile.writeAsString('original content\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Initial commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Make an unstaged change
+      await testFile.writeAsString('modified content\n');
+
+      // Default diff (no target) should show unstaged changes
+      var result = await Process.run(
+        'git', ['diff'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('modified content'));
+      expect(result.stdout, contains('original content'));
+
+      // Stage the change and check staged diff
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      result = await Process.run(
+        'git', ['diff', '--cached'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('modified content'));
+    });
+
+    test('diff with branch target compares working tree to branch', () async {
+      // Create initial commit on default branch
+      final testFile = File(p.join(repoDir.path, 'file.txt'));
+      await testFile.writeAsString('main content\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Initial commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Get default branch name
+      var result = await Process.run(
+        'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      final defaultBranch = (result.stdout as String).trim();
+
+      // Create feature branch with different content
+      await Process.run(
+        'git', ['checkout', '-b', 'feature-branch'],
+        workingDirectory: repoDir.path,
+      );
+      await testFile.writeAsString('feature content\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Feature commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Diff against default branch: git diff <default-branch>
+      result = await Process.run(
+        'git', ['diff', defaultBranch],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('main content'));
+      expect(result.stdout, contains('feature content'));
+    });
+
+    test('diff with commit range compares two refs', () async {
+      // Create initial commit
+      final testFile = File(p.join(repoDir.path, 'file.txt'));
+      await testFile.writeAsString('version 1\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'First commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Get first commit hash
+      var result = await Process.run(
+        'git', ['rev-parse', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      final firstCommit = (result.stdout as String).trim();
+
+      // Create second commit
+      await testFile.writeAsString('version 2\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Second commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Get second commit hash
+      result = await Process.run(
+        'git', ['rev-parse', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      final secondCommit = (result.stdout as String).trim();
+
+      // Diff with commit range
+      result = await Process.run(
+        'git', ['diff', '$firstCommit..$secondCommit'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('version 1'));
+      expect(result.stdout, contains('version 2'));
+    });
+
+    test('diff with branch range using double-dot notation', () async {
+      // Create initial commit on default branch
+      final testFile = File(p.join(repoDir.path, 'file.txt'));
+      await testFile.writeAsString('base content\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Base commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Get default branch name
+      var result = await Process.run(
+        'git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+        workingDirectory: repoDir.path,
+      );
+      final defaultBranch = (result.stdout as String).trim();
+
+      // Create feature branch with different content
+      await Process.run(
+        'git', ['checkout', '-b', 'feature-diff'],
+        workingDirectory: repoDir.path,
+      );
+      await testFile.writeAsString('feature diff content\n');
+      await Process.run('git', ['add', 'file.txt'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'Feature diff commit'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Diff using branch range notation: main..feature-diff
+      result = await Process.run(
+        'git', ['diff', '$defaultBranch..feature-diff'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('base content'));
+      expect(result.stdout, contains('feature diff content'));
+
+      // No changes when comparing same ref
+      result = await Process.run(
+        'git', ['diff', 'feature-diff..feature-diff'],
+        workingDirectory: repoDir.path,
+      );
+      expect(result.exitCode, 0);
+      expect((result.stdout as String).trim(), isEmpty);
+    });
+  });
+
+
   group('SSH Signing Tests', () {
     late Directory tempDir;
     late Directory repoDir;
