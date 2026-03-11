@@ -843,11 +843,279 @@ void main() {
       expect(tableNames, contains('task_items'));
     });
 
-    test('schema version is set to 4', () {
+    test('schema version is set to 5', () {
       final result = db.select(
         "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
       );
-      expect(result.first['value'], '4');
+      expect(result.first['value'], '5');
+    });
+
+    test('releases table has status and release_date columns', () {
+      // Create a release and verify the columns exist
+      final result = releaseOps.addRelease({
+        'title': 'Migration test',
+        'status': 'todo',
+        'release_date': '2026-04-01T00:00:00Z',
+      });
+      final data = parseResult(result);
+      expect(data['success'], isTrue);
+      expect(data['release']['status'], 'todo');
+      expect(data['release']['release_date'], '2026-04-01T00:00:00Z');
+    });
+  });
+
+  // ===== RELEASE STATUS TESTS =====
+
+  group('Release Status', () {
+    test('creates release with specific status', () {
+      final result = releaseOps.addRelease({
+        'title': 'Started release',
+        'status': 'started',
+      });
+      final data = parseResult(result);
+      expect(data['success'], isTrue);
+      expect(data['release']['status'], 'started');
+    });
+
+    test('defaults status to draft when not provided', () {
+      final result = releaseOps.addRelease({
+        'title': 'Default status',
+      });
+      final data = parseResult(result);
+      expect(data['release']['status'], 'draft');
+    });
+
+    test('validates release status on create', () {
+      final result = releaseOps.addRelease({
+        'title': 'Invalid',
+        'status': 'invalid_status',
+      });
+      final text = resultText(result);
+      expect(text, contains('status'));
+    });
+
+    test('updates release status', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Update me',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final updateResult = releaseOps.updateRelease({
+        'id': releaseId,
+        'status': 'released',
+      });
+      final data = parseResult(updateResult);
+      expect(data['status'], 'released');
+    });
+
+    test('validates release status on update', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Update me',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final result = releaseOps.updateRelease({
+        'id': releaseId,
+        'status': 'invalid',
+      });
+      final text = resultText(result);
+      expect(text, contains('status'));
+    });
+
+    test('show-release includes status and release_date', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Show test',
+        'status': 'todo',
+        'release_date': '2026-06-15T00:00:00Z',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final result = releaseOps.showRelease({'id': releaseId});
+      final data = parseResult(result);
+      expect(data['status'], 'todo');
+      expect(data['release_date'], '2026-06-15T00:00:00Z');
+    });
+
+    test('list-releases filters by status', () {
+      releaseOps.addRelease({'title': 'Draft 1', 'status': 'draft'});
+      releaseOps.addRelease({'title': 'Started 1', 'status': 'started'});
+      releaseOps.addRelease({'title': 'Draft 2', 'status': 'draft'});
+
+      final result = releaseOps.listReleases({'status': 'draft'});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+      final titles = (data['releases'] as List).map((r) => r['title']).toSet();
+      expect(titles, containsAll(['Draft 1', 'Draft 2']));
+    });
+
+    test('list-releases includes status and release_date', () {
+      releaseOps.addRelease({
+        'title': 'v3.0',
+        'status': 'todo',
+        'release_date': '2026-07-01T00:00:00Z',
+      });
+
+      final result = releaseOps.listReleases({});
+      final data = parseResult(result);
+      final releases = data['releases'] as List;
+      expect(releases[0]['status'], 'todo');
+      expect(releases[0]['release_date'], '2026-07-01T00:00:00Z');
+    });
+
+    test('all valid release statuses are accepted', () {
+      for (final status in ['draft', 'todo', 'started', 'done', 'released']) {
+        final result = releaseOps.addRelease({
+          'title': 'Status $status',
+          'status': status,
+        });
+        final data = parseResult(result);
+        expect(data['success'], isTrue, reason: 'Status $status should be valid');
+        expect(data['release']['status'], status);
+      }
+    });
+  });
+
+  // ===== RELEASE DATE TESTS =====
+
+  group('Release Date', () {
+    test('creates release with release_date', () {
+      final result = releaseOps.addRelease({
+        'title': 'Dated release',
+        'release_date': '2026-12-25T00:00:00Z',
+      });
+      final data = parseResult(result);
+      expect(data['release']['release_date'], '2026-12-25T00:00:00Z');
+    });
+
+    test('release_date defaults to null when not provided', () {
+      final result = releaseOps.addRelease({
+        'title': 'No date',
+      });
+      final data = parseResult(result);
+      expect(data['release']['release_date'], isNull);
+    });
+
+    test('updates release_date', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Update date',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final updateResult = releaseOps.updateRelease({
+        'id': releaseId,
+        'release_date': '2026-09-01T00:00:00Z',
+      });
+      final data = parseResult(updateResult);
+      expect(data['release_date'], '2026-09-01T00:00:00Z');
+    });
+  });
+
+  // ===== BACKLOG FILTER TESTS =====
+
+  group('Backlog Filter (backlog_only)', () {
+    test('returns only items not in any release when backlog_only=true', () {
+      // Create 3 items
+      final item1Id = parseResult(itemOps.addItem({
+        'title': 'Backlog item 1',
+      }))['item']['id'] as String;
+      final item2Id = parseResult(itemOps.addItem({
+        'title': 'Released item',
+      }))['item']['id'] as String;
+      parseResult(itemOps.addItem({
+        'title': 'Backlog item 2',
+      }));
+
+      // Assign item2 to a release
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+
+      // backlog_only should return only unassigned items
+      final result = itemOps.listItems({'backlog_only': true});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+      final ids = (data['items'] as List).map((i) => i['id']).toSet();
+      expect(ids, contains(item1Id));
+      expect(ids, isNot(contains(item2Id)));
+    });
+
+    test('returns all items when backlog_only=false', () {
+      final item1Id = parseResult(itemOps.addItem({
+        'title': 'Item A',
+      }))['item']['id'] as String;
+      parseResult(itemOps.addItem({
+        'title': 'Item B',
+      }));
+
+      // Assign item1 to a release
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item1Id});
+
+      final result = itemOps.listItems({'backlog_only': false});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+    });
+
+    test('returns all items when backlog_only is omitted', () {
+      parseResult(itemOps.addItem({'title': 'Item A'}));
+      final item2Id = parseResult(itemOps.addItem({
+        'title': 'Item B',
+      }))['item']['id'] as String;
+
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+
+      final result = itemOps.listItems({});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+    });
+
+    test('combines backlog_only with type filter', () {
+      final bugId = parseResult(itemOps.addItem({
+        'title': 'Backlog bug',
+        'type': 'bug',
+      }))['item']['id'] as String;
+      parseResult(itemOps.addItem({
+        'title': 'Backlog feature',
+        'type': 'feature',
+      }));
+      final releasedBugId = parseResult(itemOps.addItem({
+        'title': 'Released bug',
+        'type': 'bug',
+      }))['item']['id'] as String;
+
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': releasedBugId});
+
+      // backlog_only + type=bug should only return the backlog bug
+      final result = itemOps.listItems({'backlog_only': true, 'type': 'bug'});
+      final data = parseResult(result);
+      expect(data['count'], 1);
+      expect((data['items'] as List)[0]['id'], bugId);
+    });
+
+    test('combines backlog_only with status filter', () {
+      final openId = parseResult(itemOps.addItem({
+        'title': 'Open backlog',
+        'status': 'open',
+      }))['item']['id'] as String;
+      final closedResult = itemOps.addItem({
+        'title': 'Closed backlog',
+      });
+      final closedId = parseResult(closedResult)['item']['id'] as String;
+      itemOps.updateItem({'id': closedId, 'status': 'closed'});
+
+      final result = itemOps.listItems({'backlog_only': true, 'status': 'open'});
+      final data = parseResult(result);
+      expect(data['count'], 1);
+      expect((data['items'] as List)[0]['id'], openId);
     });
   });
 }
