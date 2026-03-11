@@ -130,6 +130,24 @@ class TaskOperations {
             })
         .toList();
 
+    // Get linked backlog items for this task
+    final linkedItemsResult = database.select('''
+      SELECT i.id, i.title, i.type, i.status
+      FROM items i
+      INNER JOIN task_items ti ON ti.item_id = i.id
+      WHERE ti.task_id = ?
+      ORDER BY ti.added_at DESC
+    ''', [id]);
+
+    final linkedItems = linkedItemsResult
+        .map((row) => {
+              'id': row['id'],
+              'title': row['title'],
+              'type': row['type'],
+              'status': row['status'],
+            })
+        .toList();
+
     return jsonResult({
       'id': task['id'],
       'project_id': task['project_id'],
@@ -139,6 +157,7 @@ class TaskOperations {
       'created_at': task['created_at'],
       'updated_at': task['updated_at'],
       'steps': steps,
+      'linked_items': linkedItems,
     });
   }
 

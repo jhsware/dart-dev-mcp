@@ -15,6 +15,7 @@ void main() {
   late TransactionLogRepository transactionLogRepo;
   late ItemOperations itemOps;
   late ReleaseOperations releaseOps;
+  late TaskOperations taskOps;
 
   final uuid = Uuid();
 
@@ -29,6 +30,10 @@ void main() {
       transactionLogRepository: transactionLogRepo,
     );
     releaseOps = ReleaseOperations(
+      database: db,
+      transactionLogRepository: transactionLogRepo,
+    );
+    taskOps = TaskOperations(
       database: db,
       transactionLogRepository: transactionLogRepo,
     );
@@ -843,11 +848,470 @@ void main() {
       expect(tableNames, contains('task_items'));
     });
 
-    test('schema version is set to 4', () {
+    test('schema version is set to 5', () {
       final result = db.select(
         "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
       );
-      expect(result.first['value'], '4');
+      expect(result.first['value'], '5');
+    });
+
+    test('releases table has status and release_date columns', () {
+      // Create a release and verify the columns exist
+      final result = releaseOps.addRelease({
+        'title': 'Migration test',
+        'status': 'todo',
+        'release_date': '2026-04-01T00:00:00Z',
+      });
+      final data = parseResult(result);
+      expect(data['success'], isTrue);
+      expect(data['release']['status'], 'todo');
+      expect(data['release']['release_date'], '2026-04-01T00:00:00Z');
+    });
+  });
+
+  // ===== RELEASE STATUS TESTS =====
+
+  group('Release Status', () {
+    test('creates release with specific status', () {
+      final result = releaseOps.addRelease({
+        'title': 'Started release',
+        'status': 'started',
+      });
+      final data = parseResult(result);
+      expect(data['success'], isTrue);
+      expect(data['release']['status'], 'started');
+    });
+
+    test('defaults status to draft when not provided', () {
+      final result = releaseOps.addRelease({
+        'title': 'Default status',
+      });
+      final data = parseResult(result);
+      expect(data['release']['status'], 'draft');
+    });
+
+    test('validates release status on create', () {
+      final result = releaseOps.addRelease({
+        'title': 'Invalid',
+        'status': 'invalid_status',
+      });
+      final text = resultText(result);
+      expect(text, contains('status'));
+    });
+
+    test('updates release status', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Update me',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final updateResult = releaseOps.updateRelease({
+        'id': releaseId,
+        'status': 'released',
+      });
+      final data = parseResult(updateResult);
+      expect(data['status'], 'released');
+    });
+
+    test('validates release status on update', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Update me',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final result = releaseOps.updateRelease({
+        'id': releaseId,
+        'status': 'invalid',
+      });
+      final text = resultText(result);
+      expect(text, contains('status'));
+    });
+
+    test('show-release includes status and release_date', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Show test',
+        'status': 'todo',
+        'release_date': '2026-06-15T00:00:00Z',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final result = releaseOps.showRelease({'id': releaseId});
+      final data = parseResult(result);
+      expect(data['status'], 'todo');
+      expect(data['release_date'], '2026-06-15T00:00:00Z');
+    });
+
+    test('list-releases filters by status', () {
+      releaseOps.addRelease({'title': 'Draft 1', 'status': 'draft'});
+      releaseOps.addRelease({'title': 'Started 1', 'status': 'started'});
+      releaseOps.addRelease({'title': 'Draft 2', 'status': 'draft'});
+
+      final result = releaseOps.listReleases({'status': 'draft'});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+      final titles = (data['releases'] as List).map((r) => r['title']).toSet();
+      expect(titles, containsAll(['Draft 1', 'Draft 2']));
+    });
+
+    test('list-releases includes status and release_date', () {
+      releaseOps.addRelease({
+        'title': 'v3.0',
+        'status': 'todo',
+        'release_date': '2026-07-01T00:00:00Z',
+      });
+
+      final result = releaseOps.listReleases({});
+      final data = parseResult(result);
+      final releases = data['releases'] as List;
+      expect(releases[0]['status'], 'todo');
+      expect(releases[0]['release_date'], '2026-07-01T00:00:00Z');
+    });
+
+    test('all valid release statuses are accepted', () {
+      for (final status in ['draft', 'todo', 'started', 'done', 'released']) {
+        final result = releaseOps.addRelease({
+          'title': 'Status $status',
+          'status': status,
+        });
+        final data = parseResult(result);
+        expect(data['success'], isTrue, reason: 'Status $status should be valid');
+        expect(data['release']['status'], status);
+      }
+    });
+  });
+
+  // ===== RELEASE DATE TESTS =====
+
+  group('Release Date', () {
+    test('creates release with release_date', () {
+      final result = releaseOps.addRelease({
+        'title': 'Dated release',
+        'release_date': '2026-12-25T00:00:00Z',
+      });
+      final data = parseResult(result);
+      expect(data['release']['release_date'], '2026-12-25T00:00:00Z');
+    });
+
+    test('release_date defaults to null when not provided', () {
+      final result = releaseOps.addRelease({
+        'title': 'No date',
+      });
+      final data = parseResult(result);
+      expect(data['release']['release_date'], isNull);
+    });
+
+    test('updates release_date', () {
+      final addResult = releaseOps.addRelease({
+        'title': 'Update date',
+      });
+      final releaseId = parseResult(addResult)['release']['id'] as String;
+
+      final updateResult = releaseOps.updateRelease({
+        'id': releaseId,
+        'release_date': '2026-09-01T00:00:00Z',
+      });
+      final data = parseResult(updateResult);
+      expect(data['release_date'], '2026-09-01T00:00:00Z');
+    });
+  });
+
+  // ===== BACKLOG FILTER TESTS =====
+
+  group('Backlog Filter (backlog_only)', () {
+    test('returns only items not in any release when backlog_only=true', () {
+      // Create 3 items
+      final item1Id = parseResult(itemOps.addItem({
+        'title': 'Backlog item 1',
+      }))['item']['id'] as String;
+      final item2Id = parseResult(itemOps.addItem({
+        'title': 'Released item',
+      }))['item']['id'] as String;
+      parseResult(itemOps.addItem({
+        'title': 'Backlog item 2',
+      }));
+
+      // Assign item2 to a release
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+
+      // backlog_only should return only unassigned items
+      final result = itemOps.listItems({'backlog_only': true});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+      final ids = (data['items'] as List).map((i) => i['id']).toSet();
+      expect(ids, contains(item1Id));
+      expect(ids, isNot(contains(item2Id)));
+    });
+
+    test('returns all items when backlog_only=false', () {
+      final item1Id = parseResult(itemOps.addItem({
+        'title': 'Item A',
+      }))['item']['id'] as String;
+      parseResult(itemOps.addItem({
+        'title': 'Item B',
+      }));
+
+      // Assign item1 to a release
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item1Id});
+
+      final result = itemOps.listItems({'backlog_only': false});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+    });
+
+    test('returns all items when backlog_only is omitted', () {
+      parseResult(itemOps.addItem({'title': 'Item A'}));
+      final item2Id = parseResult(itemOps.addItem({
+        'title': 'Item B',
+      }))['item']['id'] as String;
+
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+
+      final result = itemOps.listItems({});
+      final data = parseResult(result);
+      expect(data['count'], 2);
+    });
+
+    test('combines backlog_only with type filter', () {
+      final bugId = parseResult(itemOps.addItem({
+        'title': 'Backlog bug',
+        'type': 'bug',
+      }))['item']['id'] as String;
+      parseResult(itemOps.addItem({
+        'title': 'Backlog feature',
+        'type': 'feature',
+      }));
+      final releasedBugId = parseResult(itemOps.addItem({
+        'title': 'Released bug',
+        'type': 'bug',
+      }))['item']['id'] as String;
+
+      final releaseId = parseResult(releaseOps.addRelease({
+        'title': 'v1.0',
+      }))['release']['id'] as String;
+      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': releasedBugId});
+
+      // backlog_only + type=bug should only return the backlog bug
+      final result = itemOps.listItems({'backlog_only': true, 'type': 'bug'});
+      final data = parseResult(result);
+      expect(data['count'], 1);
+      expect((data['items'] as List)[0]['id'], bugId);
+    });
+
+    test('combines backlog_only with status filter', () {
+      final openId = parseResult(itemOps.addItem({
+        'title': 'Open backlog',
+        'status': 'open',
+      }))['item']['id'] as String;
+      final closedResult = itemOps.addItem({
+        'title': 'Closed backlog',
+      });
+      final closedId = parseResult(closedResult)['item']['id'] as String;
+      itemOps.updateItem({'id': closedId, 'status': 'closed'});
+
+      final result = itemOps.listItems({'backlog_only': true, 'status': 'open'});
+      final data = parseResult(result);
+      expect(data['count'], 1);
+      expect((data['items'] as List)[0]['id'], openId);
+    });
+  });
+
+  // ===== CROSS-ENTITY VISIBILITY TESTS =====
+
+  group('Cross-Entity Visibility', () {
+    group('show-task linked items', () {
+      test('includes linked backlog items in show-task response', () {
+        // Create a task via taskOps
+        final taskResult = taskOps.addTask({
+          'title': 'Task with items',
+        });
+        final taskId = parseResult(taskResult)['task']['id'] as String;
+
+        // Create items
+        final item1Id = parseResult(itemOps.addItem({
+          'title': 'Bug fix',
+          'type': 'bug',
+          'status': 'open',
+        }))['item']['id'] as String;
+        final item2Id = parseResult(itemOps.addItem({
+          'title': 'New feature',
+          'type': 'feature',
+          'status': 'closed',
+        }))['item']['id'] as String;
+
+        // Link items to task
+        releaseOps.addItemToTask({'task_id': taskId, 'item_id': item1Id});
+        releaseOps.addItemToTask({'task_id': taskId, 'item_id': item2Id});
+
+        // Show task and verify linked_items
+        final showResult = taskOps.showTask({'id': taskId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_items'], isA<List>());
+        final linkedItems = data['linked_items'] as List;
+        expect(linkedItems, hasLength(2));
+
+        // Verify item fields are present
+        final itemIds = linkedItems.map((i) => i['id']).toSet();
+        expect(itemIds, contains(item1Id));
+        expect(itemIds, contains(item2Id));
+
+        // Verify each item has required fields
+        for (final item in linkedItems) {
+          expect(item, containsPair('id', isNotNull));
+          expect(item, containsPair('title', isNotNull));
+          expect(item, containsPair('type', isNotNull));
+          expect(item, containsPair('status', isNotNull));
+        }
+      });
+
+      test('returns empty linked_items when task has no linked items', () {
+        final taskResult = taskOps.addTask({
+          'title': 'Task without items',
+        });
+        final taskId = parseResult(taskResult)['task']['id'] as String;
+
+        final showResult = taskOps.showTask({'id': taskId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_items'], isA<List>());
+        expect(data['linked_items'], isEmpty);
+      });
+    });
+
+    group('show-item linked tasks', () {
+      test('includes linked tasks in show-item response', () {
+        // Create an item
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Shared item',
+        }))['item']['id'] as String;
+
+        // Create tasks and link
+        final task1Result = taskOps.addTask({'title': 'Task A', 'status': 'started'});
+        final task1Id = parseResult(task1Result)['task']['id'] as String;
+        final task2Result = taskOps.addTask({'title': 'Task B', 'status': 'done'});
+        final task2Id = parseResult(task2Result)['task']['id'] as String;
+
+        releaseOps.addItemToTask({'task_id': task1Id, 'item_id': itemId});
+        releaseOps.addItemToTask({'task_id': task2Id, 'item_id': itemId});
+
+        // Show item and verify linked_tasks
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_tasks'], isA<List>());
+        final linkedTasks = data['linked_tasks'] as List;
+        expect(linkedTasks, hasLength(2));
+
+        final taskIds = linkedTasks.map((t) => t['id']).toSet();
+        expect(taskIds, contains(task1Id));
+        expect(taskIds, contains(task2Id));
+
+        for (final task in linkedTasks) {
+          expect(task, containsPair('id', isNotNull));
+          expect(task, containsPair('title', isNotNull));
+          expect(task, containsPair('status', isNotNull));
+        }
+      });
+
+      test('returns empty linked_tasks when item has no linked tasks', () {
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Standalone item',
+        }))['item']['id'] as String;
+
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_tasks'], isA<List>());
+        expect(data['linked_tasks'], isEmpty);
+      });
+    });
+
+    group('show-item linked releases', () {
+      test('includes linked releases in show-item response', () {
+        // Create an item
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Release item',
+        }))['item']['id'] as String;
+
+        // Create releases and link
+        final rel1Id = parseResult(releaseOps.addRelease({
+          'title': 'v1.0',
+        }))['release']['id'] as String;
+        final rel2Id = parseResult(releaseOps.addRelease({
+          'title': 'v2.0',
+        }))['release']['id'] as String;
+
+        releaseOps.addItemToRelease({'release_id': rel1Id, 'item_id': itemId});
+        releaseOps.addItemToRelease({'release_id': rel2Id, 'item_id': itemId});
+
+        // Show item and verify linked_releases
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_releases'], isA<List>());
+        final linkedReleases = data['linked_releases'] as List;
+        expect(linkedReleases, hasLength(2));
+
+        final releaseIds = linkedReleases.map((r) => r['id']).toSet();
+        expect(releaseIds, contains(rel1Id));
+        expect(releaseIds, contains(rel2Id));
+
+        for (final release in linkedReleases) {
+          expect(release, containsPair('id', isNotNull));
+          expect(release, containsPair('title', isNotNull));
+        }
+      });
+
+      test('returns empty linked_releases when item has no linked releases', () {
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'No releases item',
+        }))['item']['id'] as String;
+
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_releases'], isA<List>());
+        expect(data['linked_releases'], isEmpty);
+      });
+    });
+
+    group('combined cross-entity', () {
+      test('item linked to both tasks and releases shows all', () {
+        // Create an item
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Well-connected item',
+        }))['item']['id'] as String;
+
+        // Link to a task
+        final taskResult = taskOps.addTask({'title': 'Related task'});
+        final taskId = parseResult(taskResult)['task']['id'] as String;
+        releaseOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
+
+        // Link to a release
+        final releaseId = parseResult(releaseOps.addRelease({
+          'title': 'v3.0',
+        }))['release']['id'] as String;
+        releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': itemId});
+
+        // Show item
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_tasks'], hasLength(1));
+        expect((data['linked_tasks'] as List)[0]['id'], taskId);
+
+        expect(data['linked_releases'], hasLength(1));
+        expect((data['linked_releases'] as List)[0]['id'], releaseId);
+      });
     });
   });
 }

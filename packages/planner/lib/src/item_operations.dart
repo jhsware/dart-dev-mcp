@@ -120,6 +120,39 @@ class ItemOperations {
             })
         .toList();
 
+    // Get linked tasks for this item
+    final linkedTasksResult = database.select('''
+      SELECT t.id, t.title, t.status
+      FROM tasks t
+      INNER JOIN task_items ti ON ti.task_id = t.id
+      WHERE ti.item_id = ?
+      ORDER BY ti.added_at DESC
+    ''', [id]);
+
+    final linkedTasks = linkedTasksResult
+        .map((row) => {
+              'id': row['id'],
+              'title': row['title'],
+              'status': row['status'],
+            })
+        .toList();
+
+    // Get linked releases for this item
+    final linkedReleasesResult = database.select('''
+      SELECT r.id, r.title
+      FROM releases r
+      INNER JOIN release_items ri ON ri.release_id = r.id
+      WHERE ri.item_id = ?
+      ORDER BY ri.added_at DESC
+    ''', [id]);
+
+    final linkedReleases = linkedReleasesResult
+        .map((row) => {
+              'id': row['id'],
+              'title': row['title'],
+            })
+        .toList();
+
     return jsonResult({
       'id': item['id'],
       'project_id': item['project_id'],
@@ -130,6 +163,8 @@ class ItemOperations {
       'created_at': item['created_at'],
       'updated_at': item['updated_at'],
       'history': history,
+      'linked_tasks': linkedTasks,
+      'linked_releases': linkedReleases,
     });
   }
 
@@ -265,6 +300,7 @@ class ItemOperations {
     final searchQuery = args?['search_query'] as String?;
     final type = args?['type'] as String?;
     final status = args?['status'] as String?;
+    final backlogOnly = args?['backlog_only'] as bool? ?? false;
 
     // Validate type if provided
     if (type != null && type.isNotEmpty) {
@@ -284,8 +320,10 @@ class ItemOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-
-
+    // When backlog_only is true, filter to items not in any release
+    if (backlogOnly) {
+      conditions.add('ri_filter.item_id IS NULL');
+    }
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
       conditions.add('(i.title LIKE ? OR i.details LIKE ?)');
@@ -306,6 +344,11 @@ class ItemOperations {
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
 
+    // Use LEFT JOIN for backlog_only filter
+    final backlogJoin = backlogOnly
+        ? 'LEFT JOIN release_items ri_filter ON ri_filter.item_id = i.id'
+        : '';
+
     final query = '''
       SELECT 
         i.id,
@@ -317,6 +360,7 @@ class ItemOperations {
         i.updated_at,
         (SELECT COUNT(*) FROM release_items ri WHERE ri.item_id = i.id) as release_count
       FROM items i
+      $backlogJoin
       $whereClause
       ORDER BY i.updated_at DESC
     ''';
@@ -344,6 +388,7 @@ class ItemOperations {
         'search_query': ?searchQuery,
         'type': ?type,
         'status': ?status,
+        'backlog_only': backlogOnly,
       },
     });
   }
