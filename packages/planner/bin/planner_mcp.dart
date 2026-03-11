@@ -153,7 +153,7 @@ Operations:
 Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done
 Item types: feature, improvement, bug, change
-Item statuses: open, closed
+Item statuses: open, closed, archived
 Release statuses: draft, todo, started, done, released
 
 Parent task pattern: Prefix parent task title with "Parent:". Each step references a sub-task via sub_task_id. Use get-subtask-prompt to fetch the sub-task details for a step when ready to work on it.''',
@@ -186,7 +186,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'status': JsonSchema.string(
           description:
-              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed. Status for releases: draft, todo, started, done, released. Also used for list-tasks and list-releases filter.',
+              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed, archived. Status for releases: draft, todo, started, done, released. Also used for list-tasks and list-releases filter.',
           enumValues: [
             'backlog',
             'todo',
@@ -197,6 +197,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
             'merged',
             'open',
             'closed',
+            'archived',
             'released'
           ],
         ),
