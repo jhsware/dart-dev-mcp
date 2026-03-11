@@ -254,7 +254,7 @@ Future<CallToolResult> _handleGit(
       case 'log':
         return gitOps.log((args['max_count'] as num?)?.toInt() ?? 10);
       case 'diff':
-        return gitOps.diff();
+        return gitOps.diff(target: args['target'] as String?);
       case 'signing-status':
         return signingStatus(workingDir, signingInfo);
       default:
