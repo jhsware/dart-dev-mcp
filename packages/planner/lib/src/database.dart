@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 4;
+const int currentSchemaVersion = 5;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -115,6 +115,8 @@ Database initializeDatabase(String dbPath) {
       project_id TEXT NOT NULL,
       title TEXT NOT NULL,
       notes TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      release_date TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -122,6 +124,8 @@ Database initializeDatabase(String dbPath) {
 
   database.execute(
       'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
 
   // Create release_items junction table
   database.execute('''
@@ -280,6 +284,17 @@ void _runMigrations(Database database) {
 
     _setSchemaVersion(database, 4);
     logInfo('planner', 'Migration to schema version 4 complete.');
+  }
+
+  // Migration from version 4 to version 5
+  // Add status and release_date columns to releases table
+  if (currentVersion < 5) {
+    logInfo('planner', 'Running migration to schema version 5...');
+    database.execute("ALTER TABLE releases ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
+    database.execute('ALTER TABLE releases ADD COLUMN release_date TEXT');
+    database.execute('CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
+    _setSchemaVersion(database, 5);
+    logInfo('planner', 'Migration to schema version 5 complete.');
   }
 
   // Verify we're at the expected version

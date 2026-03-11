@@ -262,6 +262,8 @@ Map<String, dynamic> releaseToLoggable(Map<String, dynamic> release) {
     'project_id': release['project_id'],
     'title': release['title'],
     'notes': release['notes'],
+    'status': release['status'],
+    'release_date': release['release_date'],
     'created_at': release['created_at'],
     'updated_at': release['updated_at'],
   };
