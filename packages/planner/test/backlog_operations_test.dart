@@ -1314,4 +1314,56 @@ void main() {
       });
     });
   });
+
+  group('Archived Item Status', () {
+    test('creates item with archived status', () {
+      final result = itemOps.addItem({
+        'title': 'Archived feature',
+        'status': 'archived',
+      });
+      final data = parseResult(result);
+      expect(data['item']['status'], 'archived');
+    });
+
+    test('updates item status from open to archived', () {
+      final createResult = itemOps.addItem({'title': 'Feature to archive'});
+      final itemId = parseResult(createResult)['item']['id'] as String;
+
+      final updateResult = itemOps.updateItem({
+        'id': itemId,
+        'status': 'archived',
+      });
+      final data = parseResult(updateResult);
+      expect(data['status'], 'archived');
+
+      // Verify history records the status change
+      final showResult = itemOps.showItem({'id': itemId});
+      final showData = parseResult(showResult);
+      final history = showData['history'] as List;
+      expect(history, isNotEmpty);
+      expect(history[0]['field_name'], 'status');
+      expect(history[0]['old_value'], 'open');
+      expect(history[0]['new_value'], 'archived');
+    });
+
+    test('list-items filters by archived status', () {
+      // Create items with different statuses
+      itemOps.addItem({'title': 'Open item'});
+
+      final archivedResult = itemOps.addItem({'title': 'Archived item'});
+      final archivedId = parseResult(archivedResult)['item']['id'] as String;
+      itemOps.updateItem({'id': archivedId, 'status': 'archived'});
+
+      final closedResult = itemOps.addItem({'title': 'Closed item'});
+      final closedId = parseResult(closedResult)['item']['id'] as String;
+      itemOps.updateItem({'id': closedId, 'status': 'closed'});
+
+      // Filter by archived
+      final result = itemOps.listItems({'status': 'archived'});
+      final data = parseResult(result);
+      expect(data['count'], 1);
+      expect((data['items'] as List)[0]['title'], 'Archived item');
+    });
+  });
+
 }
