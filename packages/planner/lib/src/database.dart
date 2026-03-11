@@ -290,8 +290,17 @@ void _runMigrations(Database database) {
   // Add status and release_date columns to releases table
   if (currentVersion < 5) {
     logInfo('planner', 'Running migration to schema version 5...');
-    database.execute("ALTER TABLE releases ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
-    database.execute('ALTER TABLE releases ADD COLUMN release_date TEXT');
+    
+    // Check if columns already exist (defensive, in case CREATE TABLE already included them)
+    final columns = database.select("PRAGMA table_info(releases)");
+    final columnNames = columns.map((row) => row['name'] as String).toSet();
+    
+    if (!columnNames.contains('status')) {
+      database.execute("ALTER TABLE releases ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
+    }
+    if (!columnNames.contains('release_date')) {
+      database.execute('ALTER TABLE releases ADD COLUMN release_date TEXT');
+    }
     database.execute('CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
     _setSchemaVersion(database, 5);
     logInfo('planner', 'Migration to schema version 5 complete.');
