@@ -120,6 +120,39 @@ class ItemOperations {
             })
         .toList();
 
+    // Get linked tasks for this item
+    final linkedTasksResult = database.select('''
+      SELECT t.id, t.title, t.status
+      FROM tasks t
+      INNER JOIN task_items ti ON ti.task_id = t.id
+      WHERE ti.item_id = ?
+      ORDER BY ti.added_at DESC
+    ''', [id]);
+
+    final linkedTasks = linkedTasksResult
+        .map((row) => {
+              'id': row['id'],
+              'title': row['title'],
+              'status': row['status'],
+            })
+        .toList();
+
+    // Get linked releases for this item
+    final linkedReleasesResult = database.select('''
+      SELECT r.id, r.title
+      FROM releases r
+      INNER JOIN release_items ri ON ri.release_id = r.id
+      WHERE ri.item_id = ?
+      ORDER BY ri.added_at DESC
+    ''', [id]);
+
+    final linkedReleases = linkedReleasesResult
+        .map((row) => {
+              'id': row['id'],
+              'title': row['title'],
+            })
+        .toList();
+
     return jsonResult({
       'id': item['id'],
       'project_id': item['project_id'],
@@ -130,6 +163,8 @@ class ItemOperations {
       'created_at': item['created_at'],
       'updated_at': item['updated_at'],
       'history': history,
+      'linked_tasks': linkedTasks,
+      'linked_releases': linkedReleases,
     });
   }
 
