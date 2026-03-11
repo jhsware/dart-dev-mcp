@@ -112,6 +112,7 @@ void main() {
         workingDirectory: repoDir.path,
       );
       expect(result.stdout, contains('Add main.dart'));
+    });
 
     test('branch-create auto-switches to the new branch', () async {
       // Init repo and create initial commit
