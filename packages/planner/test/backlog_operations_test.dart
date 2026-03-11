@@ -15,6 +15,7 @@ void main() {
   late TransactionLogRepository transactionLogRepo;
   late ItemOperations itemOps;
   late ReleaseOperations releaseOps;
+  late TaskOperations taskOps;
 
   final uuid = Uuid();
 
@@ -29,6 +30,10 @@ void main() {
       transactionLogRepository: transactionLogRepo,
     );
     releaseOps = ReleaseOperations(
+      database: db,
+      transactionLogRepository: transactionLogRepo,
+    );
+    taskOps = TaskOperations(
       database: db,
       transactionLogRepository: transactionLogRepo,
     );
@@ -1116,6 +1121,197 @@ void main() {
       final data = parseResult(result);
       expect(data['count'], 1);
       expect((data['items'] as List)[0]['id'], openId);
+    });
+  });
+
+  // ===== CROSS-ENTITY VISIBILITY TESTS =====
+
+  group('Cross-Entity Visibility', () {
+    group('show-task linked items', () {
+      test('includes linked backlog items in show-task response', () {
+        // Create a task via taskOps
+        final taskResult = taskOps.addTask({
+          'title': 'Task with items',
+        });
+        final taskId = parseResult(taskResult)['task']['id'] as String;
+
+        // Create items
+        final item1Id = parseResult(itemOps.addItem({
+          'title': 'Bug fix',
+          'type': 'bug',
+          'status': 'open',
+        }))['item']['id'] as String;
+        final item2Id = parseResult(itemOps.addItem({
+          'title': 'New feature',
+          'type': 'feature',
+          'status': 'closed',
+        }))['item']['id'] as String;
+
+        // Link items to task
+        releaseOps.addItemToTask({'task_id': taskId, 'item_id': item1Id});
+        releaseOps.addItemToTask({'task_id': taskId, 'item_id': item2Id});
+
+        // Show task and verify linked_items
+        final showResult = taskOps.showTask({'id': taskId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_items'], isA<List>());
+        final linkedItems = data['linked_items'] as List;
+        expect(linkedItems, hasLength(2));
+
+        // Verify item fields are present
+        final itemIds = linkedItems.map((i) => i['id']).toSet();
+        expect(itemIds, contains(item1Id));
+        expect(itemIds, contains(item2Id));
+
+        // Verify each item has required fields
+        for (final item in linkedItems) {
+          expect(item, containsPair('id', isNotNull));
+          expect(item, containsPair('title', isNotNull));
+          expect(item, containsPair('type', isNotNull));
+          expect(item, containsPair('status', isNotNull));
+        }
+      });
+
+      test('returns empty linked_items when task has no linked items', () {
+        final taskResult = taskOps.addTask({
+          'title': 'Task without items',
+        });
+        final taskId = parseResult(taskResult)['task']['id'] as String;
+
+        final showResult = taskOps.showTask({'id': taskId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_items'], isA<List>());
+        expect(data['linked_items'], isEmpty);
+      });
+    });
+
+    group('show-item linked tasks', () {
+      test('includes linked tasks in show-item response', () {
+        // Create an item
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Shared item',
+        }))['item']['id'] as String;
+
+        // Create tasks and link
+        final task1Result = taskOps.addTask({'title': 'Task A', 'status': 'started'});
+        final task1Id = parseResult(task1Result)['task']['id'] as String;
+        final task2Result = taskOps.addTask({'title': 'Task B', 'status': 'done'});
+        final task2Id = parseResult(task2Result)['task']['id'] as String;
+
+        releaseOps.addItemToTask({'task_id': task1Id, 'item_id': itemId});
+        releaseOps.addItemToTask({'task_id': task2Id, 'item_id': itemId});
+
+        // Show item and verify linked_tasks
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_tasks'], isA<List>());
+        final linkedTasks = data['linked_tasks'] as List;
+        expect(linkedTasks, hasLength(2));
+
+        final taskIds = linkedTasks.map((t) => t['id']).toSet();
+        expect(taskIds, contains(task1Id));
+        expect(taskIds, contains(task2Id));
+
+        for (final task in linkedTasks) {
+          expect(task, containsPair('id', isNotNull));
+          expect(task, containsPair('title', isNotNull));
+          expect(task, containsPair('status', isNotNull));
+        }
+      });
+
+      test('returns empty linked_tasks when item has no linked tasks', () {
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Standalone item',
+        }))['item']['id'] as String;
+
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_tasks'], isA<List>());
+        expect(data['linked_tasks'], isEmpty);
+      });
+    });
+
+    group('show-item linked releases', () {
+      test('includes linked releases in show-item response', () {
+        // Create an item
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Release item',
+        }))['item']['id'] as String;
+
+        // Create releases and link
+        final rel1Id = parseResult(releaseOps.addRelease({
+          'title': 'v1.0',
+        }))['release']['id'] as String;
+        final rel2Id = parseResult(releaseOps.addRelease({
+          'title': 'v2.0',
+        }))['release']['id'] as String;
+
+        releaseOps.addItemToRelease({'release_id': rel1Id, 'item_id': itemId});
+        releaseOps.addItemToRelease({'release_id': rel2Id, 'item_id': itemId});
+
+        // Show item and verify linked_releases
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_releases'], isA<List>());
+        final linkedReleases = data['linked_releases'] as List;
+        expect(linkedReleases, hasLength(2));
+
+        final releaseIds = linkedReleases.map((r) => r['id']).toSet();
+        expect(releaseIds, contains(rel1Id));
+        expect(releaseIds, contains(rel2Id));
+
+        for (final release in linkedReleases) {
+          expect(release, containsPair('id', isNotNull));
+          expect(release, containsPair('title', isNotNull));
+        }
+      });
+
+      test('returns empty linked_releases when item has no linked releases', () {
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'No releases item',
+        }))['item']['id'] as String;
+
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_releases'], isA<List>());
+        expect(data['linked_releases'], isEmpty);
+      });
+    });
+
+    group('combined cross-entity', () {
+      test('item linked to both tasks and releases shows all', () {
+        // Create an item
+        final itemId = parseResult(itemOps.addItem({
+          'title': 'Well-connected item',
+        }))['item']['id'] as String;
+
+        // Link to a task
+        final taskResult = taskOps.addTask({'title': 'Related task'});
+        final taskId = parseResult(taskResult)['task']['id'] as String;
+        releaseOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
+
+        // Link to a release
+        final releaseId = parseResult(releaseOps.addRelease({
+          'title': 'v3.0',
+        }))['release']['id'] as String;
+        releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': itemId});
+
+        // Show item
+        final showResult = itemOps.showItem({'id': itemId});
+        final data = parseResult(showResult);
+
+        expect(data['linked_tasks'], hasLength(1));
+        expect((data['linked_tasks'] as List)[0]['id'], taskId);
+
+        expect(data['linked_releases'], hasLength(1));
+        expect((data['linked_releases'] as List)[0]['id'], releaseId);
+      });
     });
   });
 }
