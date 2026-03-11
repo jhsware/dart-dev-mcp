@@ -5,6 +5,9 @@ import 'package:uuid/uuid.dart';
 
 import 'planner.dart';
 
+/// Valid release statuses.
+const validReleaseStatuses = ['draft', 'todo', 'started', 'done', 'released'];
+
 final _uuid = Uuid();
 
 /// Release operations handler for backlog releases.
@@ -22,8 +25,15 @@ class ReleaseOperations {
     final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final notes = args?['notes'] as String?;
+    final status = args?['status'] as String? ?? 'draft';
+    final releaseDate = args?['release_date'] as String?;
 
     if (requireString(title, 'title') case final error?) {
+      return error;
+    }
+
+    if (requireOneOf(status, 'status', validReleaseStatuses)
+        case final error?) {
       return error;
     }
 
@@ -35,15 +45,17 @@ class ReleaseOperations {
       'project_id': projectId,
       'title': title,
       'notes': notes,
+      'status': status,
+      'release_date': releaseDate,
       'created_at': now,
       'updated_at': now,
     };
 
     withRetryTransactionSync(database, () {
       database.execute('''
-        INSERT INTO releases (id, project_id, title, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      ''', [id, projectId, title, notes, now, now]);
+        INSERT INTO releases (id, project_id, title, notes, status, release_date, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ''', [id, projectId, title, notes, status, releaseDate, now, now]);
 
       transactionLogRepository.log(
         entityType: EntityType.release,
@@ -111,6 +123,8 @@ class ReleaseOperations {
       'project_id': release['project_id'],
       'title': release['title'],
       'notes': release['notes'],
+      'status': release['status'],
+      'release_date': release['release_date'],
       'created_at': release['created_at'],
       'updated_at': release['updated_at'],
       'items': items,
@@ -145,6 +159,21 @@ class ReleaseOperations {
     if (args?.containsKey('notes') == true) {
       updates.add('notes = ?');
       values.add(args!['notes']);
+    }
+
+    if (args?.containsKey('status') == true) {
+      final newStatus = args!['status'] as String;
+      if (requireOneOf(newStatus, 'status', validReleaseStatuses)
+          case final error?) {
+        return error;
+      }
+      updates.add('status = ?');
+      values.add(newStatus);
+    }
+
+    if (args?.containsKey('release_date') == true) {
+      updates.add('release_date = ?');
+      values.add(args!['release_date']);
     }
 
     if (updates.isEmpty) {
@@ -193,12 +222,19 @@ class ReleaseOperations {
   /// List releases with optional filters.
   CallToolResult listReleases(Map<String, dynamic>? args) {
     final projectId = args?['project_id'] as String?;
+    final status = args?['status'] as String?;
 
     final conditions = <String>[];
     final values = <Object?>[];
 
-
-
+    if (status != null && status.isNotEmpty) {
+      if (requireOneOf(status, 'status', validReleaseStatuses)
+          case final error?) {
+        return error;
+      }
+      conditions.add('r.status = ?');
+      values.add(status);
+    }
 
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
@@ -209,6 +245,8 @@ class ReleaseOperations {
         r.project_id,
         r.title,
         r.notes,
+        r.status,
+        r.release_date,
         r.created_at,
         r.updated_at,
         (SELECT COUNT(*) FROM release_items ri WHERE ri.release_id = r.id) as item_count
@@ -225,6 +263,8 @@ class ReleaseOperations {
               'project_id': row['project_id'],
               'title': row['title'],
               'notes': row['notes'],
+              'status': row['status'],
+              'release_date': row['release_date'],
               'item_count': row['item_count'],
               'created_at': row['created_at'],
               'updated_at': row['updated_at'],
@@ -236,6 +276,7 @@ class ReleaseOperations {
       'count': releases.length,
       'filters': {
         'project_id': ?projectId,
+        'status': ?status,
       },
     });
   }
