@@ -124,7 +124,7 @@ void main(List<String> arguments) async {
 Operations:
 - get-project-instructions: Read project instructions from AGENTS.md
 - add-task: Create a new task
-- show-task: Show task details with list of steps
+- show-task: Show task details with list of steps and linked backlog items. Requires: id.
 - update-task: Update task properties
 - show-task-memory: Show task memory/notes
 - update-task-memory: Update task memory/notes
@@ -134,7 +134,7 @@ Operations:
 - update-step: Update step properties
 - get-subtask-prompt: Get the sub-task details for a step in a parent task. Use this operation to fetch the sub-task details when ready to work on it. Requires: id (step ID). Returns error if step has no linked sub-task.
 - add-item: Create a new backlog item. Requires: title. Optional: details, type, status, project_id (deprecated).
-- show-item: Show item details with edit history. Requires: id.
+- show-item: Show item details with edit history, linked tasks, and linked releases. Requires: id.
 - update-item: Update item fields. Requires: id. Optional: title, details, type, status.
 - list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any release).
 - add-release: Create a new release. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date), project_id (deprecated).
