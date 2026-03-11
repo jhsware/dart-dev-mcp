@@ -265,6 +265,7 @@ class ItemOperations {
     final searchQuery = args?['search_query'] as String?;
     final type = args?['type'] as String?;
     final status = args?['status'] as String?;
+    final backlogOnly = args?['backlog_only'] as bool? ?? false;
 
     // Validate type if provided
     if (type != null && type.isNotEmpty) {
@@ -284,8 +285,10 @@ class ItemOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-
-
+    // When backlog_only is true, filter to items not in any release
+    if (backlogOnly) {
+      conditions.add('ri_filter.item_id IS NULL');
+    }
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
       conditions.add('(i.title LIKE ? OR i.details LIKE ?)');
@@ -306,6 +309,11 @@ class ItemOperations {
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
 
+    // Use LEFT JOIN for backlog_only filter
+    final backlogJoin = backlogOnly
+        ? 'LEFT JOIN release_items ri_filter ON ri_filter.item_id = i.id'
+        : '';
+
     final query = '''
       SELECT 
         i.id,
@@ -317,6 +325,7 @@ class ItemOperations {
         i.updated_at,
         (SELECT COUNT(*) FROM release_items ri WHERE ri.item_id = i.id) as release_count
       FROM items i
+      $backlogJoin
       $whereClause
       ORDER BY i.updated_at DESC
     ''';
@@ -344,6 +353,7 @@ class ItemOperations {
         'search_query': ?searchQuery,
         'type': ?type,
         'status': ?status,
+        'backlog_only': backlogOnly,
       },
     });
   }
