@@ -23,7 +23,7 @@ All other tasks should be processed:
 When processing a step:
 - [ ] Step 1: Set step status to started
 - [ ] Step 2: Perform the step
-- [ ] Step 3: If coding task - make logical commits
+- [ ] Step 3: If coding task - make sure you are on the correct branch and create logical commits
 - [ ] Step 4: Use task memory to store context for later steps
 - [ ] Step 5: When step is completed, mark step done
 
