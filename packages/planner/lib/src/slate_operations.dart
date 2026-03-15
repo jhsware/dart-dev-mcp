@@ -46,7 +46,7 @@ class SlateOperations {
       'title': title,
       'notes': notes,
       'status': status,
-      'release_date': slateDate,
+      'slate_date': slateDate,
       'created_at': now,
       'updated_at': now,
     };
@@ -78,7 +78,7 @@ class SlateOperations {
     return jsonResult({
       'success': true,
       'message': 'Slate created',
-      'release': slateData,
+      'slate': slateData,
     });
   }
 
@@ -124,7 +124,7 @@ class SlateOperations {
       'title': slate['title'],
       'notes': slate['notes'],
       'status': slate['status'],
-      'release_date': slate['slate_date'],
+      'slate_date': slate['slate_date'],
       'created_at': slate['created_at'],
       'updated_at': slate['updated_at'],
       'items': items,
@@ -264,7 +264,7 @@ class SlateOperations {
               'title': row['title'],
               'notes': row['notes'],
               'status': row['status'],
-              'release_date': row['slate_date'],
+              'slate_date': row['slate_date'],
               'item_count': row['item_count'],
               'created_at': row['created_at'],
               'updated_at': row['updated_at'],
@@ -335,7 +335,7 @@ class SlateOperations {
     return jsonResult({
       'success': true,
       'message': 'Item added to slate',
-      'release_id': slateId,
+      'slate_id': slateId,
       'item_id': itemId,
     });
   }
@@ -377,7 +377,7 @@ class SlateOperations {
     return jsonResult({
       'success': true,
       'message': 'Item removed from slate',
-      'release_id': slateId,
+      'slate_id': slateId,
       'item_id': itemId,
     });
   }

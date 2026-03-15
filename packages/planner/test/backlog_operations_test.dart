@@ -8,13 +8,13 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
 
-/// Tests for backlog item and release operations.
+/// Tests for backlog item and slate operations.
 void main() {
   late Directory tempDir;
   late Database db;
   late TransactionLogRepository transactionLogRepo;
   late ItemOperations itemOps;
-  late ReleaseOperations releaseOps;
+  late SlateOperations slateOps;
   late TaskOperations taskOps;
 
   final uuid = Uuid();
@@ -29,7 +29,7 @@ void main() {
       database: db,
       transactionLogRepository: transactionLogRepo,
     );
-    releaseOps = ReleaseOperations(
+    slateOps = SlateOperations(
       database: db,
       transactionLogRepository: transactionLogRepo,
     );
@@ -423,124 +423,124 @@ void main() {
         expect(data['count'], 2);
       });
 
-      test('includes release count per item', () {
+      test('includes slate count per item', () {
         // Create item
         final addResult = itemOps.addItem({
           'project_id': 'test-project',
-          'title': 'Item with releases',
+          'title': 'Item with slates',
         });
         final addData = parseResult(addResult);
         final itemId = addData['item']['id'] as String;
 
-        // Create two releases and link item to both
-        final rel1Result = releaseOps.addRelease({
+        // Create two slates and link item to both
+        final rel1Result = slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'Release 1',
         });
-        final rel1Id = parseResult(rel1Result)['release']['id'] as String;
+        final rel1Id = parseResult(rel1Result)['slate']['id'] as String;
 
-        final rel2Result = releaseOps.addRelease({
+        final rel2Result = slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'Release 2',
         });
-        final rel2Id = parseResult(rel2Result)['release']['id'] as String;
+        final rel2Id = parseResult(rel2Result)['slate']['id'] as String;
 
-        releaseOps.addItemToRelease({'release_id': rel1Id, 'item_id': itemId});
-        releaseOps.addItemToRelease({'release_id': rel2Id, 'item_id': itemId});
+        slateOps.addItemToSlate({'release_id': rel1Id, 'item_id': itemId});
+        slateOps.addItemToSlate({'release_id': rel2Id, 'item_id': itemId});
 
         final result = itemOps.listItems({});
         final data = parseResult(result);
         final items = data['items'] as List;
         final targetItem = items.firstWhere((i) => i['id'] == itemId);
-        expect(targetItem['release_count'], 2);
+        expect(targetItem['slate_count'], 2);
       });
     });
   });
 
   // ===== RELEASE OPERATIONS =====
 
-  group('Release Operations', () {
-    group('add-release', () {
-      test('creates release with all fields', () {
-        final result = releaseOps.addRelease({
+  group('Slate Operations', () {
+    group('add-slate', () {
+      test('creates slate with all fields', () {
+        final result = slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'v1.0',
-          'notes': 'First release with new features',
+          'notes': 'First slate with new features',
         });
 
         final data = parseResult(result);
         expect(data['success'], isTrue);
-        expect(data['release']['title'], 'v1.0');
-        expect(data['release']['notes'], 'First release with new features');
-        expect(data['release']['project_id'], 'test-project');
-        expect(data['release']['id'], isNotEmpty);
+        expect(data['slate']['title'], 'v1.0');
+        expect(data['slate']['notes'], 'First slate with new features');
+        expect(data['slate']['project_id'], 'test-project');
+        expect(data['slate']['id'], isNotEmpty);
       });
 
       test('validates required fields and defaults project_id', () {
         // project_id is no longer required — should default to empty string
-        final result1 = releaseOps.addRelease({'title': 'v1.0'});
+        final result1 = slateOps.addSlate({'title': 'v1.0'});
         final data1 = parseResult(result1);
         expect(data1['success'], isTrue);
-        expect(data1['release']['project_id'], '');
+        expect(data1['slate']['project_id'], '');
 
         // title is still required
-        final result2 = releaseOps.addRelease({});
+        final result2 = slateOps.addSlate({});
         expect(resultText(result2), contains('title is required'));
       });
 
       test('creates transaction log entry', () {
-        final result = releaseOps.addRelease({
+        final result = slateOps.addSlate({
           'project_id': 'test-project',
-          'title': 'Logged release',
+          'title': 'Logged slate',
         });
 
         final data = parseResult(result);
-        final releaseId = data['release']['id'] as String;
+        final slateId = data['slate']['id'] as String;
 
         final logs = db.select(
           'SELECT * FROM transaction_logs WHERE entity_id = ? AND entity_type = ?',
-          [releaseId, 'release'],
+          [slateId, 'slate'],
         );
         expect(logs, hasLength(1));
         expect(logs.first['transaction_type'], 'create');
       });
     });
 
-    group('show-release', () {
-      test('returns release with empty items list for new release', () {
-        final addResult = releaseOps.addRelease({
+    group('show-slate', () {
+      test('returns slate with empty items list for new slate', () {
+        final addResult = slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'v2.0',
         });
         final addData = parseResult(addResult);
-        final releaseId = addData['release']['id'] as String;
+        final slateId = addData['slate']['id'] as String;
 
-        final result = releaseOps.showRelease({'id': releaseId});
+        final result = slateOps.showSlate({'id': slateId});
         final data = parseResult(result);
 
-        expect(data['id'], releaseId);
+        expect(data['id'], slateId);
         expect(data['title'], 'v2.0');
         expect(data['items'], isEmpty);
       });
 
-      test('returns 404 for non-existent release', () {
-        final result = releaseOps.showRelease({'id': 'non-existent'});
+      test('returns 404 for non-existent slate', () {
+        final result = slateOps.showSlate({'id': 'non-existent'});
         expect(resultText(result), contains('not found'));
       });
     });
 
-    group('update-release', () {
+    group('update-slate', () {
       test('updates title and notes', () {
-        final addResult = releaseOps.addRelease({
+        final addResult = slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'Old title',
           'notes': 'Old notes',
         });
         final addData = parseResult(addResult);
-        final releaseId = addData['release']['id'] as String;
+        final slateId = addData['slate']['id'] as String;
 
-        final updateResult = releaseOps.updateRelease({
-          'id': releaseId,
+        final updateResult = slateOps.updateSlate({
+          'id': slateId,
           'title': 'New title',
           'notes': 'New notes',
         });
@@ -550,8 +550,8 @@ void main() {
         expect(updateData['notes'], 'New notes');
       });
 
-      test('returns error for non-existent release', () {
-        final result = releaseOps.updateRelease({
+      test('returns error for non-existent slate', () {
+        final result = slateOps.updateSlate({
           'id': 'non-existent',
           'title': 'New',
         });
@@ -559,60 +559,60 @@ void main() {
       });
 
       test('returns error when no fields to update', () {
-        final addResult = releaseOps.addRelease({
+        final addResult = slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'Release',
         });
         final addData = parseResult(addResult);
-        final releaseId = addData['release']['id'] as String;
+        final slateId = addData['slate']['id'] as String;
 
-        final result = releaseOps.updateRelease({'id': releaseId});
+        final result = slateOps.updateSlate({'id': slateId});
         expect(resultText(result), contains('No fields to update'));
       });
     });
 
-    group('list-releases', () {
-      test('returns releases ordered by updated_at DESC', () {
-        releaseOps.addRelease({
+    group('list-slates', () {
+      test('returns slates ordered by updated_at DESC', () {
+        slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'v1.0',
         });
-        releaseOps.addRelease({
+        slateOps.addSlate({
           'project_id': 'test-project',
           'title': 'v2.0',
         });
 
-        final result = releaseOps.listReleases({});
+        final result = slateOps.listSlates({});
         final data = parseResult(result);
 
         expect(data['count'], 2);
-        final releases = data['releases'] as List;
-        expect(releases[0]['title'], 'v2.0');
+        final slates = data['slates'] as List;
+        expect(slates[0]['title'], 'v2.0');
       });
 
-      test('returns all releases regardless of project_id filter (deprecated)', () {
-        releaseOps.addRelease({
+      test('returns all slates regardless of project_id filter (deprecated)', () {
+        slateOps.addSlate({
           'project_id': 'project-a',
           'title': 'Release A',
         });
-        releaseOps.addRelease({
+        slateOps.addSlate({
           'project_id': 'project-b',
           'title': 'Release B',
         });
 
-        // project_id filter is deprecated — all releases should be returned
-        final result = releaseOps.listReleases({'project_id': 'project-a'});
+        // project_id filter is deprecated — all slates should be returned
+        final result = slateOps.listSlates({'project_id': 'project-a'});
         final data = parseResult(result);
 
         expect(data['count'], 2);
       });
 
-      test('includes item count per release', () {
-        final relResult = releaseOps.addRelease({
+      test('includes item count per slate', () {
+        final relResult = slateOps.addSlate({
           'project_id': 'test-project',
-          'title': 'Release with items',
+          'title': 'Slate with items',
         });
-        final releaseId = parseResult(relResult)['release']['id'] as String;
+        final slateId = parseResult(relResult)['slate']['id'] as String;
 
         final item1Result = itemOps.addItem({
           'project_id': 'test-project',
@@ -626,27 +626,27 @@ void main() {
         });
         final item2Id = parseResult(item2Result)['item']['id'] as String;
 
-        releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item1Id});
-        releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+        slateOps.addItemToSlate({'release_id': slateId, 'item_id': item1Id});
+        slateOps.addItemToSlate({'release_id': slateId, 'item_id': item2Id});
 
-        final result = releaseOps.listReleases({});
+        final result = slateOps.listSlates({});
         final data = parseResult(result);
-        final releases = data['releases'] as List;
-        final targetRelease = releases.firstWhere((r) => r['id'] == releaseId);
-        expect(targetRelease['item_count'], 2);
+        final slates = data['slates'] as List;
+        final targetSlate = slates.firstWhere((r) => r['id'] == slateId);
+        expect(targetSlate['item_count'], 2);
       });
     });
   });
 
   // ===== RELEASE-ITEM JUNCTION =====
 
-  group('Release-Item Junction', () {
-    test('add-item-to-release links item to release', () {
-      final relResult = releaseOps.addRelease({
+  group('Slate-Item Junction', () {
+    test('add-item-to-slate links item to slate', () {
+      final relResult = slateOps.addSlate({
         'project_id': 'test-project',
         'title': 'v1.0',
       });
-      final releaseId = parseResult(relResult)['release']['id'] as String;
+      final slateId = parseResult(relResult)['slate']['id'] as String;
 
       final itemResult = itemOps.addItem({
         'project_id': 'test-project',
@@ -654,15 +654,15 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      final result = releaseOps.addItemToRelease({
-        'release_id': releaseId,
+      final result = slateOps.addItemToSlate({
+        'release_id': slateId,
         'item_id': itemId,
       });
       final data = parseResult(result);
       expect(data['success'], isTrue);
 
-      // Verify via show-release
-      final showResult = releaseOps.showRelease({'id': releaseId});
+      // Verify via show-slate
+      final showResult = slateOps.showSlate({'id': slateId});
       final showData = parseResult(showResult);
       final items = showData['items'] as List;
       expect(items, hasLength(1));
@@ -670,12 +670,12 @@ void main() {
       expect(items[0]['title'], 'Feature X');
     });
 
-    test('add-item-to-release ignores duplicate', () {
-      final relResult = releaseOps.addRelease({
+    test('add-item-to-slate ignores duplicate', () {
+      final relResult = slateOps.addSlate({
         'project_id': 'test-project',
         'title': 'v1.0',
       });
-      final releaseId = parseResult(relResult)['release']['id'] as String;
+      final slateId = parseResult(relResult)['slate']['id'] as String;
 
       final itemResult = itemOps.addItem({
         'project_id': 'test-project',
@@ -683,51 +683,51 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': itemId});
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': itemId});
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': itemId});
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': itemId});
 
       // Should still have only one link
       final rows = db.select(
-        'SELECT COUNT(*) as cnt FROM release_items WHERE release_id = ? AND item_id = ?',
-        [releaseId, itemId],
+        'SELECT COUNT(*) as cnt FROM slate_items WHERE slate_id = ? AND item_id = ?',
+        [slateId, itemId],
       );
       expect(rows.first['cnt'], 1);
     });
 
-    test('add-item-to-release validates release exists', () {
+    test('add-item-to-slate validates slate exists', () {
       final itemResult = itemOps.addItem({
         'project_id': 'test-project',
         'title': 'Feature X',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      final result = releaseOps.addItemToRelease({
+      final result = slateOps.addItemToSlate({
         'release_id': 'non-existent',
         'item_id': itemId,
       });
       expect(resultText(result), contains('not found'));
     });
 
-    test('add-item-to-release validates item exists', () {
-      final relResult = releaseOps.addRelease({
+    test('add-item-to-slate validates item exists', () {
+      final relResult = slateOps.addSlate({
         'project_id': 'test-project',
         'title': 'v1.0',
       });
-      final releaseId = parseResult(relResult)['release']['id'] as String;
+      final slateId = parseResult(relResult)['slate']['id'] as String;
 
-      final result = releaseOps.addItemToRelease({
-        'release_id': releaseId,
+      final result = slateOps.addItemToSlate({
+        'release_id': slateId,
         'item_id': 'non-existent',
       });
       expect(resultText(result), contains('not found'));
     });
 
-    test('remove-item-from-release unlinks item', () {
-      final relResult = releaseOps.addRelease({
+    test('remove-item-from-slate unlinks item', () {
+      final relResult = slateOps.addSlate({
         'project_id': 'test-project',
         'title': 'v1.0',
       });
-      final releaseId = parseResult(relResult)['release']['id'] as String;
+      final slateId = parseResult(relResult)['slate']['id'] as String;
 
       final itemResult = itemOps.addItem({
         'project_id': 'test-project',
@@ -735,10 +735,10 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': itemId});
-      releaseOps.removeItemFromRelease({'release_id': releaseId, 'item_id': itemId});
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': itemId});
+      slateOps.removeItemFromSlate({'release_id': slateId, 'item_id': itemId});
 
-      final showResult = releaseOps.showRelease({'id': releaseId});
+      final showResult = slateOps.showSlate({'id': slateId});
       final showData = parseResult(showResult);
       expect(showData['items'], isEmpty);
     });
@@ -755,7 +755,7 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      final result = releaseOps.addItemToTask({
+      final result = slateOps.addItemToTask({
         'task_id': taskId,
         'item_id': itemId,
       });
@@ -778,8 +778,8 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      releaseOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
-      releaseOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
+      slateOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
+      slateOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
 
       final rows = db.select(
         'SELECT COUNT(*) as cnt FROM task_items WHERE task_id = ? AND item_id = ?',
@@ -795,7 +795,7 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      final result = releaseOps.addItemToTask({
+      final result = slateOps.addItemToTask({
         'task_id': 'non-existent',
         'item_id': itemId,
       });
@@ -805,7 +805,7 @@ void main() {
     test('add-item-to-task validates item exists', () {
       final taskId = createTask('My task');
 
-      final result = releaseOps.addItemToTask({
+      final result = slateOps.addItemToTask({
         'task_id': taskId,
         'item_id': 'non-existent',
       });
@@ -820,8 +820,8 @@ void main() {
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
 
-      releaseOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
-      releaseOps.removeItemFromTask({'task_id': taskId, 'item_id': itemId});
+      slateOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
+      slateOps.removeItemFromTask({'task_id': taskId, 'item_id': itemId});
 
       final rows = db.select(
         'SELECT COUNT(*) as cnt FROM task_items WHERE task_id = ? AND item_id = ?',
@@ -843,55 +843,55 @@ void main() {
 
       expect(tableNames, contains('items'));
       expect(tableNames, contains('item_history'));
-      expect(tableNames, contains('releases'));
-      expect(tableNames, contains('release_items'));
+      expect(tableNames, contains('slates'));
+      expect(tableNames, contains('slate_items'));
       expect(tableNames, contains('task_items'));
     });
 
-    test('schema version is set to 5', () {
+    test('schema version is set to 6', () {
       final result = db.select(
         "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
       );
-      expect(result.first['value'], '5');
+      expect(result.first['value'], '6');
     });
 
-    test('releases table has status and release_date columns', () {
-      // Create a release and verify the columns exist
-      final result = releaseOps.addRelease({
+    test('slates table has status and slate_date columns', () {
+      // Create a slate and verify the columns exist
+      final result = slateOps.addSlate({
         'title': 'Migration test',
         'status': 'todo',
         'release_date': '2026-04-01T00:00:00Z',
       });
       final data = parseResult(result);
       expect(data['success'], isTrue);
-      expect(data['release']['status'], 'todo');
-      expect(data['release']['release_date'], '2026-04-01T00:00:00Z');
+      expect(data['slate']['status'], 'todo');
+      expect(data['slate']['slate_date'], '2026-04-01T00:00:00Z');
     });
   });
 
   // ===== RELEASE STATUS TESTS =====
 
-  group('Release Status', () {
-    test('creates release with specific status', () {
-      final result = releaseOps.addRelease({
-        'title': 'Started release',
+  group('Slate Status', () {
+    test('creates slate with specific status', () {
+      final result = slateOps.addSlate({
+        'title': 'Started slate',
         'status': 'started',
       });
       final data = parseResult(result);
       expect(data['success'], isTrue);
-      expect(data['release']['status'], 'started');
+      expect(data['slate']['status'], 'started');
     });
 
     test('defaults status to draft when not provided', () {
-      final result = releaseOps.addRelease({
+      final result = slateOps.addSlate({
         'title': 'Default status',
       });
       final data = parseResult(result);
-      expect(data['release']['status'], 'draft');
+      expect(data['slate']['status'], 'draft');
     });
 
-    test('validates release status on create', () {
-      final result = releaseOps.addRelease({
+    test('validates slate status on create', () {
+      final result = slateOps.addSlate({
         'title': 'Invalid',
         'status': 'invalid_status',
       });
@@ -899,142 +899,142 @@ void main() {
       expect(text, contains('status'));
     });
 
-    test('updates release status', () {
-      final addResult = releaseOps.addRelease({
+    test('updates slate status', () {
+      final addResult = slateOps.addSlate({
         'title': 'Update me',
       });
-      final releaseId = parseResult(addResult)['release']['id'] as String;
+      final slateId = parseResult(addResult)['slate']['id'] as String;
 
-      final updateResult = releaseOps.updateRelease({
-        'id': releaseId,
+      final updateResult = slateOps.updateSlate({
+        'id': slateId,
         'status': 'released',
       });
       final data = parseResult(updateResult);
       expect(data['status'], 'released');
     });
 
-    test('validates release status on update', () {
-      final addResult = releaseOps.addRelease({
+    test('validates slate status on update', () {
+      final addResult = slateOps.addSlate({
         'title': 'Update me',
       });
-      final releaseId = parseResult(addResult)['release']['id'] as String;
+      final slateId = parseResult(addResult)['slate']['id'] as String;
 
-      final result = releaseOps.updateRelease({
-        'id': releaseId,
+      final result = slateOps.updateSlate({
+        'id': slateId,
         'status': 'invalid',
       });
       final text = resultText(result);
       expect(text, contains('status'));
     });
 
-    test('show-release includes status and release_date', () {
-      final addResult = releaseOps.addRelease({
+    test('show-slate includes status and slate_date', () {
+      final addResult = slateOps.addSlate({
         'title': 'Show test',
         'status': 'todo',
         'release_date': '2026-06-15T00:00:00Z',
       });
-      final releaseId = parseResult(addResult)['release']['id'] as String;
+      final slateId = parseResult(addResult)['slate']['id'] as String;
 
-      final result = releaseOps.showRelease({'id': releaseId});
+      final result = slateOps.showSlate({'id': slateId});
       final data = parseResult(result);
       expect(data['status'], 'todo');
-      expect(data['release_date'], '2026-06-15T00:00:00Z');
+      expect(data['slate_date'], '2026-06-15T00:00:00Z');
     });
 
-    test('list-releases filters by status', () {
-      releaseOps.addRelease({'title': 'Draft 1', 'status': 'draft'});
-      releaseOps.addRelease({'title': 'Started 1', 'status': 'started'});
-      releaseOps.addRelease({'title': 'Draft 2', 'status': 'draft'});
+    test('list-slates filters by status', () {
+      slateOps.addSlate({'title': 'Draft 1', 'status': 'draft'});
+      slateOps.addSlate({'title': 'Started 1', 'status': 'started'});
+      slateOps.addSlate({'title': 'Draft 2', 'status': 'draft'});
 
-      final result = releaseOps.listReleases({'status': 'draft'});
+      final result = slateOps.listSlates({'status': 'draft'});
       final data = parseResult(result);
       expect(data['count'], 2);
-      final titles = (data['releases'] as List).map((r) => r['title']).toSet();
+      final titles = (data['slates'] as List).map((r) => r['title']).toSet();
       expect(titles, containsAll(['Draft 1', 'Draft 2']));
     });
 
-    test('list-releases includes status and release_date', () {
-      releaseOps.addRelease({
+    test('list-slates includes status and slate_date', () {
+      slateOps.addSlate({
         'title': 'v3.0',
         'status': 'todo',
         'release_date': '2026-07-01T00:00:00Z',
       });
 
-      final result = releaseOps.listReleases({});
+      final result = slateOps.listSlates({});
       final data = parseResult(result);
-      final releases = data['releases'] as List;
-      expect(releases[0]['status'], 'todo');
-      expect(releases[0]['release_date'], '2026-07-01T00:00:00Z');
+      final slates = data['slates'] as List;
+      expect(slates[0]['status'], 'todo');
+      expect(slates[0]['slate_date'], '2026-07-01T00:00:00Z');
     });
 
-    test('all valid release statuses are accepted', () {
+    test('all valid slate statuses are accepted', () {
       for (final status in ['draft', 'todo', 'started', 'done', 'released']) {
-        final result = releaseOps.addRelease({
+        final result = slateOps.addSlate({
           'title': 'Status $status',
           'status': status,
         });
         final data = parseResult(result);
         expect(data['success'], isTrue, reason: 'Status $status should be valid');
-        expect(data['release']['status'], status);
+        expect(data['slate']['status'], status);
       }
     });
   });
 
   // ===== RELEASE DATE TESTS =====
 
-  group('Release Date', () {
-    test('creates release with release_date', () {
-      final result = releaseOps.addRelease({
-        'title': 'Dated release',
+  group('Slate Date', () {
+    test('creates slate with slate_date', () {
+      final result = slateOps.addSlate({
+        'title': 'Dated slate',
         'release_date': '2026-12-25T00:00:00Z',
       });
       final data = parseResult(result);
-      expect(data['release']['release_date'], '2026-12-25T00:00:00Z');
+      expect(data['slate']['slate_date'], '2026-12-25T00:00:00Z');
     });
 
-    test('release_date defaults to null when not provided', () {
-      final result = releaseOps.addRelease({
+    test('slate_date defaults to null when not provided', () {
+      final result = slateOps.addSlate({
         'title': 'No date',
       });
       final data = parseResult(result);
-      expect(data['release']['release_date'], isNull);
+      expect(data['slate']['slate_date'], isNull);
     });
 
-    test('updates release_date', () {
-      final addResult = releaseOps.addRelease({
+    test('updates slate_date', () {
+      final addResult = slateOps.addSlate({
         'title': 'Update date',
       });
-      final releaseId = parseResult(addResult)['release']['id'] as String;
+      final slateId = parseResult(addResult)['slate']['id'] as String;
 
-      final updateResult = releaseOps.updateRelease({
-        'id': releaseId,
+      final updateResult = slateOps.updateSlate({
+        'id': slateId,
         'release_date': '2026-09-01T00:00:00Z',
       });
       final data = parseResult(updateResult);
-      expect(data['release_date'], '2026-09-01T00:00:00Z');
+      expect(data['slate_date'], '2026-09-01T00:00:00Z');
     });
   });
 
   // ===== BACKLOG FILTER TESTS =====
 
   group('Backlog Filter (backlog_only)', () {
-    test('returns only items not in any release when backlog_only=true', () {
+    test('returns only items not in any slate when backlog_only=true', () {
       // Create 3 items
       final item1Id = parseResult(itemOps.addItem({
         'title': 'Backlog item 1',
       }))['item']['id'] as String;
       final item2Id = parseResult(itemOps.addItem({
-        'title': 'Released item',
+        'title': 'Slated item',
       }))['item']['id'] as String;
       parseResult(itemOps.addItem({
         'title': 'Backlog item 2',
       }));
 
-      // Assign item2 to a release
-      final releaseId = parseResult(releaseOps.addRelease({
+      // Assign item2 to a slate
+      final slateId = parseResult(slateOps.addSlate({
         'title': 'v1.0',
-      }))['release']['id'] as String;
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+      }))['slate']['id'] as String;
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': item2Id});
 
       // backlog_only should return only unassigned items
       final result = itemOps.listItems({'backlog_only': true});
@@ -1053,11 +1053,11 @@ void main() {
         'title': 'Item B',
       }));
 
-      // Assign item1 to a release
-      final releaseId = parseResult(releaseOps.addRelease({
+      // Assign item1 to a slate
+      final slateId = parseResult(slateOps.addSlate({
         'title': 'v1.0',
-      }))['release']['id'] as String;
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item1Id});
+      }))['slate']['id'] as String;
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': item1Id});
 
       final result = itemOps.listItems({'backlog_only': false});
       final data = parseResult(result);
@@ -1070,10 +1070,10 @@ void main() {
         'title': 'Item B',
       }))['item']['id'] as String;
 
-      final releaseId = parseResult(releaseOps.addRelease({
+      final slateId = parseResult(slateOps.addSlate({
         'title': 'v1.0',
-      }))['release']['id'] as String;
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': item2Id});
+      }))['slate']['id'] as String;
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': item2Id});
 
       final result = itemOps.listItems({});
       final data = parseResult(result);
@@ -1089,15 +1089,15 @@ void main() {
         'title': 'Backlog feature',
         'type': 'feature',
       }));
-      final releasedBugId = parseResult(itemOps.addItem({
-        'title': 'Released bug',
+      final slatedBugId = parseResult(itemOps.addItem({
+        'title': 'Slated bug',
         'type': 'bug',
       }))['item']['id'] as String;
 
-      final releaseId = parseResult(releaseOps.addRelease({
+      final slateId = parseResult(slateOps.addSlate({
         'title': 'v1.0',
-      }))['release']['id'] as String;
-      releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': releasedBugId});
+      }))['slate']['id'] as String;
+      slateOps.addItemToSlate({'release_id': slateId, 'item_id': slatedBugId});
 
       // backlog_only + type=bug should only return the backlog bug
       final result = itemOps.listItems({'backlog_only': true, 'type': 'bug'});
@@ -1148,8 +1148,8 @@ void main() {
         }))['item']['id'] as String;
 
         // Link items to task
-        releaseOps.addItemToTask({'task_id': taskId, 'item_id': item1Id});
-        releaseOps.addItemToTask({'task_id': taskId, 'item_id': item2Id});
+        slateOps.addItemToTask({'task_id': taskId, 'item_id': item1Id});
+        slateOps.addItemToTask({'task_id': taskId, 'item_id': item2Id});
 
         // Show task and verify linked_items
         final showResult = taskOps.showTask({'id': taskId});
@@ -1200,8 +1200,8 @@ void main() {
         final task2Result = taskOps.addTask({'title': 'Task B', 'status': 'done'});
         final task2Id = parseResult(task2Result)['task']['id'] as String;
 
-        releaseOps.addItemToTask({'task_id': task1Id, 'item_id': itemId});
-        releaseOps.addItemToTask({'task_id': task2Id, 'item_id': itemId});
+        slateOps.addItemToTask({'task_id': task1Id, 'item_id': itemId});
+        slateOps.addItemToTask({'task_id': task2Id, 'item_id': itemId});
 
         // Show item and verify linked_tasks
         final showResult = itemOps.showItem({'id': itemId});
@@ -1235,57 +1235,57 @@ void main() {
       });
     });
 
-    group('show-item linked releases', () {
-      test('includes linked releases in show-item response', () {
+    group('show-item linked slates', () {
+      test('includes linked slates in show-item response', () {
         // Create an item
         final itemId = parseResult(itemOps.addItem({
-          'title': 'Release item',
+          'title': 'Slate item',
         }))['item']['id'] as String;
 
-        // Create releases and link
-        final rel1Id = parseResult(releaseOps.addRelease({
+        // Create slates and link
+        final rel1Id = parseResult(slateOps.addSlate({
           'title': 'v1.0',
-        }))['release']['id'] as String;
-        final rel2Id = parseResult(releaseOps.addRelease({
+        }))['slate']['id'] as String;
+        final rel2Id = parseResult(slateOps.addSlate({
           'title': 'v2.0',
-        }))['release']['id'] as String;
+        }))['slate']['id'] as String;
 
-        releaseOps.addItemToRelease({'release_id': rel1Id, 'item_id': itemId});
-        releaseOps.addItemToRelease({'release_id': rel2Id, 'item_id': itemId});
+        slateOps.addItemToSlate({'release_id': rel1Id, 'item_id': itemId});
+        slateOps.addItemToSlate({'release_id': rel2Id, 'item_id': itemId});
 
-        // Show item and verify linked_releases
+        // Show item and verify linked_slates
         final showResult = itemOps.showItem({'id': itemId});
         final data = parseResult(showResult);
 
-        expect(data['linked_releases'], isA<List>());
-        final linkedReleases = data['linked_releases'] as List;
-        expect(linkedReleases, hasLength(2));
+        expect(data['linked_slates'], isA<List>());
+        final linkedSlates = data['linked_slates'] as List;
+        expect(linkedSlates, hasLength(2));
 
-        final releaseIds = linkedReleases.map((r) => r['id']).toSet();
-        expect(releaseIds, contains(rel1Id));
-        expect(releaseIds, contains(rel2Id));
+        final slateIds = linkedSlates.map((r) => r['id']).toSet();
+        expect(slateIds, contains(rel1Id));
+        expect(slateIds, contains(rel2Id));
 
-        for (final release in linkedReleases) {
-          expect(release, containsPair('id', isNotNull));
-          expect(release, containsPair('title', isNotNull));
+        for (final slate in linkedSlates) {
+          expect(slate, containsPair('id', isNotNull));
+          expect(slate, containsPair('title', isNotNull));
         }
       });
 
-      test('returns empty linked_releases when item has no linked releases', () {
+      test('returns empty linked_slates when item has no linked slates', () {
         final itemId = parseResult(itemOps.addItem({
-          'title': 'No releases item',
+          'title': 'No slates item',
         }))['item']['id'] as String;
 
         final showResult = itemOps.showItem({'id': itemId});
         final data = parseResult(showResult);
 
-        expect(data['linked_releases'], isA<List>());
-        expect(data['linked_releases'], isEmpty);
+        expect(data['linked_slates'], isA<List>());
+        expect(data['linked_slates'], isEmpty);
       });
     });
 
     group('combined cross-entity', () {
-      test('item linked to both tasks and releases shows all', () {
+      test('item linked to both tasks and slates shows all', () {
         // Create an item
         final itemId = parseResult(itemOps.addItem({
           'title': 'Well-connected item',
@@ -1294,13 +1294,13 @@ void main() {
         // Link to a task
         final taskResult = taskOps.addTask({'title': 'Related task'});
         final taskId = parseResult(taskResult)['task']['id'] as String;
-        releaseOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
+        slateOps.addItemToTask({'task_id': taskId, 'item_id': itemId});
 
-        // Link to a release
-        final releaseId = parseResult(releaseOps.addRelease({
+        // Link to a slate
+        final slateId = parseResult(slateOps.addSlate({
           'title': 'v3.0',
-        }))['release']['id'] as String;
-        releaseOps.addItemToRelease({'release_id': releaseId, 'item_id': itemId});
+        }))['slate']['id'] as String;
+        slateOps.addItemToSlate({'release_id': slateId, 'item_id': itemId});
 
         // Show item
         final showResult = itemOps.showItem({'id': itemId});
@@ -1309,8 +1309,8 @@ void main() {
         expect(data['linked_tasks'], hasLength(1));
         expect((data['linked_tasks'] as List)[0]['id'], taskId);
 
-        expect(data['linked_releases'], hasLength(1));
-        expect((data['linked_releases'] as List)[0]['id'], releaseId);
+        expect(data['linked_slates'], hasLength(1));
+        expect((data['linked_slates'] as List)[0]['id'], slateId);
       });
     });
   });
