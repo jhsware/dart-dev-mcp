@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 5;
+const int currentSchemaVersion = 6;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -305,6 +305,41 @@ void _runMigrations(Database database) {
     _setSchemaVersion(database, 5);
     logInfo('planner', 'Migration to schema version 5 complete.');
   }
+
+  // Migration from version 5 to version 6
+  // Rename release tables/columns/data to slate nomenclature
+  // For existing databases that still have the old 'releases' table names
+  if (currentVersion < 6) {
+    logInfo('planner', 'Running migration to schema version 6...');
+
+    // Check if old 'releases' table exists (it won't for fresh databases
+    // that went through updated v4 migration creating 'slates' directly)
+    final tables = database.select(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='releases'");
+    
+    if (tables.isNotEmpty) {
+      // Rename tables
+      database.execute('ALTER TABLE releases RENAME TO slates');
+      database.execute('ALTER TABLE release_items RENAME TO slate_items');
+
+      // Rename columns (SQLite supports RENAME COLUMN since 3.25.0)
+      database.execute('ALTER TABLE slates RENAME COLUMN release_date TO slate_date');
+      database.execute('ALTER TABLE slate_items RENAME COLUMN release_id TO slate_id');
+
+      // Drop old indexes and recreate with new names
+      database.execute('DROP INDEX IF EXISTS idx_releases_project_id');
+      database.execute('DROP INDEX IF EXISTS idx_releases_status');
+      database.execute('CREATE INDEX IF NOT EXISTS idx_slates_project_id ON slates(project_id)');
+      database.execute('CREATE INDEX IF NOT EXISTS idx_slates_status ON slates(status)');
+    }
+
+    // Update transaction log entity_type values
+    database.execute("UPDATE transaction_logs SET entity_type = 'slate' WHERE entity_type = 'release'");
+
+    _setSchemaVersion(database, 6);
+    logInfo('planner', 'Migration to schema version 6 complete.');
+  }
+
 
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);
