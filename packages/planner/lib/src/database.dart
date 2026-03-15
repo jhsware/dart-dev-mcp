@@ -108,33 +108,33 @@ Database initializeDatabase(String dbPath) {
   database.execute(
       'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
 
-  // Create releases table
+  // Create slates table
   database.execute('''
-    CREATE TABLE IF NOT EXISTS releases (
+    CREATE TABLE IF NOT EXISTS slates (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       title TEXT NOT NULL,
       notes TEXT,
       status TEXT NOT NULL DEFAULT 'draft',
-      release_date TEXT,
+      slate_date TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   ''');
 
   database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+      'CREATE INDEX IF NOT EXISTS idx_slates_project_id ON slates(project_id)');
   database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
+      'CREATE INDEX IF NOT EXISTS idx_slates_status ON slates(status)');
 
-  // Create release_items junction table
+  // Create slate_items junction table
   database.execute('''
-    CREATE TABLE IF NOT EXISTS release_items (
-      release_id TEXT NOT NULL,
+    CREATE TABLE IF NOT EXISTS slate_items (
+      slate_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
       added_at TEXT NOT NULL,
-      PRIMARY KEY (release_id, item_id),
-      FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE,
+      PRIMARY KEY (slate_id, item_id),
+      FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
       FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
     )
   ''');
@@ -209,7 +209,7 @@ void _runMigrations(Database database) {
   }
 
   // Migration from version 3 to version 4
-  // Add backlog tables: items, item_history, releases, release_items, task_items
+  // Add backlog tables: items, item_history, slates, slate_items, task_items
   // Uses CREATE TABLE IF NOT EXISTS for compatibility with viewer app
   if (currentVersion < 4) {
     logInfo('planner', 'Running migration to schema version 4...');
@@ -248,7 +248,7 @@ void _runMigrations(Database database) {
         'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
 
     database.execute('''
-      CREATE TABLE IF NOT EXISTS releases (
+      CREATE TABLE IF NOT EXISTS slates (
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
         title TEXT NOT NULL,
@@ -258,15 +258,15 @@ void _runMigrations(Database database) {
       )
     ''');
     database.execute(
-        'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+        'CREATE INDEX IF NOT EXISTS idx_slates_project_id ON slates(project_id)');
 
     database.execute('''
-      CREATE TABLE IF NOT EXISTS release_items (
-        release_id TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS slate_items (
+        slate_id TEXT NOT NULL,
         item_id TEXT NOT NULL,
         added_at TEXT NOT NULL,
-        PRIMARY KEY (release_id, item_id),
-        FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE,
+        PRIMARY KEY (slate_id, item_id),
+        FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
       )
     ''');
@@ -287,21 +287,21 @@ void _runMigrations(Database database) {
   }
 
   // Migration from version 4 to version 5
-  // Add status and release_date columns to releases table
+  // Add status and slate_date columns to slates table
   if (currentVersion < 5) {
     logInfo('planner', 'Running migration to schema version 5...');
     
     // Check if columns already exist (defensive, in case CREATE TABLE already included them)
-    final columns = database.select("PRAGMA table_info(releases)");
+    final columns = database.select("PRAGMA table_info(slates)");
     final columnNames = columns.map((row) => row['name'] as String).toSet();
     
     if (!columnNames.contains('status')) {
-      database.execute("ALTER TABLE releases ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
+      database.execute("ALTER TABLE slates ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
     }
-    if (!columnNames.contains('release_date')) {
-      database.execute('ALTER TABLE releases ADD COLUMN release_date TEXT');
+    if (!columnNames.contains('slate_date')) {
+      database.execute('ALTER TABLE slates ADD COLUMN slate_date TEXT');
     }
-    database.execute('CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
+    database.execute('CREATE INDEX IF NOT EXISTS idx_slates_status ON slates(status)');
     _setSchemaVersion(database, 5);
     logInfo('planner', 'Migration to schema version 5 complete.');
   }
