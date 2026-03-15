@@ -146,7 +146,7 @@ class SlateOperations {
     }
 
     final before =
-        releaseToLoggable(Map<String, dynamic>.from(existingResult.first));
+        slateToLoggable(Map<String, dynamic>.from(existingResult.first));
 
     final updates = <String>[];
     final values = <Object?>[];
@@ -192,7 +192,7 @@ class SlateOperations {
       final afterResult =
           database.select('SELECT * FROM slates WHERE id = ?', [id]);
       final after =
-          releaseToLoggable(Map<String, dynamic>.from(afterResult.first));
+          slateToLoggable(Map<String, dynamic>.from(afterResult.first));
 
       final changes = calculateChanges(
         transactionType: TransactionType.update,
