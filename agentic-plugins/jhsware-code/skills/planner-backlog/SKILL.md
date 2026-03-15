@@ -9,7 +9,7 @@ ultrathink
 
 ## Purpose
 
-Manage backlog items — features, improvements, bugs, and changes that need to be tracked before they are planned into a release or assigned to a task.
+Manage backlog items — features, improvements, bugs, and changes that need to be tracked before they are planned into a slate or assigned to a task.
 
 ## Workflow
 
@@ -72,8 +72,8 @@ After creating or updating items, list items to confirm the changes were applied
 
 ## Item Lifecycle
 
-- An item with status `open` that does NOT belong to any release is considered **in the backlog** (unplanned).
-- An item assigned to a release (via `add-item-to-release`) is considered **planned** for that release.
+- An item with status `open` that does NOT belong to any slate is considered **in the backlog** (unplanned).
+- An item assigned to a slate (via `add-item-to-slate`) is considered **planned** for that slate.
 - An item linked to a task (via `add-item-to-task`) is considered **in progress**.
 - An item with status `closed` is considered **done**.
 

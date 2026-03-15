@@ -12,7 +12,7 @@ When working on a parent task:
 - [ ] Step 1: Set task status to started
 - [ ] Step 2: Process each step individually
 - [ ] Step 3: When all steps are done, set task to done
-- [ ] Step 4: If task is related to a release, and all items in that release is marked done, set release to done
+- [ ] Step 4: If task is related to a slate, and all items in that slate is marked done, set slate to done
 
 When processing a step:
 - [ ] Step 1: Set step status to started

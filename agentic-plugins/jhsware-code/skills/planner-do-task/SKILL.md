@@ -16,7 +16,7 @@ All other tasks should be processed:
 - [ ] Step 3: Process each step individually
 - [ ] Step 4: When all steps are done, set task to done
 - [ ] Step 5: If task is related to one or more backlog items, set those items to closed
-- [ ] Step 6: If task is related to a release and all items in that release is closed, set release to done
+- [ ] Step 6: If task is related to a slate and all items in that slate is closed, set slate to done
 - [ ] Step 7: If coding task - offer to merge the branch
 - [ ] Step 8: If coding task - when code is merged to master, set task to merged
 
