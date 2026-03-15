@@ -1,1 +1,0 @@
-<!-- Deprecated: renamed to planner-slate -->
