@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 5;
+const int currentSchemaVersion = 6;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -108,33 +108,33 @@ Database initializeDatabase(String dbPath) {
   database.execute(
       'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
 
-  // Create releases table
+  // Create slates table
   database.execute('''
-    CREATE TABLE IF NOT EXISTS releases (
+    CREATE TABLE IF NOT EXISTS slates (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       title TEXT NOT NULL,
       notes TEXT,
       status TEXT NOT NULL DEFAULT 'draft',
-      release_date TEXT,
+      slate_date TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   ''');
 
   database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+      'CREATE INDEX IF NOT EXISTS idx_slates_project_id ON slates(project_id)');
   database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
+      'CREATE INDEX IF NOT EXISTS idx_slates_status ON slates(status)');
 
-  // Create release_items junction table
+  // Create slate_items junction table
   database.execute('''
-    CREATE TABLE IF NOT EXISTS release_items (
-      release_id TEXT NOT NULL,
+    CREATE TABLE IF NOT EXISTS slate_items (
+      slate_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
       added_at TEXT NOT NULL,
-      PRIMARY KEY (release_id, item_id),
-      FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE,
+      PRIMARY KEY (slate_id, item_id),
+      FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
       FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
     )
   ''');
@@ -209,7 +209,7 @@ void _runMigrations(Database database) {
   }
 
   // Migration from version 3 to version 4
-  // Add backlog tables: items, item_history, releases, release_items, task_items
+  // Add backlog tables: items, item_history, slates, slate_items, task_items
   // Uses CREATE TABLE IF NOT EXISTS for compatibility with viewer app
   if (currentVersion < 4) {
     logInfo('planner', 'Running migration to schema version 4...');
@@ -248,7 +248,7 @@ void _runMigrations(Database database) {
         'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
 
     database.execute('''
-      CREATE TABLE IF NOT EXISTS releases (
+      CREATE TABLE IF NOT EXISTS slates (
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
         title TEXT NOT NULL,
@@ -258,15 +258,15 @@ void _runMigrations(Database database) {
       )
     ''');
     database.execute(
-        'CREATE INDEX IF NOT EXISTS idx_releases_project_id ON releases(project_id)');
+        'CREATE INDEX IF NOT EXISTS idx_slates_project_id ON slates(project_id)');
 
     database.execute('''
-      CREATE TABLE IF NOT EXISTS release_items (
-        release_id TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS slate_items (
+        slate_id TEXT NOT NULL,
         item_id TEXT NOT NULL,
         added_at TEXT NOT NULL,
-        PRIMARY KEY (release_id, item_id),
-        FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE,
+        PRIMARY KEY (slate_id, item_id),
+        FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
         FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
       )
     ''');
@@ -287,24 +287,59 @@ void _runMigrations(Database database) {
   }
 
   // Migration from version 4 to version 5
-  // Add status and release_date columns to releases table
+  // Add status and slate_date columns to slates table
   if (currentVersion < 5) {
     logInfo('planner', 'Running migration to schema version 5...');
     
     // Check if columns already exist (defensive, in case CREATE TABLE already included them)
-    final columns = database.select("PRAGMA table_info(releases)");
+    final columns = database.select("PRAGMA table_info(slates)");
     final columnNames = columns.map((row) => row['name'] as String).toSet();
     
     if (!columnNames.contains('status')) {
-      database.execute("ALTER TABLE releases ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
+      database.execute("ALTER TABLE slates ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'");
     }
-    if (!columnNames.contains('release_date')) {
-      database.execute('ALTER TABLE releases ADD COLUMN release_date TEXT');
+    if (!columnNames.contains('slate_date')) {
+      database.execute('ALTER TABLE slates ADD COLUMN slate_date TEXT');
     }
-    database.execute('CREATE INDEX IF NOT EXISTS idx_releases_status ON releases(status)');
+    database.execute('CREATE INDEX IF NOT EXISTS idx_slates_status ON slates(status)');
     _setSchemaVersion(database, 5);
     logInfo('planner', 'Migration to schema version 5 complete.');
   }
+
+  // Migration from version 5 to version 6
+  // Rename release tables/columns/data to slate nomenclature
+  // For existing databases that still have the old 'releases' table names
+  if (currentVersion < 6) {
+    logInfo('planner', 'Running migration to schema version 6...');
+
+    // Check if old 'releases' table exists (it won't for fresh databases
+    // that went through updated v4 migration creating 'slates' directly)
+    final tables = database.select(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='releases'");
+    
+    if (tables.isNotEmpty) {
+      // Rename tables
+      database.execute('ALTER TABLE releases RENAME TO slates');
+      database.execute('ALTER TABLE release_items RENAME TO slate_items');
+
+      // Rename columns (SQLite supports RENAME COLUMN since 3.25.0)
+      database.execute('ALTER TABLE slates RENAME COLUMN release_date TO slate_date');
+      database.execute('ALTER TABLE slate_items RENAME COLUMN release_id TO slate_id');
+
+      // Drop old indexes and recreate with new names
+      database.execute('DROP INDEX IF EXISTS idx_releases_project_id');
+      database.execute('DROP INDEX IF EXISTS idx_releases_status');
+      database.execute('CREATE INDEX IF NOT EXISTS idx_slates_project_id ON slates(project_id)');
+      database.execute('CREATE INDEX IF NOT EXISTS idx_slates_status ON slates(status)');
+    }
+
+    // Update transaction log entity_type values
+    database.execute("UPDATE transaction_logs SET entity_type = 'slate' WHERE entity_type = 'release'");
+
+    _setSchemaVersion(database, 6);
+    logInfo('planner', 'Migration to schema version 6 complete.');
+  }
+
 
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);

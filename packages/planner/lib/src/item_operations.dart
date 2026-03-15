@@ -137,16 +137,16 @@ class ItemOperations {
             })
         .toList();
 
-    // Get linked releases for this item
-    final linkedReleasesResult = database.select('''
-      SELECT r.id, r.title
-      FROM releases r
-      INNER JOIN release_items ri ON ri.release_id = r.id
-      WHERE ri.item_id = ?
-      ORDER BY ri.added_at DESC
+    // Get linked slates for this item
+    final linkedSlatesResult = database.select('''
+      SELECT s.id, s.title
+      FROM slates s
+      INNER JOIN slate_items si ON si.slate_id = s.id
+      WHERE si.item_id = ?
+      ORDER BY si.added_at DESC
     ''', [id]);
 
-    final linkedReleases = linkedReleasesResult
+    final linkedSlates = linkedSlatesResult
         .map((row) => {
               'id': row['id'],
               'title': row['title'],
@@ -164,7 +164,7 @@ class ItemOperations {
       'updated_at': item['updated_at'],
       'history': history,
       'linked_tasks': linkedTasks,
-      'linked_releases': linkedReleases,
+      'linked_slates': linkedSlates,
     });
   }
 
@@ -320,9 +320,9 @@ class ItemOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-    // When backlog_only is true, filter to items not in any release
+    // When backlog_only is true, filter to items not in any slate
     if (backlogOnly) {
-      conditions.add('ri_filter.item_id IS NULL');
+      conditions.add('si_filter.item_id IS NULL');
     }
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -346,7 +346,7 @@ class ItemOperations {
 
     // Use LEFT JOIN for backlog_only filter
     final backlogJoin = backlogOnly
-        ? 'LEFT JOIN release_items ri_filter ON ri_filter.item_id = i.id'
+        ? 'LEFT JOIN slate_items si_filter ON si_filter.item_id = i.id'
         : '';
 
     final query = '''
@@ -358,7 +358,7 @@ class ItemOperations {
         i.status,
         i.created_at,
         i.updated_at,
-        (SELECT COUNT(*) FROM release_items ri WHERE ri.item_id = i.id) as release_count
+        (SELECT COUNT(*) FROM slate_items si WHERE si.item_id = i.id) as slate_count
       FROM items i
       $backlogJoin
       $whereClause
@@ -374,7 +374,7 @@ class ItemOperations {
               'title': row['title'],
               'type': row['type'],
               'status': row['status'],
-              'release_count': row['release_count'],
+              'slate_count': row['slate_count'],
               'created_at': row['created_at'],
               'updated_at': row['updated_at'],
             })

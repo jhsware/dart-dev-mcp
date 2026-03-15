@@ -30,7 +30,7 @@ enum EntityType {
   task,
   step,
   item,
-  release;
+  slate;
 
   /// Convert to string for database storage.
   String toDbValue() => name;

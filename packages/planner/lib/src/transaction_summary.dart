@@ -25,13 +25,13 @@ String generateSummary({
     EntityType.task => 'Task',
     EntityType.step => 'Step',
     EntityType.item => 'Item',
-    EntityType.release => 'Release',
+    EntityType.slate => 'Slate',
   };
   final truncatedTitle = _truncateTitle(entityTitle);
 
   switch (transactionType) {
     case TransactionType.create:
-      if (entityType == EntityType.task || entityType == EntityType.item || entityType == EntityType.release) {
+      if (entityType == EntityType.task || entityType == EntityType.item || entityType == EntityType.slate) {
         return projectId != null
             ? "$entityName '$truncatedTitle' created in project '$projectId'"
             : "$entityName '$truncatedTitle' created";
@@ -255,16 +255,16 @@ Map<String, dynamic> itemToLoggable(Map<String, dynamic> item) {
   };
 }
 
-/// Helper to create a loggable entity from release data.
-Map<String, dynamic> releaseToLoggable(Map<String, dynamic> release) {
+/// Helper to create a loggable entity from slate data.
+Map<String, dynamic> slateToLoggable(Map<String, dynamic> slate) {
   return {
-    'id': release['id'],
-    'project_id': release['project_id'],
-    'title': release['title'],
-    'notes': release['notes'],
-    'status': release['status'],
-    'release_date': release['release_date'],
-    'created_at': release['created_at'],
-    'updated_at': release['updated_at'],
+    'id': slate['id'],
+    'project_id': slate['project_id'],
+    'title': slate['title'],
+    'notes': slate['notes'],
+    'status': slate['status'],
+    'slate_date': slate['slate_date'],
+    'created_at': slate['created_at'],
+    'updated_at': slate['updated_at'],
   };
 }

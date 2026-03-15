@@ -11,7 +11,7 @@ library;
 export 'database.dart';
 export 'git_log_operations.dart';
 export 'item_operations.dart';
-export 'release_operations.dart';
+export 'slate_operations.dart';
 export 'step_operations.dart';
 export 'task_operations.dart';
 export 'timeline_operations.dart';
