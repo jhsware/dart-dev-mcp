@@ -1,6 +1,6 @@
 ---
 name: planner-plan
-description: Create a plan and use the planner tool to create one or more tasks with steps that describe how to perform the plan. Can also create tasks from releases, linking tasks to backlog items.
+description: Create a plan and use the planner tool to create one or more tasks with steps that describe how to perform the plan. Can also create tasks from slates, linking tasks to backlog items.
 allowed-tools: planner, filesystem, git, fetch, convert, flutter-runner, dart-runner, code-index
 model: opus
 context: fork
@@ -16,7 +16,7 @@ Before doing anything else:
 - [ ] Step 1: **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
 - [ ] Step 2: **List existing tasks**: Call `planner` with operation `list-tasks` to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
 - [ ] Step 3:. **Ask user** if they want the created task/tasks to have status draft or todo.
-- [ ] Step 4: **Check for release context**: If the user mentions a release or passes a release_id, call `planner` with operation `show-release` to get the release details and its items. This enables release-based planning (see Phase 2a).
+- [ ] Step 4: **Check for slate context**: If the user mentions a slate or passes a release_id, call `planner` with operation `show-slate` to get the slate details and its items. This enables slate-based planning (see Phase 2a).
 
 ## Phase 2 — Research & Exploration
 
@@ -40,13 +40,13 @@ Summarize your findings before moving to Phase 3. You should understand:
 - TODOs or annotations related to the task area (use `search-annotations`)
 - Any risks or cross-cutting concerns
 
-## Phase 2a — Release-based Planning
+## Phase 2a — Slate-based Planning
 
-When creating tasks from a release (user mentions a release or passes a release_id):
+When creating tasks from a slate (user mentions a slate or passes a release_id):
 
-- [ ] Step 1: **Get the release and its items**: Call `planner show-release` with the release ID to get the release details and all assigned items.
+- [ ] Step 1: **Get the slate and its items**: Call `planner show-slate` with the slate ID to get the slate details and all assigned items. Details about the slate is specified in the linked items.
 
-- [ ] Step 2: **Change status of release to started**
+- [ ] Step 2: **Change status of slate to started**
 
 - [ ] Step 3: **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
    - Items that affect the same files or modules
@@ -61,7 +61,7 @@ When creating tasks from a release (user mentions a release or passes a release_
    - A single task can address multiple related items
    - An item can be linked to multiple tasks if needed
 
-- [ ] Step 6: **For complex releases with many items**:
+- [ ] Step 6: **For complex slates with many items**:
    - Consider using the parent task pattern
    - Group items by theme/area into sub-tasks
    - Each sub-task links to its specific items via `add-item-to-task`
@@ -86,7 +86,7 @@ Create tasks using `planner` with operation `add-task`. Each task must have:
   - `## Purpose` — what this achieves
   - `## Files involved` — list key files that will be modified (from your research)
   - `## Acceptance Criteria` — bullet list of what "done" looks like
-  - If planning from a release: `## Backlog Items` — list the item IDs and titles this task addresses
+  - If planning from a slate: `## Backlog Items` — list the item IDs and titles this task addresses
 - **status**: Set to `draft`
 
 ### Adding steps to tasks
@@ -98,7 +98,7 @@ Add steps using `planner` with operation `add-step`. Each step should have:
 - **status**: Set to `todo`
 
 
-### Linking items to tasks (release-based planning)
+### Linking items to tasks (slate-based planning)
 
 After creating a task and its steps, link backlog items to it:
 
@@ -129,7 +129,7 @@ After creating all tasks:
 - [ ] Step 4: Verify acceptance criteria are clear and testable
 - [ ] Step 5: For parent tasks: verify every step has a `sub_task_id` set
 - [ ] Step 6: For parent tasks: verify sub-tasks have their own steps defined
-- [ ] Step 7: For release-based tasks: verify all release items are linked to at least one task via `add-item-to-task`
+- [ ] Step 7: For slate-based tasks: verify all slate items are linked to at least one task via `add-item-to-task`
 
 ## Error Handling
 
@@ -281,14 +281,14 @@ add-step (to parent task):
   sub_task_id: "<id-of-sub-task-2>"
 ```
 
-### Example 3 — Planning from a release
+### Example 3 — Planning from a slate
 
-A user says "Plan tasks for release X" or passes a release_id:
+A user says "Plan tasks for slate X" or passes a release_id:
 
 ```
-# Step 1: Get release details
-planner: show-release (id: "<release-id>")
-# → Release: "v2.1 — Performance & Polish"
+# Step 1: Get slate details
+planner: show-slate (id: "<slate-id>")
+# → Slate: "v2.1 — Performance & Polish"
 # → Items:
 # →   item-1: [improvement] "Speed up dashboard loading"
 # →   item-2: [improvement] "Add caching to API responses"
