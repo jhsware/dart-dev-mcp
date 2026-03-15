@@ -95,7 +95,7 @@ void main(List<String> arguments) async {
     database: database,
     transactionLogRepository: transactionLogRepository,
   );
-  final releaseOps = ReleaseOperations(
+  final slateOps = SlateOperations(
     database: database,
     transactionLogRepository: transactionLogRepository,
   );
@@ -134,15 +134,15 @@ Operations:
 - update-step: Update step properties
 - get-subtask-prompt: Get the sub-task details for a step in a parent task. Use this operation to fetch the sub-task details when ready to work on it. Requires: id (step ID). Returns error if step has no linked sub-task.
 - add-item: Create a new backlog item. Requires: title. Optional: details, type, status, project_id (deprecated).
-- show-item: Show item details with edit history, linked tasks, and linked releases. Requires: id.
+- show-item: Show item details with edit history, linked tasks, and linked slates. Requires: id.
 - update-item: Update item fields. Requires: id. Optional: title, details, type, status.
-- list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any release).
-- add-release: Create a new release. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date), project_id (deprecated).
-- show-release: Show release with its items (includes status and release_date). Requires: id.
-- update-release: Update release fields. Requires: id. Optional: title, notes, status, release_date.
-- list-releases: List all releases. Optional: status filter.
-- add-item-to-release: Assign item to release. Requires: release_id, item_id.
-- remove-item-from-release: Remove item from release. Requires: release_id, item_id.
+- list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any slate).
+- add-slate: Create a new slate. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date), project_id (deprecated).
+- show-slate: Show slate with its items (includes status and release_date). Requires: id.
+- update-slate: Update slate fields. Requires: id. Optional: title, notes, status, release_date.
+- list-slates: List all slates. Optional: status filter.
+- add-item-to-slate: Assign item to slate. Requires: release_id, item_id.
+- remove-item-from-slate: Remove item from slate. Requires: release_id, item_id.
 - add-item-to-task: Link a backlog item to a task. Requires: task_id, item_id.
 - remove-item-from-task: Unlink a backlog item from a task. Requires: task_id, item_id.
 - log-commit: Log a git commit to the timeline. Records commits so they appear in the timeline viewer alongside task activity. Requires: commit_hash, branch, task_id. Optional: step_id, message.
@@ -154,7 +154,7 @@ Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done
 Item types: feature, improvement, bug, change
 Item statuses: open, closed, archived
-Release statuses: draft, todo, started, done, released
+Slate statuses: draft, todo, started, done, released
 
 Parent task pattern: Prefix parent task title with "Parent:". Each step references a sub-task via sub_task_id. Use get-subtask-prompt to fetch the sub-task details for a step when ready to work on it.''',
     inputSchema: ToolInputSchema(
@@ -186,7 +186,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'status': JsonSchema.string(
           description:
-              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed, archived. Status for releases: draft, todo, started, done, released. Also used for list-tasks and list-releases filter.',
+              'Status for tasks: backlog, todo, draft, started, canceled, done, merged. Status for steps: todo, started, canceled, done. Status for items: open, closed, archived. Status for slates: draft, todo, started, done, released. Also used for list-tasks and list-slates filter.',
           enumValues: [
             'backlog',
             'todo',
@@ -206,8 +206,8 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'entity_type': JsonSchema.string(
           description:
-              "Entity type filter: 'task', 'step', 'item', or 'release' (for timeline/audit-trail)",
-          enumValues: ['task', 'step', 'item', 'release'],
+              "Entity type filter: 'task', 'step', 'item', or 'slate' (for timeline/audit-trail)",
+          enumValues: ['task', 'step', 'item', 'slate'],
         ),
         'limit': JsonSchema.integer(
           description:
@@ -244,27 +244,27 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
           enumValues: ['feature', 'improvement', 'bug', 'change'],
         ),
         'notes': JsonSchema.string(
-          description: 'Release notes (markdown)',
+          description: 'Slate notes (markdown)',
         ),
         'search_query': JsonSchema.string(
           description: 'Search query for filtering items by title and details',
         ),
         'release_id': JsonSchema.string(
-          description: 'Release ID (for add/remove-item-to/from-release)',
+          description: 'Slate ID (for add/remove-item-to/from-slate)',
         ),
         'item_id': JsonSchema.string(
-          description: 'Item ID (for add/remove-item-to/from-release, add/remove-item-to/from-task)',
+          description: 'Item ID (for add/remove-item-to/from-slate, add/remove-item-to/from-task)',
         ),
         'release_date': JsonSchema.string(
-          description: 'Target release date in ISO 8601 format (for add-release, update-release)',
+          description: 'Target slate date in ISO 8601 format (for add-slate, update-slate)',
         ),
         'backlog_only': JsonSchema.boolean(
-          description: 'When true, list-items returns only items not assigned to any release',
+          description: 'When true, list-items returns only items not assigned to any slate',
         ),
       },
     ),
     callback: (args, extra) => _handlePlanner(
-        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps, itemOps, releaseOps),
+        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps, itemOps, slateOps),
   );
 
   final transport = StdioServerTransport();
@@ -305,12 +305,12 @@ const _validOperations = [
   'show-item',
   'update-item',
   'list-items',
-  'add-release',
-  'show-release',
-  'update-release',
-  'list-releases',
-  'add-item-to-release',
-  'remove-item-from-release',
+  'add-slate',
+  'show-slate',
+  'update-slate',
+  'list-slates',
+  'add-item-to-slate',
+  'remove-item-from-slate',
   'add-item-to-task',
   'remove-item-from-task',
   'log-commit',
@@ -328,7 +328,7 @@ Future<CallToolResult> _handlePlanner(
   TimelineOperations timelineOps,
   GitLogOperations gitLogOps,
   ItemOperations itemOps,
-  ReleaseOperations releaseOps,
+  SlateOperations slateOps,
 ) async {
   final operation = args['operation'] as String?;
 
@@ -369,22 +369,22 @@ Future<CallToolResult> _handlePlanner(
         return itemOps.updateItem(args);
       case 'list-items':
         return itemOps.listItems(args);
-      case 'add-release':
-        return releaseOps.addRelease(args);
-      case 'show-release':
-        return releaseOps.showRelease(args);
-      case 'update-release':
-        return releaseOps.updateRelease(args);
-      case 'list-releases':
-        return releaseOps.listReleases(args);
-      case 'add-item-to-release':
-        return releaseOps.addItemToRelease(args);
-      case 'remove-item-from-release':
-        return releaseOps.removeItemFromRelease(args);
+      case 'add-slate':
+        return slateOps.addSlate(args);
+      case 'show-slate':
+        return slateOps.showSlate(args);
+      case 'update-slate':
+        return slateOps.updateSlate(args);
+      case 'list-slates':
+        return slateOps.listSlates(args);
+      case 'add-item-to-slate':
+        return slateOps.addItemToSlate(args);
+      case 'remove-item-from-slate':
+        return slateOps.removeItemFromSlate(args);
       case 'add-item-to-task':
-        return releaseOps.addItemToTask(args);
+        return slateOps.addItemToTask(args);
       case 'remove-item-from-task':
-        return releaseOps.removeItemFromTask(args);
+        return slateOps.removeItemFromTask(args);
       case 'log-commit':
         return gitLogOps.logCommit(args);
       case 'log-merge':
