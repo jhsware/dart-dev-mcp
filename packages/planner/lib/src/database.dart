@@ -318,6 +318,12 @@ void _runMigrations(Database database) {
         "SELECT name FROM sqlite_master WHERE type='table' AND name='releases'");
     
     if (tables.isNotEmpty) {
+      // The CREATE TABLE IF NOT EXISTS statements above may have already
+      // created empty 'slates' and 'slate_items' tables. We need to drop
+      // them before renaming the old tables that contain the actual data.
+      database.execute('DROP TABLE IF EXISTS slate_items');
+      database.execute('DROP TABLE IF EXISTS slates');
+
       // Rename tables
       database.execute('ALTER TABLE releases RENAME TO slates');
       database.execute('ALTER TABLE release_items RENAME TO slate_items');
