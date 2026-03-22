@@ -9,7 +9,12 @@ skills:
   - code-index 
 ---
 
-> **Prefer `auto-index` for Dart files** — it extracts all structural metadata (imports, exports, variables, annotations) automatically using deterministic parsing. You only need to provide the file path and a one-line description.
+
+## Project Root
+
+All tools accept a `project_root` parameter. Always pass `project_root` to code-index and filesystem tool calls to ensure operations target the correct project.
+
+> **Prefer `auto-index` for Dart files**
 
 ## Indexing Modes
 

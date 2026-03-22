@@ -144,6 +144,10 @@ After indexing, these operations are available for exploring the codebase:
 - **search-annotations** — Find TODO/FIXME/HACK/NOTE/DEPRECATED across the codebase. Filter by `kind`, `path_pattern`, `message_pattern`, `file_type`.
 - **stats** — Aggregate counts: files by type, exports by kind, top imports, annotations by kind.
 
+## Project Root
+
+All tools accept a `project_root` parameter that specifies the project directory. Always pass `project_root` to code-index and filesystem tool calls to ensure operations target the correct project.
+
 ## Error Handling
 
 - **File read fails**: Skip the file and continue with the next. Report skipped files at the end.

@@ -328,6 +328,35 @@ add-task:
 planner: add-item-to-task (task_id: "<csv-task-id>", item_id: "<item-4-id>")
 ```
 
+## Project Root
+
+All tools accept a `project_root` parameter that specifies the project directory. This enables multi-project workflows.
+
+- **Always pass `project_root`** to every tool call (filesystem, git, code-index, dart-runner, flutter-runner, planner)
+- **Planner responses include `project_root`** — extract it from the response and reuse it in subsequent tool calls
+
+### Project Config (jhsware-code.yaml)
+
+Each project can have a `jhsware-code.yaml` config file in its root directory that controls which paths each MCP tool can access. Format:
+
+```yaml
+filesystem:
+  - ./lib
+  - ./test
+  - ./pubspec.yaml
+git:
+  - ./lib
+  - ./test
+  - ./bin
+code-index:
+  - ./lib
+  - ./test
+```
+
+- If the config file is missing, tools have full access to the project root
+- If a tool is not listed in the config, it has full access to the project root
+- If a tool is listed with an empty array, it has no access
+
 ## Tool Reference
 
 Use filesystem (dart-dev-mcp-fs) to read, search and edit files.

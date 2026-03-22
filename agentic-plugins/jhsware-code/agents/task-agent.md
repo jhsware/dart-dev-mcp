@@ -10,3 +10,5 @@ skills:
 ---
 - only use filesystem tool for file access
 - only use git tool for git commits
+- always pass `project_root` to every tool call (filesystem, git, code-index, dart-runner, flutter-runner, planner)
+- planner responses include `project_root` — extract it and reuse it in subsequent calls

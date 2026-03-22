@@ -91,6 +91,13 @@ After creating a slate with items, suggest the user can:
 4. **Execute** — Work through tasks using `/planner-do-task` or `/planner-do-parent-task`
 5. **Close items** — As work is completed, update item status to `closed`
 
+## Project Root
+
+All tools accept a `project_root` parameter that specifies the project directory. This enables multi-project workflows.
+
+- **Always pass `project_root`** to every tool call (filesystem, git, code-index, dart-runner, flutter-runner, planner)
+- **Planner responses include `project_root`** — extract it from the response and reuse it in subsequent tool calls
+
 ## Tool Reference
 
 Use filesystem (dart-dev-mcp-fs) to read, search and edit files.

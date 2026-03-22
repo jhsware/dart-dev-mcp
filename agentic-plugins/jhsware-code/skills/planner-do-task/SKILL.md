@@ -27,6 +27,14 @@ When processing a step:
 - [ ] Step 4: Use task memory to store context for later steps
 - [ ] Step 5: When step is completed, mark step done
 
+## Project Root
+
+All tools accept a `project_root` parameter that specifies the project directory. This enables multi-project workflows.
+
+- **Always pass `project_root`** to every tool call (filesystem, git, code-index, dart-runner, flutter-runner, planner)
+- **Planner responses include `project_root`** — extract it from the response and reuse it in subsequent tool calls
+- When starting a task, get `project_root` from the planner response and pass it consistently to all tools
+
 ## Tool Reference
 
 Use filesystem (dart-dev-mcp-fs) to read, search and edit files.

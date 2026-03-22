@@ -77,6 +77,13 @@ After creating or updating items, list items to confirm the changes were applied
 - An item linked to a task (via `add-item-to-task`) is considered **in progress**.
 - An item with status `closed` is considered **done**.
 
+## Project Root
+
+All tools accept a `project_root` parameter that specifies the project directory. This enables multi-project workflows.
+
+- **Always pass `project_root`** to every tool call (filesystem, git, code-index, dart-runner, flutter-runner, planner)
+- **Planner responses include `project_root`** — extract it from the response and reuse it in subsequent tool calls
+
 ## Tool Reference
 
 Use filesystem (dart-dev-mcp-fs) to read, search and edit files.

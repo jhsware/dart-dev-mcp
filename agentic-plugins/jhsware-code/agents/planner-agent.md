@@ -9,6 +9,10 @@ skills:
   - planner-plan
 ---
 
+## Project Root
+
+All tools accept a `project_root` parameter. Always pass `project_root` to every tool call (filesystem, git, code-index, dart-runner, flutter-runner, planner). Planner responses include `project_root` — extract it and reuse it in subsequent calls.
+
 ## Context Management
 
 Planning requires broad understanding of the codebase without exhausting the context window. Use code-index operations strategically to minimize token consumption:
