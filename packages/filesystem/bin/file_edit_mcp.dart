@@ -9,7 +9,10 @@ import 'package:path/path.dart' as p;
 ///
 /// Provides file system operations with restricted access to allowed paths.
 ///
-/// Usage: `dart run bin/file_edit_mcp.dart --project-dir=PATH <allowed_path1> [allowed_path2] ...`
+/// Usage: `dart run bin/file_edit_mcp.dart [--project-dir=PATH <allowed_path1> ...]`
+///
+/// When project_root is passed as a tool call parameter, allowed paths are
+/// read from jhsware-code.yaml in that project root. CLI args serve as fallback.
 void main(List<String> arguments) async {
   String? projectDir;
   final allowedPathArgs = <String>[];
@@ -26,66 +29,45 @@ void main(List<String> arguments) async {
     }
   }
 
-  // Validate required arguments
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
+  // CLI-provided defaults (used as fallback when project_root not in tool call)
+  Directory? cliWorkingDir;
+  List<String> cliAllowedPaths = [];
 
-  if (allowedPathArgs.isEmpty) {
-    stderr.writeln('Error: At least one allowed path is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
+  if (projectDir != null && projectDir.isNotEmpty) {
+    cliWorkingDir = Directory(p.normalize(p.absolute(projectDir)));
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
-
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project directory does not exist: $projectDir');
-    exit(1);
-  }
-
-  // Convert allowed paths to absolute paths
-  final allowedPaths = <String>[];
-  for (final arg in allowedPathArgs) {
-    final absolutePath = p.isAbsolute(arg)
-        ? p.normalize(arg)
-        : p.normalize(p.join(workingDir.path, arg));
-
-    final dir = Directory(absolutePath);
-    final file = File(absolutePath);
-
-    final dirExists = await dir.exists();
-    final fileExists = await file.exists();
-
-    if (!dirExists && !fileExists) {
-      logWarning('fs', 'Path does not exist: $arg');
+    if (!await cliWorkingDir.exists()) {
+      stderr.writeln('Error: Project directory does not exist: $projectDir');
+      exit(1);
     }
 
-    allowedPaths.add(absolutePath);
-  }
+    // Convert allowed paths to absolute paths
+    for (final arg in allowedPathArgs) {
+      final absolutePath = p.isAbsolute(arg)
+          ? p.normalize(arg)
+          : p.normalize(p.join(cliWorkingDir.path, arg));
 
-  if (allowedPaths.isEmpty) {
-    stderr.writeln('Error: No valid paths provided');
-    exit(1);
-  }
+      final dir = Directory(absolutePath);
+      final file = File(absolutePath);
 
-  // Create operation handlers
-  final readOps = FileReadOperations(
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final writeOps = FileWriteOperations(
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
+      final dirExists = await dir.exists();
+      final fileExists = await file.exists();
+
+      if (!dirExists && !fileExists) {
+        logWarning('fs', 'Path does not exist: $arg');
+      }
+
+      cliAllowedPaths.add(absolutePath);
+    }
+  }
 
   logInfo('fs', 'File Edit MCP Server starting...');
-  logInfo('fs', 'Project directory: ${workingDir.path}');
-  logInfo('fs', 'Allowed paths: ${allowedPaths.join(", ")}');
+  if (cliWorkingDir != null) {
+    logInfo('fs', 'CLI project directory: ${cliWorkingDir.path}');
+    logInfo('fs', 'CLI allowed paths: ${cliAllowedPaths.join(", ")}');
+  } else {
+    logInfo('fs', 'No CLI project directory set, project_root param required in tool calls');
+  }
 
   final server = McpServer(
     Implementation(name: 'file-edit-mcp', version: '1.0.0'),
@@ -157,7 +139,7 @@ Operations:
         ),
       },
     ),
-    callback: (args, extra) => _handleFileSystem(args, readOps, writeOps),
+    callback: (args, extra) => _handleFileSystem(args, cliWorkingDir, cliAllowedPaths),
   );
 
   final transport = StdioServerTransport();
@@ -167,14 +149,17 @@ Operations:
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: file_edit_mcp --project-dir=PATH <allowed_path1> [allowed_path2] ...');
+      'Usage: file_edit_mcp [--project-dir=PATH <allowed_path1> ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Working directory for the project (required)');
+  stderr.writeln('  --project-dir=PATH  Working directory for the project (fallback)');
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
   stderr.writeln('Arguments:');
   stderr.writeln('  allowed_paths       Paths that can be accessed (relative to project-dir)');
+  stderr.writeln('');
+  stderr.writeln('Note: When project_root is provided in a tool call, allowed paths');
+  stderr.writeln('are read from jhsware-code.yaml in that project root instead.');
 }
 const _validOperations = [
   'list-content',
@@ -187,11 +172,33 @@ const _validOperations = [
   'extract',
 ];
 
+/// Resolve workingDir and allowedPaths from project_root parameter or CLI fallback.
+({Directory workingDir, List<String> allowedPaths})? _resolveProjectContext(
+  Map<String, dynamic> args,
+  Directory? cliWorkingDir,
+  List<String> cliAllowedPaths,
+  String toolName,
+) {
+  final projectRoot = args['project_root'] as String?;
+
+  if (projectRoot != null && projectRoot.isNotEmpty) {
+    final absRoot = p.normalize(p.absolute(projectRoot));
+    final workingDir = Directory(absRoot);
+    final allowedPaths = ProjectConfigService.getAllowedPaths(absRoot, toolName);
+    return (workingDir: workingDir, allowedPaths: allowedPaths);
+  }
+
+  if (cliWorkingDir != null) {
+    return (workingDir: cliWorkingDir, allowedPaths: cliAllowedPaths);
+  }
+
+  return null;
+}
 
 Future<CallToolResult> _handleFileSystem(
   Map<String, dynamic> args,
-  FileReadOperations readOps,
-  FileWriteOperations writeOps,
+  Directory? cliWorkingDir,
+  List<String> cliAllowedPaths,
 ) async {
   final operation = args['operation'] as String?;
   final path = args['path'] as String? ?? '.';
@@ -200,6 +207,23 @@ Future<CallToolResult> _handleFileSystem(
       case final error?) {
     return error;
   }
+
+  // Resolve project context
+  final context = _resolveProjectContext(args, cliWorkingDir, cliAllowedPaths, 'filesystem');
+  if (context == null) {
+    return validationError('project_root',
+        'No project_root provided and no CLI --project-dir configured. '
+        'Either pass project_root in the tool call or start the server with --project-dir.');
+  }
+
+  final readOps = FileReadOperations(
+    workingDir: context.workingDir,
+    allowedPaths: context.allowedPaths,
+  );
+  final writeOps = FileWriteOperations(
+    workingDir: context.workingDir,
+    allowedPaths: context.allowedPaths,
+  );
 
   try {
     switch (operation) {

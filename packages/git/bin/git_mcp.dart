@@ -11,7 +11,10 @@ import 'package:path/path.dart' as p;
 /// Provides Git operations for version control with path restrictions.
 /// Supports SSH and GPG commit signing.
 ///
-/// Usage: `dart run bin/git_mcp.dart --project-dir=PATH [allowed_paths...]`
+/// Usage: `dart run bin/git_mcp.dart [--project-dir=PATH [allowed_paths...]]`
+///
+/// When project_root is passed as a tool call parameter, allowed paths are
+/// read from jhsware-code.yaml in that project root. CLI args serve as fallback.
 void main(List<String> arguments) async {
   String? projectDir;
   final allowedPathArgs = <String>[];
@@ -28,64 +31,49 @@ void main(List<String> arguments) async {
     }
   }
 
-  // Validate required arguments
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
+  // CLI-provided defaults (used as fallback when project_root not in tool call)
+  Directory? cliWorkingDir;
+  List<String> cliAllowedPaths = [];
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
+  if (projectDir != null && projectDir.isNotEmpty) {
+    cliWorkingDir = Directory(p.normalize(p.absolute(projectDir)));
 
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
-    exit(1);
-  }
+    if (!await cliWorkingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $projectDir');
+      exit(1);
+    }
 
-  // Convert allowed paths to absolute paths (default to project path if none specified)
-  final List<String> allowedPaths;
-  if (allowedPathArgs.isNotEmpty) {
-    allowedPaths = allowedPathArgs.map((path) {
-      if (p.isAbsolute(path)) {
-        return p.normalize(path);
-      } else {
-        return p.normalize(p.join(workingDir.path, path));
-      }
-    }).toList();
-  } else {
-    // Default: allow entire project
-    allowedPaths = [workingDir.path];
-  }
-
-  // Check if it's a git repository
-  final isGitDir = await GitDir.isGitDir(workingDir.path);
-  if (!isGitDir) {
-    logWarning('git', 'Not a git repository: $projectDir. Some operations may fail.');
+    // Convert allowed paths to absolute paths (default to project path if none specified)
+    if (allowedPathArgs.isNotEmpty) {
+      cliAllowedPaths = allowedPathArgs.map((path) {
+        if (p.isAbsolute(path)) {
+          return p.normalize(path);
+        } else {
+          return p.normalize(p.join(cliWorkingDir!.path, path));
+        }
+      }).toList();
+    } else {
+      // Default: allow entire project
+      cliAllowedPaths = [cliWorkingDir.path];
+    }
   }
 
   // Detect available signing methods
   final signingInfo = await detectSigningCapabilities();
 
   logInfo('git', 'Git MCP Server starting...');
-  logInfo('git', 'Project path: ${workingDir.path}');
-  logInfo('git', 'Is git repository: $isGitDir');
+  if (cliWorkingDir != null) {
+    final isGitDir = await GitDir.isGitDir(cliWorkingDir.path);
+    logInfo('git', 'CLI project path: ${cliWorkingDir.path}');
+    logInfo('git', 'Is git repository: $isGitDir');
+    logInfo('git', 'CLI allowed paths: ${cliAllowedPaths.join(", ")}');
+  } else {
+    logInfo('git', 'No CLI project directory set, project_root param required in tool calls');
+  }
   logInfo('git', 'Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
   if (signingInfo.sshAgentSocket != null) {
     logInfo('git', 'SSH Agent: ${signingInfo.sshAgentSocket}');
   }
-  logInfo('git', 'Allowed paths: ${allowedPaths.join(", ")}');
-
-  // Create git operations handlers
-  final gitOps = GitOperations(
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-
-  final commitOps = CommitOperations(
-    workingDir: workingDir,
-    signingInfo: signingInfo,
-  );
 
   final server = McpServer(
     Implementation(name: 'git-mcp', version: '1.0.0'),
@@ -164,7 +152,7 @@ Operations:
         ),
       },
     ),
-    callback: (args, extra) => _handleGit(args, gitOps, commitOps, workingDir, signingInfo),
+    callback: (args, extra) => _handleGit(args, cliWorkingDir, cliAllowedPaths, signingInfo),
   );
 
   final transport = StdioServerTransport();
@@ -173,14 +161,17 @@ Operations:
 }
 
 void _printUsage() {
-  stderr.writeln('Usage: git_mcp --project-dir=PATH [allowed_paths...]');
+  stderr.writeln('Usage: git_mcp [--project-dir=PATH [allowed_paths...]]');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Path to the git repository (required)');
+  stderr.writeln('  --project-dir=PATH  Path to the git repository (fallback)');
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
   stderr.writeln('Arguments:');
   stderr.writeln('  allowed_paths       Paths that can be staged (default: project_path)');
+  stderr.writeln('');
+  stderr.writeln('Note: When project_root is provided in a tool call, allowed paths');
+  stderr.writeln('are read from jhsware-code.yaml in that project root instead.');
 }
 
 const _validOperations = [
@@ -202,11 +193,33 @@ const _validOperations = [
   'signing-status',
 ];
 
+/// Resolve workingDir and allowedPaths from project_root parameter or CLI fallback.
+({Directory workingDir, List<String> allowedPaths})? _resolveProjectContext(
+  Map<String, dynamic> args,
+  Directory? cliWorkingDir,
+  List<String> cliAllowedPaths,
+  String toolName,
+) {
+  final projectRoot = args['project_root'] as String?;
+
+  if (projectRoot != null && projectRoot.isNotEmpty) {
+    final absRoot = p.normalize(p.absolute(projectRoot));
+    final workingDir = Directory(absRoot);
+    final allowedPaths = ProjectConfigService.getAllowedPaths(absRoot, toolName);
+    return (workingDir: workingDir, allowedPaths: allowedPaths);
+  }
+
+  if (cliWorkingDir != null) {
+    return (workingDir: cliWorkingDir, allowedPaths: cliAllowedPaths);
+  }
+
+  return null;
+}
+
 Future<CallToolResult> _handleGit(
   Map<String, dynamic> args,
-  GitOperations gitOps,
-  CommitOperations commitOps,
-  Directory workingDir,
+  Directory? cliWorkingDir,
+  List<String> cliAllowedPaths,
   SigningInfo signingInfo,
 ) async {
   final operation = args['operation'] as String?;
@@ -214,6 +227,16 @@ Future<CallToolResult> _handleGit(
   if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
     return error;
   }
+
+  // Resolve project context
+  final context = _resolveProjectContext(args, cliWorkingDir, cliAllowedPaths, 'git');
+  if (context == null) {
+    return validationError('project_root',
+        'No project_root provided and no CLI --project-dir configured. '
+        'Either pass project_root in the tool call or start the server with --project-dir.');
+  }
+
+  final workingDir = context.workingDir;
 
   // Verify it's a git directory for most operations
   if (operation != 'status' && operation != 'signing-status') {
@@ -225,6 +248,17 @@ Future<CallToolResult> _handleGit(
       );
     }
   }
+
+  // Create operation handlers per invocation with resolved paths
+  final gitOps = GitOperations(
+    workingDir: workingDir,
+    allowedPaths: context.allowedPaths,
+  );
+
+  final commitOps = CommitOperations(
+    workingDir: workingDir,
+    signingInfo: signingInfo,
+  );
 
   try {
     switch (operation) {

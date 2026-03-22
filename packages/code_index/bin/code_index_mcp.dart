@@ -11,7 +11,10 @@ import 'package:sqlite3/sqlite3.dart';
 /// Maintains a searchable index of programming code files in a project.
 /// Stores data in a SQLite database and allows quick file discovery.
 ///
-/// Usage: `dart run bin/code_index_mcp.dart --db-path=PATH --project-dir=PATH [allowed_path1] [allowed_path2] ...`
+/// Usage: `dart run bin/code_index_mcp.dart --db-path=PATH [--project-dir=PATH [allowed_path1] ...]`
+///
+/// When project_root is passed as a tool call parameter, allowed paths are
+/// read from jhsware-code.yaml in that project root. CLI args serve as fallback.
 void main(List<String> arguments) async {
   String? dbPath;
   String? projectDir;
@@ -39,66 +42,56 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
+  // CLI-provided defaults (used as fallback when project_root not in tool call)
+  Directory? cliWorkingDir;
+  List<String> cliAllowedPaths = [];
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
+  if (projectDir != null && projectDir.isNotEmpty) {
+    cliWorkingDir = Directory(p.normalize(p.absolute(projectDir)));
 
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
-    exit(1);
-  }
-
-  // Convert allowed paths to absolute paths
-  final allowedPaths = <String>[];
-  for (final arg in allowedPathArgs) {
-    final absolutePath = p.isAbsolute(arg)
-        ? p.normalize(arg)
-        : p.normalize(p.join(workingDir.path, arg));
-
-    final dir = Directory(absolutePath);
-    final file = File(absolutePath);
-
-    final dirExists = await dir.exists();
-    final fileExists = await file.exists();
-
-    if (!dirExists && !fileExists) {
-      logWarning('code-index', 'Path does not exist: $arg');
+    if (!await cliWorkingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $projectDir');
+      exit(1);
     }
 
-    allowedPaths.add(absolutePath);
+    // Convert allowed paths to absolute paths
+    for (final arg in allowedPathArgs) {
+      final absolutePath = p.isAbsolute(arg)
+          ? p.normalize(arg)
+          : p.normalize(p.join(cliWorkingDir.path, arg));
+
+      final dir = Directory(absolutePath);
+      final file = File(absolutePath);
+
+      final dirExists = await dir.exists();
+      final fileExists = await file.exists();
+
+      if (!dirExists && !fileExists) {
+        logWarning('code-index', 'Path does not exist: $arg');
+      }
+
+      cliAllowedPaths.add(absolutePath);
+    }
   }
 
   // Initialize database
   final database = initializeDatabase(dbPath);
 
-  // Create operation handlers
-  final indexOps = IndexOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final searchOps = SearchOperations(database: database);
-  final browseOps = BrowseOperations(database: database);
-  final diffOps = DiffOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-
   logInfo('code-index', 'Code Index MCP Server starting...');
-  logInfo('code-index', 'Project path: ${workingDir.path}');
-  logInfo('code-index', 'Database: $dbPath');
-  if (allowedPaths.isNotEmpty) {
-    logInfo('code-index', 'Allowed paths: ${allowedPaths.join(", ")}');
+  if (cliWorkingDir != null) {
+    logInfo('code-index', 'CLI project path: ${cliWorkingDir.path}');
+    logInfo('code-index', 'CLI allowed paths: ${cliAllowedPaths.join(", ")}');
+  } else {
+    logInfo('code-index', 'No CLI project directory set, project_root param required in tool calls');
   }
+  logInfo('code-index', 'Database: $dbPath');
 
   // Set up graceful shutdown to close database
   setupShutdownHandlers(database);
+
+  // Create shared operation handlers (no path restrictions needed)
+  final searchOps = SearchOperations(database: database);
+  final browseOps = BrowseOperations(database: database);
 
   final server = McpServer(
     Implementation(name: 'code-index-mcp', version: '1.0.0'),
@@ -220,7 +213,7 @@ Operations:
       },
     ),
     callback: (args, extra) =>
-        _handleCodeIndex(args, database, indexOps, searchOps, browseOps, diffOps),
+        _handleCodeIndex(args, database, cliWorkingDir, cliAllowedPaths, searchOps, browseOps),
   );
 
   final transport = StdioServerTransport();
@@ -230,28 +223,57 @@ Operations:
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: code_index_mcp --db-path=PATH --project-dir=PATH [allowed_path1] [allowed_path2] ...');
+      'Usage: code_index_mcp --db-path=PATH [--project-dir=PATH [allowed_path1] ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
       '  --db-path=PATH      Path to the SQLite database file (required)');
   stderr.writeln(
-      '  --project-dir=PATH  Path to the project directory (required)');
+      '  --project-dir=PATH  Path to the project directory (fallback)');
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
   stderr.writeln('Arguments:');
   stderr.writeln('  allowed_paths       Paths that can be indexed (relative to project-dir)');
+  stderr.writeln('');
+  stderr.writeln('Note: When project_root is provided in a tool call, allowed paths');
+  stderr.writeln('are read from jhsware-code.yaml in that project root instead.');
 }
 
 const _validOperations = ['index-file', 'auto-index', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff', 'overview', 'file-summary'];
 
+/// Resolve workingDir and allowedPaths from project_root parameter or CLI fallback.
+({Directory workingDir, List<String> allowedPaths})? _resolveProjectContext(
+  Map<String, dynamic> args,
+  Directory? cliWorkingDir,
+  List<String> cliAllowedPaths,
+  String toolName,
+) {
+  final projectRoot = args['project_root'] as String?;
+
+  if (projectRoot != null && projectRoot.isNotEmpty) {
+    final absRoot = p.normalize(p.absolute(projectRoot));
+    final workingDir = Directory(absRoot);
+    final allowedPaths = ProjectConfigService.getAllowedPaths(absRoot, toolName);
+    return (workingDir: workingDir, allowedPaths: allowedPaths);
+  }
+
+  if (cliWorkingDir != null) {
+    return (workingDir: cliWorkingDir, allowedPaths: cliAllowedPaths);
+  }
+
+  return null;
+}
+
+/// Operations that require a project context (workingDir + allowedPaths)
+const _pathRequiredOperations = ['index-file', 'auto-index', 'diff'];
+
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
   Database database,
-  IndexOperations indexOps,
+  Directory? cliWorkingDir,
+  List<String> cliAllowedPaths,
   SearchOperations searchOps,
   BrowseOperations browseOps,
-  DiffOperations diffOps,
 ) async {
   final operation = args['operation'] as String?;
 
@@ -261,11 +283,40 @@ Future<CallToolResult> _handleCodeIndex(
   }
 
   try {
+    // Operations that need project context (workingDir + allowedPaths)
+    if (_pathRequiredOperations.contains(operation)) {
+      final context = _resolveProjectContext(args, cliWorkingDir, cliAllowedPaths, 'code_index');
+      if (context == null) {
+        return validationError('project_root',
+            'No project_root provided and no CLI --project-dir configured. '
+            'Either pass project_root in the tool call or start the server with --project-dir.');
+      }
+
+      final indexOps = IndexOperations(
+        database: database,
+        workingDir: context.workingDir,
+        allowedPaths: context.allowedPaths,
+      );
+      final diffOps = DiffOperations(
+        database: database,
+        workingDir: context.workingDir,
+        allowedPaths: context.allowedPaths,
+      );
+
+      switch (operation) {
+        case 'index-file':
+          return indexOps.indexFile(args);
+        case 'auto-index':
+          return indexOps.autoIndex(args);
+        case 'diff':
+          return diffOps.diff(args);
+        default:
+          return validationError('operation', 'Unknown operation: $operation');
+      }
+    }
+
+    // Operations that only need the database (no path restrictions)
     switch (operation) {
-      case 'index-file':
-        return indexOps.indexFile(args);
-      case 'auto-index':
-        return indexOps.autoIndex(args);
       case 'search':
         return searchOps.search(args);
       case 'show-file':
@@ -278,8 +329,6 @@ Future<CallToolResult> _handleCodeIndex(
         return searchOps.searchAnnotations(args);
       case 'stats':
         return searchOps.stats(args);
-      case 'diff':
-        return diffOps.diff(args);
       case 'overview':
         return browseOps.overview(args);
       case 'file-summary':
