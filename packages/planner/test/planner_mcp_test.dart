@@ -823,11 +823,11 @@ Multi-line details with:
       );
       
       expect(result.exitCode, 0);
-      expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
+      expect(result.stderr, contains('Usage: planner_mcp --db-path=PATH'));
       expect(result.stderr, contains('--help'));
     });
 
-    test('requires --project-dir argument', () async {
+    test('requires --db-path argument', () async {
       final result = await Process.run(
         'dart',
         ['run', 'packages/planner/bin/planner_mcp.dart'],
@@ -835,7 +835,7 @@ Multi-line details with:
       );
       
       expect(result.exitCode, 1);
-      expect(result.stderr, contains('--project-dir is required'));
+      expect(result.stderr, contains('--db-path is required'));
     });
 
     test('fails with non-existent project directory', () async {
