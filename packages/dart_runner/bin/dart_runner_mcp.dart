@@ -9,7 +9,10 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 ///
 /// Provides Dart program execution with polling support for long-running processes.
 ///
-/// Usage: dart run bin/dart_runner_mcp.dart --project-dir=PATH
+/// Usage: dart run bin/dart_runner_mcp.dart [--project-dir=PATH]
+///
+/// When project_root is passed as a tool call parameter, it overrides
+/// the CLI --project-dir for that invocation.
 void main(List<String> arguments) async {
   String? projectDir;
 
@@ -23,24 +26,24 @@ void main(List<String> arguments) async {
     }
   }
 
-  // Default to current directory if not specified
-  projectDir ??= Directory.current.path;
+  // CLI-provided default (used as fallback when project_root not in tool call)
+  Directory? cliWorkingDir;
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
+  if (projectDir != null && projectDir.isNotEmpty) {
+    cliWorkingDir = Directory(p.normalize(p.absolute(projectDir)));
 
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
-    exit(1);
-  }
-
-  // Check if it's a Dart project
-  final pubspecFile = File(p.join(workingDir.path, 'pubspec.yaml'));
-  if (!await pubspecFile.exists()) {
-    logWarning('dart-runner', 'No pubspec.yaml found in $projectDir - may not be a Dart project');
+    if (!await cliWorkingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $projectDir');
+      exit(1);
+    }
   }
 
   logInfo('dart-runner', 'Dart Runner MCP Server starting...');
-  logInfo('dart-runner', 'Project path: ${workingDir.path}');
+  if (cliWorkingDir != null) {
+    logInfo('dart-runner', 'CLI project path: ${cliWorkingDir.path}');
+  } else {
+    logInfo('dart-runner', 'No CLI project directory set, project_root param required in tool calls');
+  }
 
   final sessionManager = SessionManager();
 
@@ -108,7 +111,7 @@ Use get_output with the session_id to poll for output.''',
       },
     ),
     callback: (args, extra) =>
-        _handleDartRunner(args, extra, workingDir, sessionManager),
+        _handleDartRunner(args, extra, cliWorkingDir, sessionManager),
   );
 
   final transport = StdioServerTransport();
@@ -120,8 +123,10 @@ void _printUsage() {
   stderr.writeln('Usage: dart_runner_mcp [--project-dir=PATH]');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Working directory for the project (default: current directory)');
+  stderr.writeln('  --project-dir=PATH  Working directory for the project (fallback)');
   stderr.writeln('  --help, -h          Show this help message');
+  stderr.writeln('');
+  stderr.writeln('Note: When project_root is provided in a tool call, it overrides --project-dir.');
 }
 
 const _validOperations = [
@@ -135,16 +140,38 @@ const _validOperations = [
   'cancel',
 ];
 
+/// Resolve workingDir from project_root parameter or CLI fallback.
+Directory? _resolveWorkingDir(
+  Map<String, dynamic> args,
+  Directory? cliWorkingDir,
+) {
+  final projectRoot = args['project_root'] as String?;
+
+  if (projectRoot != null && projectRoot.isNotEmpty) {
+    return Directory(p.normalize(p.absolute(projectRoot)));
+  }
+
+  return cliWorkingDir;
+}
+
 Future<CallToolResult> _handleDartRunner(
   Map<String, dynamic> args,
   RequestHandlerExtra extra,
-  Directory workingDir,
+  Directory? cliWorkingDir,
   SessionManager sessionManager,
 ) async {
   final operation = args['operation'] as String?;
 
   if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
     return error;
+  }
+
+  // Resolve working directory
+  final workingDir = _resolveWorkingDir(args, cliWorkingDir);
+  if (workingDir == null) {
+    return validationError('project_root',
+        'No project_root provided and no CLI --project-dir configured. '
+        'Either pass project_root in the tool call or start the server with --project-dir.');
   }
 
   try {
@@ -222,6 +249,7 @@ Future<CallToolResult> _handleDartRunner(
     });
   }
 }
+
 
 List<String>? _getExtraArgs(Map<String, dynamic> args) {
   final extraArgs = args['args'];
