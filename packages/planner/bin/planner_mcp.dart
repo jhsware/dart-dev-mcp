@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
@@ -9,9 +10,12 @@ import 'package:sqlite3/sqlite3.dart';
 /// Planner MCP Server
 ///
 /// Provides task and step management for AI-assisted development workflows.
-/// Stores data in a SQLite database in the project's .ai_coding_tool folder.
+/// Stores data in a SQLite database.
 ///
-/// Usage: `dart run bin/planner_mcp.dart --project-dir=PATH`
+/// Usage: `dart run bin/planner_mcp.dart --db-path=PATH [--project-dir=PATH]`
+///
+/// When project_root is passed as a tool call parameter, it overrides
+/// the CLI --project-dir and is included in all JSON responses.
 void main(List<String> arguments) async {
   String? projectDir;
   String? dbPath;
@@ -32,13 +36,6 @@ void main(List<String> arguments) async {
   }
 
   // Validate required arguments
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
-  
   if (dbPath == null || dbPath.isEmpty) {
     stderr.writeln('Error: --db-path is required');
     stderr.writeln('');
@@ -46,11 +43,16 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
+  // CLI-provided default (used as fallback when project_root not in tool call)
+  Directory? cliWorkingDir;
 
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
-    exit(1);
+  if (projectDir != null && projectDir.isNotEmpty) {
+    cliWorkingDir = Directory(p.normalize(p.absolute(projectDir)));
+
+    if (!await cliWorkingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $projectDir');
+      exit(1);
+    }
   }
 
   // Ensure parent directory of database file exists
@@ -101,7 +103,11 @@ void main(List<String> arguments) async {
   );
 
   logInfo('planner', 'Planner MCP Server starting...');
-  logInfo('planner', 'Project path: ${workingDir.path}');
+  if (cliWorkingDir != null) {
+    logInfo('planner', 'CLI project path: ${cliWorkingDir.path}');
+  } else {
+    logInfo('planner', 'No CLI project directory set, project_root param required in tool calls');
+  }
   logInfo('planner', 'Database: $dbPath');
 
   // Set up graceful shutdown to close database
@@ -264,7 +270,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
       },
     ),
     callback: (args, extra) => _handlePlanner(
-        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps, itemOps, slateOps),
+        args, cliWorkingDir, database, taskOps, stepOps, timelineOps, gitLogOps, itemOps, slateOps),
   );
 
   final transport = StdioServerTransport();
@@ -273,20 +279,19 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
 }
 
 void _printUsage() {
-  stderr.writeln('Usage: planner_mcp --project-dir=PATH --db-path=PATH');
+  stderr.writeln('Usage: planner_mcp --db-path=PATH [--project-dir=PATH]');
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH    Path to the project directory (required)');
+      '  --project-dir=PATH    Path to the project directory (fallback)');
   stderr.writeln(
       '  --db-path=PATH        Path to the SQLite database file (required)');
   stderr.writeln(
       '  --prompts-file=PATH   Path to prompts YAML file (optional, uses defaults)');
   stderr.writeln('  --help, -h            Show this help message');
   stderr.writeln('');
-  stderr.writeln('The planner stores data in .ai_coding_tool/db.sqlite');
-  stderr.writeln(
-      'Project instructions are read from AGENTS.md');
+  stderr.writeln('Note: When project_root is provided in a tool call, it overrides --project-dir');
+  stderr.writeln('and is included in all JSON responses.');
 }
 
 const _validOperations = [
@@ -319,9 +324,58 @@ const _validOperations = [
   'get-audit-trail',
 ];
 
+/// Resolve workingDir from project_root parameter or CLI fallback.
+Directory? _resolveWorkingDir(
+  Map<String, dynamic> args,
+  Directory? cliWorkingDir,
+) {
+  final projectRoot = args['project_root'] as String?;
+
+  if (projectRoot != null && projectRoot.isNotEmpty) {
+    return Directory(p.normalize(p.absolute(projectRoot)));
+  }
+
+  return cliWorkingDir;
+}
+
+/// Inject project_root into a CallToolResult's JSON text content.
+///
+/// If the result contains JSON text, parses it, adds `project_root` at the
+/// top level (for maps) or wraps in an envelope (for lists), and re-serializes.
+/// Non-JSON text results are returned as-is.
+CallToolResult _injectProjectRoot(CallToolResult result, String projectRoot) {
+  if (result.content.isEmpty) return result;
+
+  final firstContent = result.content.first;
+  if (firstContent is! TextContent) return result;
+
+  final text = firstContent.text;
+
+  // Try to parse as JSON
+  try {
+    final decoded = jsonDecode(text);
+
+    if (decoded is Map<String, dynamic>) {
+      decoded['project_root'] = projectRoot;
+      return textResult(jsonEncode(decoded));
+    } else if (decoded is List) {
+      // Wrap list in envelope with project_root
+      final envelope = {
+        'project_root': projectRoot,
+        'data': decoded,
+      };
+      return textResult(jsonEncode(envelope));
+    }
+  } catch (_) {
+    // Not JSON — return as-is
+  }
+
+  return result;
+}
+
 Future<CallToolResult> _handlePlanner(
   Map<String, dynamic> args,
-  Directory workingDir,
+  Directory? cliWorkingDir,
   Database database,
   TaskOperations taskOps,
   StepOperations stepOps,
@@ -337,65 +391,83 @@ Future<CallToolResult> _handlePlanner(
     return error;
   }
 
+  // Resolve working directory
+  final workingDir = _resolveWorkingDir(args, cliWorkingDir);
+  final projectRoot = workingDir?.path;
+
   try {
+    CallToolResult result;
+
     switch (operation) {
       case 'get-project-instructions':
-        return _getProjectInstructions(workingDir);
+        if (workingDir == null) {
+          return validationError('project_root',
+              'No project_root provided and no CLI --project-dir configured. '
+              'Either pass project_root in the tool call or start the server with --project-dir.');
+        }
+        result = await _getProjectInstructions(workingDir);
       case 'add-task':
-        return taskOps.addTask(args);
+        result = taskOps.addTask(args);
       case 'show-task':
-        return taskOps.showTask(args);
+        result = taskOps.showTask(args);
       case 'update-task':
-        return taskOps.updateTask(args);
+        result = taskOps.updateTask(args);
       case 'show-task-memory':
-        return taskOps.showTaskMemory(args);
+        result = taskOps.showTaskMemory(args);
       case 'update-task-memory':
-        return taskOps.updateTaskMemory(args);
+        result = taskOps.updateTaskMemory(args);
       case 'list-tasks':
-        return taskOps.listTasks(args);
+        result = taskOps.listTasks(args);
       case 'add-step':
-        return stepOps.addStep(args);
+        result = stepOps.addStep(args);
       case 'show-step':
-        return stepOps.showStep(args);
+        result = stepOps.showStep(args);
       case 'update-step':
-        return stepOps.updateStep(args);
+        result = stepOps.updateStep(args);
       case 'get-subtask-prompt':
-        return stepOps.getSubtaskPrompt(args);
+        result = stepOps.getSubtaskPrompt(args);
       case 'add-item':
-        return itemOps.addItem(args);
+        result = itemOps.addItem(args);
       case 'show-item':
-        return itemOps.showItem(args);
+        result = itemOps.showItem(args);
       case 'update-item':
-        return itemOps.updateItem(args);
+        result = itemOps.updateItem(args);
       case 'list-items':
-        return itemOps.listItems(args);
+        result = itemOps.listItems(args);
       case 'add-slate':
-        return slateOps.addSlate(args);
+        result = slateOps.addSlate(args);
       case 'show-slate':
-        return slateOps.showSlate(args);
+        result = slateOps.showSlate(args);
       case 'update-slate':
-        return slateOps.updateSlate(args);
+        result = slateOps.updateSlate(args);
       case 'list-slates':
-        return slateOps.listSlates(args);
+        result = slateOps.listSlates(args);
       case 'add-item-to-slate':
-        return slateOps.addItemToSlate(args);
+        result = slateOps.addItemToSlate(args);
       case 'remove-item-from-slate':
-        return slateOps.removeItemFromSlate(args);
+        result = slateOps.removeItemFromSlate(args);
       case 'add-item-to-task':
-        return slateOps.addItemToTask(args);
+        result = slateOps.addItemToTask(args);
       case 'remove-item-from-task':
-        return slateOps.removeItemFromTask(args);
+        result = slateOps.removeItemFromTask(args);
       case 'log-commit':
-        return gitLogOps.logCommit(args);
+        result = gitLogOps.logCommit(args);
       case 'log-merge':
-        return gitLogOps.logMerge(args);
+        result = gitLogOps.logMerge(args);
       case 'get-timeline':
-        return timelineOps.getTimeline(args);
+        result = timelineOps.getTimeline(args);
       case 'get-audit-trail':
-        return timelineOps.getAuditTrail(args);
+        result = timelineOps.getAuditTrail(args);
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
+
+    // Inject project_root into JSON responses
+    if (projectRoot != null) {
+      return _injectProjectRoot(result, projectRoot);
+    }
+
+    return result;
   } on SqliteException catch (e) {
     // Classify the error for appropriate handling
     final category = classifyError(e);
