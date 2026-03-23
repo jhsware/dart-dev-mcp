@@ -9,96 +9,73 @@ import 'package:sqlite3/sqlite3.dart';
 /// Code Index MCP Server
 ///
 /// Maintains a searchable index of programming code files in a project.
-/// Stores data in a SQLite database and allows quick file discovery.
+/// Stores data in a SQLite database inferred from --planner-data-root.
 ///
-/// Usage: `dart run bin/code_index_mcp.dart --db-path=PATH --project-dir=PATH [allowed_path1] [allowed_path2] ...`
+/// Usage: `dart run bin/code_index_mcp.dart --planner-data-root=PATH --project-dir=PATH1 [--project-dir=PATH2 ...]`
 void main(List<String> arguments) async {
-  String? dbPath;
-  String? projectDir;
-  final allowedPathArgs = <String>[];
+  final serverArgs = ServerArguments.parse(arguments);
 
-  // Parse arguments
-  for (final arg in arguments) {
-    if (arg.startsWith('--db-path=')) {
-      dbPath = arg.substring('--db-path='.length);
-    } else if (arg.startsWith('--project-dir=')) {
-      projectDir = arg.substring('--project-dir='.length);
-    } else if (arg == '--help' || arg == '-h') {
-      _printUsage();
-      exit(0);
-    } else if (!arg.startsWith('-')) {
-      allowedPathArgs.add(arg);
-    }
+  if (serverArgs.helpRequested) {
+    _printUsage();
+    exit(0);
   }
 
   // Validate required arguments
-  if (dbPath == null || dbPath.isEmpty) {
-    stderr.writeln('Error: --db-path is required');
+  if (serverArgs.projectDirs.isEmpty) {
+    stderr.writeln('Error: at least one --project-dir is required');
     stderr.writeln('');
     _printUsage();
     exit(1);
   }
 
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
+  if (serverArgs.plannerDataRoot == null) {
+    stderr.writeln('Error: --planner-data-root is required');
     stderr.writeln('');
     _printUsage();
     exit(1);
   }
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
-
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
-    exit(1);
-  }
-
-  // Convert allowed paths to absolute paths
-  final allowedPaths = <String>[];
-  for (final arg in allowedPathArgs) {
-    final absolutePath = p.isAbsolute(arg)
-        ? p.normalize(arg)
-        : p.normalize(p.join(workingDir.path, arg));
-
-    final dir = Directory(absolutePath);
-    final file = File(absolutePath);
-
-    final dirExists = await dir.exists();
-    final fileExists = await file.exists();
-
-    if (!dirExists && !fileExists) {
-      logWarning('code-index', 'Path does not exist: $arg');
+  // Validate all project directories exist
+  for (final dir in serverArgs.projectDirs) {
+    final workingDir = Directory(dir);
+    if (!await workingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $dir');
+      exit(1);
     }
-
-    allowedPaths.add(absolutePath);
   }
 
-  // Initialize database
-  final database = initializeDatabase(dbPath);
+  // Per-project database connections (created on demand)
+  final databases = <String, Database>{};
 
-  // Create operation handlers
-  final indexOps = IndexOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final searchOps = SearchOperations(database: database);
-  final browseOps = BrowseOperations(database: database);
-  final diffOps = DiffOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
+  /// Get or create database connection for a project directory.
+  Database getDatabase(String projectDir) {
+    if (databases.containsKey(projectDir)) {
+      return databases[projectDir]!;
+    }
+    final dbPath = serverArgs.codeIndexDbPath(projectDir);
+    // Ensure parent directory exists
+    final dbDir = Directory(p.dirname(dbPath));
+    if (!dbDir.existsSync()) {
+      dbDir.createSync(recursive: true);
+    }
+    final db = initializeDatabase(dbPath);
+    databases[projectDir] = db;
+    return db;
+  }
 
   logInfo('code-index', 'Code Index MCP Server starting...');
-  logInfo('code-index', 'Project path: ${workingDir.path}');
-  logInfo('code-index', 'Database: $dbPath');
-  if (allowedPaths.isNotEmpty) {
-    logInfo('code-index', 'Allowed paths: ${allowedPaths.join(", ")}');
-  }
+  logInfo('code-index',
+      'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('code-index',
+      'Planner data root: ${serverArgs.plannerDataRoot}');
 
-  // Set up graceful shutdown to close database
-  setupShutdownHandlers(database);
+  // Set up graceful shutdown to close all databases
+  ProcessSignal.sigint.watch().listen((_) {
+    for (final db in databases.values) {
+      db.dispose();
+    }
+    exit(0);
+  });
 
   final server = McpServer(
     Implementation(name: 'code-index-mcp', version: '1.0.0'),
@@ -128,6 +105,10 @@ Operations:
 - file-summary: Show a file's exports grouped by class and variables, without heavy metadata''',
     inputSchema: ToolInputSchema(
       properties: {
+        'project_dir': JsonSchema.string(
+          description:
+              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+        ),
         'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: _validOperations,
@@ -192,7 +173,8 @@ Operations:
           description: 'Search in file descriptions (for search)',
         ),
         'limit': JsonSchema.integer(
-          description: 'Max results (for search, search-annotations, default 50)',
+          description:
+              'Max results (for search, search-annotations, default 50)',
         ),
         // search-annotations parameters
         'kind': JsonSchema.string(
@@ -200,7 +182,8 @@ Operations:
               'Annotation kind filter: TODO, FIXME, HACK, NOTE, DEPRECATED (for search-annotations)',
         ),
         'message_pattern': JsonSchema.string(
-          description: 'Search in annotation messages (for search-annotations)',
+          description:
+              'Search in annotation messages (for search-annotations)',
         ),
         // diff parameters
         'directories': JsonSchema.array(
@@ -218,9 +201,10 @@ Operations:
               'Auto-remove deleted files from index (for diff, default true)',
         ),
       },
+      required: ['project_dir'],
     ),
     callback: (args, extra) =>
-        _handleCodeIndex(args, database, indexOps, searchOps, browseOps, diffOps),
+        _handleCodeIndex(args, serverArgs, getDatabase),
   );
 
   final transport = StdioServerTransport();
@@ -230,35 +214,77 @@ Operations:
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: code_index_mcp --db-path=PATH --project-dir=PATH [allowed_path1] [allowed_path2] ...');
+      'Usage: code_index_mcp --planner-data-root=PATH --project-dir=PATH1 [--project-dir=PATH2 ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --db-path=PATH      Path to the SQLite database file (required)');
+      '  --project-dir=PATH        Path to a project directory (required, can be repeated)');
   stderr.writeln(
-      '  --project-dir=PATH  Path to the project directory (required)');
-  stderr.writeln('  --help, -h          Show this help message');
+      '  --planner-data-root=PATH  Root directory for planner data (required)');
+  stderr.writeln('  --help, -h                Show this help message');
   stderr.writeln('');
-  stderr.writeln('Arguments:');
-  stderr.writeln('  allowed_paths       Paths that can be indexed (relative to project-dir)');
+  stderr.writeln(
+      'DB paths are inferred as: [planner-data-root]/projects/[project-dir-name]/db/code_index.db');
+  stderr.writeln(
+      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
 }
 
-const _validOperations = ['index-file', 'auto-index', 'search', 'show-file', 'dependents', 'dependencies', 'search-annotations', 'stats', 'diff', 'overview', 'file-summary'];
+const _validOperations = [
+  'index-file',
+  'auto-index',
+  'search',
+  'show-file',
+  'dependents',
+  'dependencies',
+  'search-annotations',
+  'stats',
+  'diff',
+  'overview',
+  'file-summary'
+];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
-  Database database,
-  IndexOperations indexOps,
-  SearchOperations searchOps,
-  BrowseOperations browseOps,
-  DiffOperations diffOps,
+  ServerArguments serverArgs,
+  Database Function(String projectDir) getDatabase,
 ) async {
-  final operation = args['operation'] as String?;
+  // Validate project_dir is present and valid
+  final projectDir = args['project_dir'] as String?;
+  if (requireString(projectDir, 'project_dir') case final error?) {
+    return error;
+  }
+  if (!serverArgs.projectDirs.contains(projectDir)) {
+    return validationError('project_dir',
+        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+  }
 
+  final operation = args['operation'] as String?;
   if (requireStringOneOf(operation, 'operation', _validOperations)
       case final error?) {
     return error;
   }
+
+  // Get or create database for this project
+  final database = getDatabase(projectDir!);
+  final workingDir = Directory(projectDir);
+
+  // Resolve allowed paths from ProjectConfigService
+  final allowedPaths =
+      ProjectConfigService.getAllowedPaths(projectDir, 'code-index');
+
+  // Create operation handlers for this project
+  final indexOps = IndexOperations(
+    database: database,
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
+  final searchOps = SearchOperations(database: database);
+  final browseOps = BrowseOperations(database: database);
+  final diffOps = DiffOperations(
+    database: database,
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
 
   try {
     switch (operation) {
