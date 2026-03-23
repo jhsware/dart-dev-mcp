@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
@@ -112,11 +113,11 @@ Operations:
 - show-step: Show step details
 - update-step: Update step properties
 - get-subtask-prompt: Get the sub-task details for a step in a parent task. Use this operation to fetch the sub-task details when ready to work on it. Requires: id (step ID). Returns error if step has no linked sub-task.
-- add-item: Create a new backlog item. Requires: title. Optional: details, type, status, project_id (deprecated).
+- add-item: Create a new backlog item. Requires: title. Optional: details, type, status.
 - show-item: Show item details with edit history, linked tasks, and linked slates. Requires: id.
 - update-item: Update item fields. Requires: id. Optional: title, details, type, status.
 - list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any slate).
-- add-slate: Create a new slate. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date), project_id (deprecated).
+- add-slate: Create a new slate. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date).
 - show-slate: Show slate with its items (includes status and release_date). Requires: id.
 - update-slate: Update slate fields. Requires: id. Optional: title, notes, status, release_date.
 - list-slates: List all slates. Optional: status filter.
@@ -152,10 +153,6 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'task_id': JsonSchema.string(
           description: 'Parent task ID (for add-step, log-commit, log-merge)',
-        ),
-        'project_id': JsonSchema.string(
-          description:
-              'DEPRECATED: No longer used for filtering. Kept for backward compatibility. Defaults to empty string if not provided.',
         ),
         'title': JsonSchema.string(
           description: 'Title for task or step',
@@ -365,64 +362,68 @@ Future<CallToolResult> _handlePlanner(
   final workingDir = Directory(projectDir);
 
   try {
+    final CallToolResult result;
     switch (operation) {
       case 'get-project-instructions':
-        return _getProjectInstructions(workingDir);
+        return _getProjectInstructions(workingDir, projectDir);
       case 'add-task':
-        return taskOps.addTask(args);
+        result = taskOps.addTask(args);
       case 'show-task':
-        return taskOps.showTask(args);
+        result = taskOps.showTask(args);
       case 'update-task':
-        return taskOps.updateTask(args);
+        result = taskOps.updateTask(args);
       case 'show-task-memory':
-        return taskOps.showTaskMemory(args);
+        result = taskOps.showTaskMemory(args);
       case 'update-task-memory':
-        return taskOps.updateTaskMemory(args);
+        result = taskOps.updateTaskMemory(args);
       case 'list-tasks':
-        return taskOps.listTasks(args);
+        result = taskOps.listTasks(args);
       case 'add-step':
-        return stepOps.addStep(args);
+        result = stepOps.addStep(args);
       case 'show-step':
-        return stepOps.showStep(args);
+        result = stepOps.showStep(args);
       case 'update-step':
-        return stepOps.updateStep(args);
+        result = stepOps.updateStep(args);
       case 'get-subtask-prompt':
-        return stepOps.getSubtaskPrompt(args);
+        return _injectProjectDirText(
+            stepOps.getSubtaskPrompt(args), projectDir);
       case 'add-item':
-        return itemOps.addItem(args);
+        result = itemOps.addItem(args);
       case 'show-item':
-        return itemOps.showItem(args);
+        result = itemOps.showItem(args);
       case 'update-item':
-        return itemOps.updateItem(args);
+        result = itemOps.updateItem(args);
       case 'list-items':
-        return itemOps.listItems(args);
+        result = itemOps.listItems(args);
       case 'add-slate':
-        return slateOps.addSlate(args);
+        result = slateOps.addSlate(args);
       case 'show-slate':
-        return slateOps.showSlate(args);
+        result = slateOps.showSlate(args);
       case 'update-slate':
-        return slateOps.updateSlate(args);
+        result = slateOps.updateSlate(args);
       case 'list-slates':
-        return slateOps.listSlates(args);
+        result = slateOps.listSlates(args);
       case 'add-item-to-slate':
-        return slateOps.addItemToSlate(args);
+        result = slateOps.addItemToSlate(args);
       case 'remove-item-from-slate':
-        return slateOps.removeItemFromSlate(args);
+        result = slateOps.removeItemFromSlate(args);
       case 'add-item-to-task':
-        return slateOps.addItemToTask(args);
+        result = slateOps.addItemToTask(args);
       case 'remove-item-from-task':
-        return slateOps.removeItemFromTask(args);
+        result = slateOps.removeItemFromTask(args);
       case 'log-commit':
-        return gitLogOps.logCommit(args);
+        result = gitLogOps.logCommit(args);
       case 'log-merge':
-        return gitLogOps.logMerge(args);
+        result = gitLogOps.logMerge(args);
       case 'get-timeline':
-        return timelineOps.getTimeline(args);
+        result = timelineOps.getTimeline(args);
       case 'get-audit-trail':
-        return timelineOps.getAuditTrail(args);
+        result = timelineOps.getAuditTrail(args);
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
+    // Inject project_dir into JSON responses
+    return _injectProjectDirJson(result, projectDir);
   } on SqliteException catch (e) {
     final category = classifyError(e);
     final userMessage = userFriendlyMessage(category, e.message);
@@ -446,15 +447,54 @@ Future<CallToolResult> _handlePlanner(
   }
 }
 
-Future<CallToolResult> _getProjectInstructions(Directory workingDir) async {
+Future<CallToolResult> _getProjectInstructions(
+    Directory workingDir, String projectDir) async {
   final instructionsPath = p.join(workingDir.path, 'AGENTS.md');
   final file = File(instructionsPath);
 
   if (!await file.exists()) {
-    return textResult('No project instructions found.\n'
+    return textResult('Project dir: $projectDir\n\n'
+        'No project instructions found.\n'
         'Create a file at: AGENTS.md');
   }
 
   final content = await file.readAsString();
-  return textResult(content);
+  return textResult('Project dir: $projectDir\n\n$content');
+}
+
+/// Injects project_dir into a JSON response.
+///
+/// Parses the text content as JSON, adds project_dir at the top level,
+/// and re-serializes. If the text starts with "Error:", it's returned as-is.
+CallToolResult _injectProjectDirJson(
+    CallToolResult result, String projectDir) {
+  if (result.content.isEmpty) return result;
+  final content = result.content.first;
+  if (content is! TextContent) return result;
+  final text = content.text;
+  // Don't inject into error responses
+  if (text.startsWith('Error:')) return result;
+  try {
+    final data = jsonDecode(text) as Map<String, dynamic>;
+    final augmented = {'project_dir': projectDir, ...data};
+    return jsonResult(augmented);
+  } catch (_) {
+    // If not valid JSON, treat as text and prepend project_dir
+    return textResult('Project dir: $projectDir\n\n$text');
+  }
+}
+
+/// Injects project_dir into a text response.
+///
+/// Prepends "Project dir: <projectDir>" to the text content.
+/// If the text starts with "Error:", it's returned as-is.
+CallToolResult _injectProjectDirText(
+    CallToolResult result, String projectDir) {
+  if (result.content.isEmpty) return result;
+  final content = result.content.first;
+  if (content is! TextContent) return result;
+  final text = content.text;
+  // Don't inject into error responses
+  if (text.startsWith('Error:')) return result;
+  return textResult('Project dir: $projectDir\n\n$text');
 }
