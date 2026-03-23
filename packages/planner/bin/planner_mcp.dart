@@ -9,103 +9,82 @@ import 'package:sqlite3/sqlite3.dart';
 /// Planner MCP Server
 ///
 /// Provides task and step management for AI-assisted development workflows.
-/// Stores data in a SQLite database in the project's .ai_coding_tool folder.
+/// Stores data in a SQLite database inferred from --planner-data-root.
 ///
-/// Usage: `dart run bin/planner_mcp.dart --project-dir=PATH`
+/// Usage: `dart run bin/planner_mcp.dart --planner-data-root=PATH --project-dir=PATH1 [--project-dir=PATH2 ...]`
 void main(List<String> arguments) async {
-  String? projectDir;
-  String? dbPath;
-  String? promptsFilePath;
+  final serverArgs = ServerArguments.parse(arguments);
 
-  // Parse arguments
-  for (final arg in arguments) {
-    if (arg.startsWith('--project-dir=')) {
-      projectDir = arg.substring('--project-dir='.length);
-    } else if (arg.startsWith('--db-path=')) {
-      dbPath = arg.substring('--db-path='.length);
-    } else if (arg.startsWith('--prompts-file=')) {
-      promptsFilePath = arg.substring('--prompts-file='.length);
-    } else if (arg == '--help' || arg == '-h') {
-      _printUsage();
-      exit(0);
-    }
+  if (serverArgs.helpRequested) {
+    _printUsage();
+    exit(0);
   }
 
   // Validate required arguments
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
-  
-  if (dbPath == null || dbPath.isEmpty) {
-    stderr.writeln('Error: --db-path is required');
+  if (serverArgs.projectDirs.isEmpty) {
+    stderr.writeln('Error: at least one --project-dir is required');
     stderr.writeln('');
     _printUsage();
     exit(1);
   }
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
-
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
+  if (serverArgs.plannerDataRoot == null) {
+    stderr.writeln('Error: --planner-data-root is required');
+    stderr.writeln('');
+    _printUsage();
     exit(1);
   }
 
-  // Ensure parent directory of database file exists
-  if (dbPath != ':memory:') {
-    final dbDir = Directory(p.dirname(dbPath));
-    if (!await dbDir.exists()) {
-      await dbDir.create(recursive: true);
+  // Validate all project directories exist
+  for (final dir in serverArgs.projectDirs) {
+    final workingDir = Directory(dir);
+    if (!await workingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $dir');
+      exit(1);
     }
   }
 
-  // Initialize database
-  final database = initializeDatabase(dbPath);
-
-  // Initialize transaction log repository
-  final transactionLogRepository = TransactionLogRepository(database);
-  transactionLogRepository.initializeTable();
-
   // Initialize prompt pack service
   final promptPackService = PromptPackService(
-    promptsFilePath: promptsFilePath,
+    promptsFilePath: serverArgs.promptsFilePath,
   );
   promptPackService.initialize();
 
-  // Create operation handlers
-  final taskOps = TaskOperations(
-    database: database,
-    transactionLogRepository: transactionLogRepository,
-  );
-  final stepOps = StepOperations(
-    database: database,
-    transactionLogRepository: transactionLogRepository,
-    promptPackService: promptPackService,
-  );
-  final timelineOps = TimelineOperations(
-    transactionLogRepository: transactionLogRepository,
-  );
-  final gitLogOps = GitLogOperations(
-    database: database,
-    transactionLogRepository: transactionLogRepository,
-  );
-  final itemOps = ItemOperations(
-    database: database,
-    transactionLogRepository: transactionLogRepository,
-  );
-  final slateOps = SlateOperations(
-    database: database,
-    transactionLogRepository: transactionLogRepository,
-  );
+  // Per-project database connections (created on demand)
+  final databases = <String, Database>{};
+
+  /// Get or create database connection for a project directory.
+  Database getDatabase(String projectDir) {
+    if (databases.containsKey(projectDir)) {
+      return databases[projectDir]!;
+    }
+    final dbPath = serverArgs.plannerDbPath(projectDir);
+    // Ensure parent directory exists
+    final dbDir = Directory(p.dirname(dbPath));
+    if (!dbDir.existsSync()) {
+      dbDir.createSync(recursive: true);
+    }
+    final db = initializeDatabase(dbPath);
+    // Initialize transaction log table for this DB
+    final txRepo = TransactionLogRepository(db);
+    txRepo.initializeTable();
+    databases[projectDir] = db;
+    return db;
+  }
 
   logInfo('planner', 'Planner MCP Server starting...');
-  logInfo('planner', 'Project path: ${workingDir.path}');
-  logInfo('planner', 'Database: $dbPath');
+  logInfo('planner',
+      'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('planner',
+      'Planner data root: ${serverArgs.plannerDataRoot}');
 
-  // Set up graceful shutdown to close database
-  setupShutdownHandlers(database);
+  // Set up graceful shutdown to close all databases
+  ProcessSignal.sigint.watch().listen((_) {
+    for (final db in databases.values) {
+      db.dispose();
+    }
+    exit(0);
+  });
 
   final server = McpServer(
     Implementation(name: 'planner-mcp', version: '1.0.0'),
@@ -159,6 +138,10 @@ Slate statuses: draft, todo, started, done, released
 Parent task pattern: Prefix parent task title with "Parent:". Each step references a sub-task via sub_task_id. Use get-subtask-prompt to fetch the sub-task details for a step when ready to work on it.''',
     inputSchema: ToolInputSchema(
       properties: {
+        'project_dir': JsonSchema.string(
+          description:
+              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+        ),
         'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: _validOperations,
@@ -237,7 +220,8 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
           description: 'Commit message (for log-commit, optional)',
         ),
         'step_id': JsonSchema.string(
-          description: 'Step ID associated with a git commit (for log-commit, optional)',
+          description:
+              'Step ID associated with a git commit (for log-commit, optional)',
         ),
         'type': JsonSchema.string(
           description: 'Item type: feature, improvement, bug, change',
@@ -247,24 +231,29 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
           description: 'Slate notes (markdown)',
         ),
         'search_query': JsonSchema.string(
-          description: 'Search query for filtering items by title and details',
+          description:
+              'Search query for filtering items by title and details',
         ),
         'release_id': JsonSchema.string(
           description: 'Slate ID (for add/remove-item-to/from-slate)',
         ),
         'item_id': JsonSchema.string(
-          description: 'Item ID (for add/remove-item-to/from-slate, add/remove-item-to/from-task)',
+          description:
+              'Item ID (for add/remove-item-to/from-slate, add/remove-item-to/from-task)',
         ),
         'release_date': JsonSchema.string(
-          description: 'Target slate date in ISO 8601 format (for add-slate, update-slate)',
+          description:
+              'Target slate date in ISO 8601 format (for add-slate, update-slate)',
         ),
         'backlog_only': JsonSchema.boolean(
-          description: 'When true, list-items returns only items not assigned to any slate',
+          description:
+              'When true, list-items returns only items not assigned to any slate',
         ),
       },
+      required: ['project_dir'],
     ),
     callback: (args, extra) => _handlePlanner(
-        args, workingDir, database, taskOps, stepOps, timelineOps, gitLogOps, itemOps, slateOps),
+        args, serverArgs, getDatabase, promptPackService),
   );
 
   final transport = StdioServerTransport();
@@ -273,20 +262,22 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
 }
 
 void _printUsage() {
-  stderr.writeln('Usage: planner_mcp --project-dir=PATH --db-path=PATH');
+  stderr.writeln(
+      'Usage: planner_mcp --planner-data-root=PATH --project-dir=PATH1 [--project-dir=PATH2 ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH    Path to the project directory (required)');
+      '  --project-dir=PATH        Path to a project directory (required, can be repeated)');
   stderr.writeln(
-      '  --db-path=PATH        Path to the SQLite database file (required)');
+      '  --planner-data-root=PATH  Root directory for planner data (required)');
   stderr.writeln(
-      '  --prompts-file=PATH   Path to prompts YAML file (optional, uses defaults)');
-  stderr.writeln('  --help, -h            Show this help message');
+      '  --prompts-file=PATH       Path to prompts YAML file (optional, uses defaults)');
+  stderr.writeln('  --help, -h                Show this help message');
   stderr.writeln('');
-  stderr.writeln('The planner stores data in .ai_coding_tool/db.sqlite');
   stderr.writeln(
-      'Project instructions are read from AGENTS.md');
+      'DB paths are inferred as: [planner-data-root]/projects/[project-dir-name]/db/planner.db');
+  stderr.writeln(
+      'Project instructions are read from AGENTS.md in each project directory.');
 }
 
 const _validOperations = [
@@ -321,21 +312,57 @@ const _validOperations = [
 
 Future<CallToolResult> _handlePlanner(
   Map<String, dynamic> args,
-  Directory workingDir,
-  Database database,
-  TaskOperations taskOps,
-  StepOperations stepOps,
-  TimelineOperations timelineOps,
-  GitLogOperations gitLogOps,
-  ItemOperations itemOps,
-  SlateOperations slateOps,
+  ServerArguments serverArgs,
+  Database Function(String projectDir) getDatabase,
+  PromptPackService promptPackService,
 ) async {
-  final operation = args['operation'] as String?;
+  // Validate project_dir is present and valid
+  final projectDir = args['project_dir'] as String?;
+  if (requireString(projectDir, 'project_dir') case final error?) {
+    return error;
+  }
+  if (!serverArgs.projectDirs.contains(projectDir)) {
+    return validationError('project_dir',
+        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+  }
 
+  final operation = args['operation'] as String?;
   if (requireStringOneOf(operation, 'operation', _validOperations)
       case final error?) {
     return error;
   }
+
+  // Get or create database for this project
+  final database = getDatabase(projectDir!);
+  final transactionLogRepository = TransactionLogRepository(database);
+
+  // Create operation handlers for this project's database
+  final taskOps = TaskOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
+  final stepOps = StepOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+    promptPackService: promptPackService,
+  );
+  final timelineOps = TimelineOperations(
+    transactionLogRepository: transactionLogRepository,
+  );
+  final gitLogOps = GitLogOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
+  final itemOps = ItemOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
+  final slateOps = SlateOperations(
+    database: database,
+    transactionLogRepository: transactionLogRepository,
+  );
+
+  final workingDir = Directory(projectDir);
 
   try {
     switch (operation) {
@@ -397,7 +424,6 @@ Future<CallToolResult> _handlePlanner(
         return validationError('operation', 'Unknown operation: $operation');
     }
   } on SqliteException catch (e) {
-    // Classify the error for appropriate handling
     final category = classifyError(e);
     final userMessage = userFriendlyMessage(category, e.message);
 
@@ -421,8 +447,7 @@ Future<CallToolResult> _handlePlanner(
 }
 
 Future<CallToolResult> _getProjectInstructions(Directory workingDir) async {
-  final instructionsPath =
-      p.join(workingDir.path, 'AGENTS.md');
+  final instructionsPath = p.join(workingDir.path, 'AGENTS.md');
   final file = File(instructionsPath);
 
   if (!await file.exists()) {
