@@ -9,7 +9,6 @@ filesystem:
   - ./.env.in
   - ./.gitignore
   - ./.github
-  - ./macos
   - ./packages
   - ./claude.sh
   - ./build.sh
@@ -24,7 +23,6 @@ git:
   - ./.env.in
   - ./.gitignore
   - ./.github
-  - ./macos
   - ./pubspec.lock
   - ./packages
   - ./claude.sh
