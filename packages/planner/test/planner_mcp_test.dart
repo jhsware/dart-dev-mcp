@@ -12,15 +12,15 @@ import 'package:uuid/uuid.dart';
 void main() {
   group('Planner Database Tests', () {
     late Directory tempDir;
-    late Directory aiToolDir;
+    late Directory dbDir;
     late String dbPath;
     late Database db;
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('planner_mcp_test_');
-      aiToolDir = Directory(p.join(tempDir.path, '.ai_coding_tool'));
-      await aiToolDir.create(recursive: true);
-      dbPath = p.join(aiToolDir.path, 'db.sqlite');
+      dbDir = Directory(p.join(tempDir.path, 'db'));
+      await dbDir.create(recursive: true);
+      dbPath = p.join(dbDir.path, 'planner.db');
       db = _initializeDatabase(dbPath);
     });
 
@@ -823,14 +823,15 @@ Multi-line details with:
       );
       
       expect(result.exitCode, 0);
-      expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
+      expect(result.stderr, contains('Usage: planner_mcp --planner-data-root=PATH --project-dir=PATH1'));
       expect(result.stderr, contains('--help'));
+      expect(result.stderr, contains('--planner-data-root'));
     });
 
     test('requires --project-dir argument', () async {
       final result = await Process.run(
         'dart',
-        ['run', 'packages/planner/bin/planner_mcp.dart'],
+        ['run', 'packages/planner/bin/planner_mcp.dart', '--planner-data-root=/tmp/test'],
         workingDirectory: Directory.current.path,
       );
       
@@ -838,10 +839,21 @@ Multi-line details with:
       expect(result.stderr, contains('--project-dir is required'));
     });
 
+    test('requires --planner-data-root argument', () async {
+      final result = await Process.run(
+        'dart',
+        ['run', 'packages/planner/bin/planner_mcp.dart', '--project-dir=${tempDir.path}'],
+        workingDirectory: Directory.current.path,
+      );
+      
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('--planner-data-root is required'));
+    });
+
     test('fails with non-existent project directory', () async {
       final result = await Process.run(
         'dart',
-        ['run', 'packages/planner/bin/planner_mcp.dart', '--project-dir=/nonexistent/path', '--db-path=:memory:'],
+        ['run', 'packages/planner/bin/planner_mcp.dart', '--project-dir=/nonexistent/path', '--planner-data-root=${tempDir.path}'],
         workingDirectory: Directory.current.path,
       );
       
@@ -849,32 +861,67 @@ Multi-line details with:
       expect(result.stderr, contains('does not exist'));
     });
 
-    test('creates .ai_coding_tool directory if missing', () async {
-      // The server creates the directory on startup
-      // We test this indirectly by checking the startup message
-      final aiToolDir = Directory(p.join(tempDir.path, '.ai_coding_tool'));
-      expect(await aiToolDir.exists(), isFalse);
+    test('starts successfully with valid planner-data-root and project-dir', () async {
+      final dataRoot = Directory(p.join(tempDir.path, 'planner-data'));
+      await dataRoot.create(recursive: true);
       
-      // Start server briefly to trigger directory creation
-      final dbPath = p.join(tempDir.path, '.ai_coding_tool', 'db.sqlite');
+      final projectDir = Directory(p.join(tempDir.path, 'my-project'));
+      await projectDir.create(recursive: true);
+      
+      // Start server briefly to verify it starts without errors
       final process = await Process.start(
         'dart',
-        ['run', 'packages/planner/bin/planner_mcp.dart', '--project-dir=${tempDir.path}', '--db-path=$dbPath'],
+        ['run', 'packages/planner/bin/planner_mcp.dart', '--project-dir=${projectDir.path}', '--planner-data-root=${dataRoot.path}'],
+        workingDirectory: Directory.current.path,
+      );
+      
+      // Collect stderr output for startup messages
+      final stderrLines = <String>[];
+      process.stderr.transform(const SystemEncoding().decoder).listen((data) {
+        stderrLines.add(data);
+      });
+      
+      // Wait for startup
+      await Future.delayed(Duration(seconds: 3));
+      
+      // Verify startup log messages indicate success
+      final stderrOutput = stderrLines.join();
+      expect(stderrOutput, contains('Planner MCP Server starting'));
+      expect(stderrOutput, contains('Planner MCP Server running'));
+      
+      process.kill();
+      await process.exitCode;
+    });
+
+    test('supports multiple --project-dir arguments', () async {
+      final dataRoot = Directory(p.join(tempDir.path, 'planner-data'));
+      await dataRoot.create(recursive: true);
+      
+      final projectDir1 = Directory(p.join(tempDir.path, 'project-a'));
+      await projectDir1.create(recursive: true);
+      final projectDir2 = Directory(p.join(tempDir.path, 'project-b'));
+      await projectDir2.create(recursive: true);
+      
+      // Start server with multiple project dirs
+      final process = await Process.start(
+        'dart',
+        [
+          'run', 'packages/planner/bin/planner_mcp.dart',
+          '--project-dir=${projectDir1.path}',
+          '--project-dir=${projectDir2.path}',
+          '--planner-data-root=${dataRoot.path}',
+        ],
         workingDirectory: Directory.current.path,
       );
       
       // Wait for startup
-      await Future.delayed(Duration(seconds: 2));
-      
-      // Check directory was created
-      expect(await aiToolDir.exists(), isTrue);
-      
-      // Check database was created
-      final dbFile = File(p.join(aiToolDir.path, 'db.sqlite'));
-      expect(await dbFile.exists(), isTrue);
+      await Future.delayed(Duration(seconds: 3));
       
       process.kill();
-      await process.exitCode;
+      // Server should start without errors (exit code from kill is not 1)
+      final exitCode = await process.exitCode;
+      // SIGTERM/SIGINT results in non-zero but that's expected from kill
+      expect(exitCode, isNot(1));
     });
   });
 }
