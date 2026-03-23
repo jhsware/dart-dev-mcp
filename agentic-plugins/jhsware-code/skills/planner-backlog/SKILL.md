@@ -13,6 +13,8 @@ Manage backlog items — features, improvements, bugs, and changes that need to 
 
 ## Workflow
 
+Each project has it's own planning database and directory structure. When planning with multiple projects, it is very important to make sure you pass the correct project to project_dir for each operation.
+
 ### Step 1 — Understand the request
 
 Parse what the user wants to add to or do with the backlog. They may:

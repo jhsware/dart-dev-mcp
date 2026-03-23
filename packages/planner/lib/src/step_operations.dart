@@ -43,7 +43,7 @@ class StepOperations {
 
     // Check task exists and get task info for logging
     final taskResult = database.select(
-        'SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
+        'SELECT id, title FROM tasks WHERE id = ?', [taskId]);
     if (taskResult.isEmpty) {
       return notFoundError('Task', taskId!);
     }
@@ -90,7 +90,7 @@ class StepOperations {
           transactionType: TransactionType.create,
           after: stepData,
         ),
-        projectId: taskInfo['project_id'] as String?,
+
       );
     });
 
@@ -139,7 +139,7 @@ class StepOperations {
 
     // Get step before update for diff calculation
     final existingResult = database.select('''
-      SELECT s.*, t.title as task_title, t.project_id
+      SELECT s.*, t.title as task_title
       FROM steps s
       JOIN tasks t ON s.task_id = t.id
       WHERE s.id = ?
@@ -150,7 +150,6 @@ class StepOperations {
 
     final existingRow = existingResult.first;
     final before = stepToLoggable(Map<String, dynamic>.from(existingRow));
-    final projectId = existingRow['project_id'] as String?;
 
     final updates = <String>[];
     final values = <Object?>[];
@@ -218,7 +217,6 @@ class StepOperations {
           changes: changes,
         ),
         changes: changes,
-        projectId: projectId,
       );
     });
 

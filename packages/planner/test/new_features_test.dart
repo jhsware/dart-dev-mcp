@@ -241,22 +241,8 @@ void main() {
       expect(text, contains('commit_hash is required'));
     });
 
-    test('uses task project_id for log entry', () {
-      final taskId = createTask('My task', projectId: 'my-project');
 
-      final result = gitLogOps.logCommit({
-        'commit_hash': 'abc123',
-        'branch': 'main',
-        'task_id': taskId,
-      });
 
-      final data = parseResult(result);
-      final logs = db.select(
-        'SELECT project_id FROM transaction_logs WHERE id = ?',
-        [data['log_entry_id']],
-      );
-      expect(logs.first['project_id'], 'my-project');
-    });
   });
 
   group('log-merge', () {

@@ -91,9 +91,6 @@ class TransactionLogEntry {
   /// ```
   final Map<String, dynamic>? changes;
 
-  /// Project ID associated with this transaction (for filtering).
-  final String? projectId;
-
   TransactionLogEntry({
     required this.id,
     required this.timestamp,
@@ -102,7 +99,6 @@ class TransactionLogEntry {
     required this.transactionType,
     required this.summary,
     this.changes,
-    this.projectId,
   });
 
   /// Create from a database row.
@@ -121,7 +117,6 @@ class TransactionLogEntry {
       transactionType: TransactionType.fromDbValue(row['transaction_type'] as String),
       summary: row['summary'] as String,
       changes: changes,
-      projectId: row['project_id'] as String?,
     );
   }
 
@@ -134,7 +129,6 @@ class TransactionLogEntry {
     'transaction_type': transactionType.toDbValue(),
     'summary': summary,
     if (changes != null) 'changes': changes,
-    if (projectId != null) 'project_id': projectId,
   };
 
   /// Convert to a minimal JSON for timeline view (no changes detail).
@@ -145,7 +139,6 @@ class TransactionLogEntry {
     'entity_id': entityId,
     'transaction_type': transactionType.toDbValue(),
     'summary': summary,
-    if (projectId != null) 'project_id': projectId,
   };
 
   @override
@@ -162,9 +155,6 @@ class TransactionLogQuery {
 
   /// Filter by transaction type.
   final TransactionType? transactionType;
-
-  /// Filter by project ID.
-  final String? projectId;
 
   /// Filter entries after this timestamp.
   final DateTime? after;
@@ -185,7 +175,6 @@ class TransactionLogQuery {
     this.entityType,
     this.entityId,
     this.transactionType,
-    this.projectId,
     this.after,
     this.before,
     this.limit = 50,

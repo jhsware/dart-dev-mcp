@@ -41,16 +41,15 @@ class GitLogOperations {
       return error;
     }
 
-    // Look up task for title and project_id
+    // Look up task for title
     final taskResult = database.select(
-        'SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
+        'SELECT id, title FROM tasks WHERE id = ?', [taskId]);
     if (taskResult.isEmpty) {
       return notFoundError('Task', taskId!);
     }
 
     final taskInfo = taskResult.first;
     final taskTitle = taskInfo['title'] as String;
-    final projectId = taskInfo['project_id'] as String?;
     final shortHash =
         commitHash!.substring(0, min(7, commitHash.length));
 
@@ -71,7 +70,6 @@ class GitLogOperations {
           'type': 'commit',
         },
       },
-      projectId: projectId,
     );
 
     return jsonResult({
@@ -104,16 +102,15 @@ class GitLogOperations {
       return error;
     }
 
-    // Look up task for title and project_id
+    // Look up task for title
     final taskResult = database.select(
-        'SELECT id, title, project_id FROM tasks WHERE id = ?', [taskId]);
+        'SELECT id, title FROM tasks WHERE id = ?', [taskId]);
     if (taskResult.isEmpty) {
       return notFoundError('Task', taskId!);
     }
 
     final taskInfo = taskResult.first;
     final taskTitle = taskInfo['title'] as String;
-    final projectId = taskInfo['project_id'] as String?;
     final shortHash =
         commitHash!.substring(0, min(7, commitHash.length));
 
@@ -131,7 +128,6 @@ class GitLogOperations {
           'type': 'merge',
         },
       },
-      projectId: projectId,
     );
 
     return jsonResult({

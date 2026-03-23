@@ -9,7 +9,7 @@ import 'transaction_log.dart';
 /// Generate a human-readable summary for timeline display.
 ///
 /// Creates concise summaries like:
-/// - "Task 'Fix bug' created in project 'myapp'"
+/// - "Task 'Fix bug' created"
 /// - "Task 'Fix bug' status changed to done"
 /// - "Step 'Write tests' added to task"
 /// - "Task 'Fix bug' deleted"
@@ -17,7 +17,6 @@ String generateSummary({
   required TransactionType transactionType,
   required EntityType entityType,
   required String entityTitle,
-  String? projectId,
   String? taskTitle,
   Map<String, dynamic>? changes,
 }) {
@@ -32,9 +31,7 @@ String generateSummary({
   switch (transactionType) {
     case TransactionType.create:
       if (entityType == EntityType.task || entityType == EntityType.item || entityType == EntityType.slate) {
-        return projectId != null
-            ? "$entityName '$truncatedTitle' created in project '$projectId'"
-            : "$entityName '$truncatedTitle' created";
+        return "$entityName '$truncatedTitle' created";
       } else {
         return taskTitle != null
             ? "$entityName '$truncatedTitle' added to task '$taskTitle'"
@@ -100,10 +97,6 @@ String? _describeChanges(Map<String, dynamic>? changes) {
 
   if (after.containsKey('memory')) {
     return 'memory updated';
-  }
-
-  if (after.containsKey('project_id')) {
-    return "moved to project '${after['project_id']}'";
   }
 
   // Generic description for other changes
@@ -217,7 +210,6 @@ Map<String, dynamic>? _cleanEntityData(Map<String, dynamic>? data) {
 Map<String, dynamic> taskToLoggable(Map<String, dynamic> task) {
   return {
     'id': task['id'],
-    'project_id': task['project_id'],
     'title': task['title'],
     'details': task['details'],
     'status': task['status'],
@@ -245,7 +237,6 @@ Map<String, dynamic> stepToLoggable(Map<String, dynamic> step) {
 Map<String, dynamic> itemToLoggable(Map<String, dynamic> item) {
   return {
     'id': item['id'],
-    'project_id': item['project_id'],
     'title': item['title'],
     'details': item['details'],
     'type': item['type'],
@@ -259,7 +250,6 @@ Map<String, dynamic> itemToLoggable(Map<String, dynamic> item) {
 Map<String, dynamic> slateToLoggable(Map<String, dynamic> slate) {
   return {
     'id': slate['id'],
-    'project_id': slate['project_id'],
     'title': slate['title'],
     'notes': slate['notes'],
     'status': slate['status'],

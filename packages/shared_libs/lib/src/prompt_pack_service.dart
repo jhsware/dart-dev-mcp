@@ -171,7 +171,7 @@ class PromptPackService {
   /// Selects the appropriate template based on whether the task title
   /// starts with "Parent:" and renders it with the task's data.
   ///
-  /// [task] should contain keys: `id`, `title`, `details`, `status`, `project_id`.
+  /// [task] should contain keys: `id`, `title`, `details`, `status`.
   /// [steps] should be a list of maps with keys: `id`, `title`, `details`, `status`, `sub_task_id`.
   String renderSubtaskPrompt({
     required Map<String, dynamic> task,
@@ -191,7 +191,6 @@ class PromptPackService {
       'task_title': title,
       'task_details': task['details']?.toString() ?? '',
       'task_status': task['status']?.toString() ?? '',
-      'project_id': task['project_id']?.toString() ?? '',
       'steps': formattedSteps,
     };
 

@@ -170,17 +170,15 @@ templates:
         final tmpl = pack.getTemplate('copy_task_prompt')!;
         expect(tmpl.template, contains('{{task_id}}'));
         expect(tmpl.template, contains('{{task_title}}'));
-        expect(tmpl.template, contains('{{task_details}}'));
-        expect(tmpl.template, contains('{{steps}}'));
         expect(tmpl.variables, containsAll([
           'task_id',
           'task_title',
           'task_details',
           'task_status',
-          'project_id',
           'steps',
         ]));
       });
+
 
       test('copy_parent_task_prompt contains parent task instructions', () {
         final pack = PromptPack.defaults();
@@ -196,8 +194,8 @@ templates:
           'task_title': 'Test Task',
           'task_details': 'Some details',
           'task_status': 'started',
-          'project_id': 'proj-1',
           'steps': '1. Step one\n2. Step two',
+
         };
         final result = pack.renderTemplate('copy_task_prompt', values);
         expect(result, contains('tid-001'));

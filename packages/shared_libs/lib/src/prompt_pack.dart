@@ -128,7 +128,6 @@ class PromptPack {
     'task_title',
     'task_details',
     'task_status',
-    'project_id',
     'steps',
   ];
 

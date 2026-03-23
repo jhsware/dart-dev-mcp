@@ -25,7 +25,6 @@ class ItemOperations {
 
   /// Add a new backlog item.
   CallToolResult addItem(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final details = args?['details'] as String?;
     final type = args?['type'] as String? ?? 'feature';
@@ -48,7 +47,6 @@ class ItemOperations {
 
     final itemData = {
       'id': id,
-      'project_id': projectId,
       'title': title,
       'details': details,
       'type': type,
@@ -61,7 +59,7 @@ class ItemOperations {
       database.execute('''
         INSERT INTO items (id, project_id, title, details, type, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [id, projectId, title, details, type, status, now, now]);
+      ''', [id, '', title, details, type, status, now, now]);
 
       transactionLogRepository.log(
         entityType: EntityType.item,
@@ -71,13 +69,11 @@ class ItemOperations {
           transactionType: TransactionType.create,
           entityType: EntityType.item,
           entityTitle: title!,
-          projectId: projectId,
         ),
         changes: calculateChanges(
           transactionType: TransactionType.create,
           after: itemData,
         ),
-        projectId: projectId,
       );
     });
 
@@ -155,7 +151,6 @@ class ItemOperations {
 
     return jsonResult({
       'id': item['id'],
-      'project_id': item['project_id'],
       'title': item['title'],
       'details': item['details'],
       'type': item['type'],
@@ -283,11 +278,9 @@ class ItemOperations {
           transactionType: TransactionType.update,
           entityType: EntityType.item,
           entityTitle: after['title'] as String,
-          projectId: after['project_id'] as String?,
           changes: changes,
         ),
         changes: changes,
-        projectId: after['project_id'] as String?,
       );
     });
 
@@ -296,7 +289,6 @@ class ItemOperations {
 
   /// List items with optional filters.
   CallToolResult listItems(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String?;
     final searchQuery = args?['search_query'] as String?;
     final type = args?['type'] as String?;
     final status = args?['status'] as String?;
@@ -352,7 +344,6 @@ class ItemOperations {
     final query = '''
       SELECT 
         i.id,
-        i.project_id,
         i.title,
         i.type,
         i.status,
@@ -370,7 +361,6 @@ class ItemOperations {
     final items = result
         .map((row) => {
               'id': row['id'],
-              'project_id': row['project_id'],
               'title': row['title'],
               'type': row['type'],
               'status': row['status'],
@@ -384,7 +374,6 @@ class ItemOperations {
       'items': items,
       'count': items.length,
       'filters': {
-        'project_id': ?projectId,
         'search_query': ?searchQuery,
         'type': ?type,
         'status': ?status,
