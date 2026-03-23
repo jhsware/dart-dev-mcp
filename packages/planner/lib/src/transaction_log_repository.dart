@@ -70,7 +70,6 @@ class TransactionLogRepository {
     required TransactionType transactionType,
     required String summary,
     Map<String, dynamic>? changes,
-    String? projectId,
   }) {
     final id = _uuid.v4();
     final now = DateTime.now().toUtc();
@@ -88,7 +87,7 @@ class TransactionLogRepository {
       transactionType.toDbValue(),
       summary,
       changesJson,
-      projectId,
+      '', // empty string for backward compat
       timestamp,
     ]);
 
@@ -100,7 +99,6 @@ class TransactionLogRepository {
       transactionType: transactionType,
       summary: summary,
       changes: changes,
-      projectId: projectId,
     );
   }
 
