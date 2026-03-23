@@ -22,7 +22,6 @@ class SlateOperations {
 
   /// Add a new slate.
   CallToolResult addSlate(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final notes = args?['notes'] as String?;
     final status = args?['status'] as String? ?? 'draft';
@@ -42,7 +41,6 @@ class SlateOperations {
 
     final slateData = {
       'id': id,
-      'project_id': projectId,
       'title': title,
       'notes': notes,
       'status': status,
@@ -55,7 +53,7 @@ class SlateOperations {
       database.execute('''
         INSERT INTO slates (id, project_id, title, notes, status, slate_date, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [id, projectId, title, notes, status, slateDate, now, now]);
+      ''', [id, '', title, notes, status, slateDate, now, now]);
 
       transactionLogRepository.log(
         entityType: EntityType.slate,
@@ -65,13 +63,11 @@ class SlateOperations {
           transactionType: TransactionType.create,
           entityType: EntityType.slate,
           entityTitle: title!,
-          projectId: projectId,
         ),
         changes: calculateChanges(
           transactionType: TransactionType.create,
           after: slateData,
         ),
-        projectId: projectId,
       );
     });
 
@@ -120,7 +116,6 @@ class SlateOperations {
 
     return jsonResult({
       'id': slate['id'],
-      'project_id': slate['project_id'],
       'title': slate['title'],
       'notes': slate['notes'],
       'status': slate['status'],
@@ -208,11 +203,9 @@ class SlateOperations {
           transactionType: TransactionType.update,
           entityType: EntityType.slate,
           entityTitle: after['title'] as String,
-          projectId: after['project_id'] as String?,
           changes: changes,
         ),
         changes: changes,
-        projectId: after['project_id'] as String?,
       );
     });
 
@@ -221,7 +214,6 @@ class SlateOperations {
 
   /// List slates with optional filters.
   CallToolResult listSlates(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String?;
     final status = args?['status'] as String?;
 
     final conditions = <String>[];
@@ -242,7 +234,6 @@ class SlateOperations {
     final query = '''
       SELECT 
         r.id,
-        r.project_id,
         r.title,
         r.notes,
         r.status,
@@ -260,7 +251,6 @@ class SlateOperations {
     final slates = result
         .map((row) => {
               'id': row['id'],
-              'project_id': row['project_id'],
               'title': row['title'],
               'notes': row['notes'],
               'status': row['status'],
@@ -275,7 +265,6 @@ class SlateOperations {
       'slates': slates,
       'count': slates.length,
       'filters': {
-        'project_id': ?projectId,
         'status': ?status,
       },
     });

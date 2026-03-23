@@ -39,7 +39,6 @@ class TaskOperations {
 
   /// Add a new task.
   CallToolResult addTask(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String? ?? '';
     final title = args?['title'] as String?;
     final details = args?['details'] as String?;
     final status = args?['status'] as String? ?? 'todo';
@@ -59,7 +58,6 @@ class TaskOperations {
 
     final taskData = {
       'id': id,
-      'project_id': projectId,
       'title': title,
       'details': details,
       'status': status,
@@ -73,7 +71,7 @@ class TaskOperations {
       database.execute('''
         INSERT INTO tasks (id, project_id, title, details, status, memory, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [id, projectId, title, details, status, memory, now, now]);
+      ''', [id, '', title, details, status, memory, now, now]);
 
       transactionLogRepository.log(
         entityType: EntityType.task,
@@ -83,13 +81,11 @@ class TaskOperations {
           transactionType: TransactionType.create,
           entityType: EntityType.task,
           entityTitle: title!,
-          projectId: projectId,
         ),
         changes: calculateChanges(
           transactionType: TransactionType.create,
           after: taskData,
         ),
-        projectId: projectId,
       );
     });
 
@@ -150,7 +146,6 @@ class TaskOperations {
 
     return jsonResult({
       'id': task['id'],
-      'project_id': task['project_id'],
       'title': task['title'],
       'details': task['details'],
       'status': task['status'],
@@ -180,11 +175,6 @@ class TaskOperations {
 
     final updates = <String>[];
     final values = <Object?>[];
-
-    if (args?.containsKey('project_id') == true) {
-      updates.add('project_id = ?');
-      values.add(args!['project_id']);
-    }
 
     if (args?.containsKey('title') == true) {
       updates.add('title = ?');
@@ -240,11 +230,9 @@ class TaskOperations {
           transactionType: TransactionType.update,
           entityType: EntityType.task,
           entityTitle: after['title'] as String,
-          projectId: after['project_id'] as String?,
           changes: changes,
         ),
         changes: changes,
-        projectId: after['project_id'] as String?,
       );
     });
 
@@ -324,11 +312,9 @@ class TaskOperations {
           transactionType: TransactionType.update,
           entityType: EntityType.task,
           entityTitle: after['title'] as String,
-          projectId: after['project_id'] as String?,
           changes: changes,
         ),
         changes: changes,
-        projectId: after['project_id'] as String?,
       );
     });
 
@@ -341,7 +327,6 @@ class TaskOperations {
 
   /// List tasks with optional filters.
   CallToolResult listTasks(Map<String, dynamic>? args) {
-    final projectId = args?['project_id'] as String?;
     final status = args?['status'] as String?;
 
     // Validate status if provided
@@ -355,9 +340,6 @@ class TaskOperations {
     final conditions = <String>[];
     final values = <Object?>[];
 
-
-
-
     if (status != null && status.isNotEmpty) {
       conditions.add('t.status = ?');
       values.add(status);
@@ -370,7 +352,6 @@ class TaskOperations {
     final query = '''
       SELECT 
         t.id,
-        t.project_id,
         t.title,
         t.status,
         t.created_at,
@@ -386,7 +367,6 @@ class TaskOperations {
     final tasks = result
         .map((row) => {
               'id': row['id'],
-              'project_id': row['project_id'],
               'title': row['title'],
               'status': row['status'],
               'step_count': row['step_count'],
@@ -399,10 +379,7 @@ class TaskOperations {
       'tasks': tasks,
       'count': tasks.length,
       'filters': {
-        // ignore: use_null_aware_elements
-        if (projectId != null) 'project_id': projectId,
-        // ignore: use_null_aware_elements
-        if (status != null) 'status': status,
+        'status': ?status,
       },
     });
   }
