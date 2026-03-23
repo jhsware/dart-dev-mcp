@@ -14,7 +14,6 @@ class TimelineOperations {
   /// Get recent activity timeline with optional filters.
   CallToolResult getTimeline(Map<String, dynamic>? args) {
     final limit = (args?['limit'] as int?) ?? 20;
-    final projectId = args?['project_id'] as String?;
     final entityTypeStr = args?['entity_type'] as String?;
     final beforeStr = args?['before'] as String?;
     final afterStr = args?['after'] as String?;
@@ -72,10 +71,7 @@ class TimelineOperations {
       'count': timeline.length,
       'filters': {
         // ignore: use_null_aware_elements
-        if (projectId != null) 'project_id': projectId,
-        // ignore: use_null_aware_elements
         if (entityTypeStr != null) 'entity_type': entityTypeStr,
-        // ignore: use_null_aware_elements
         if (beforeStr != null) 'before': beforeStr,
         // ignore: use_null_aware_elements
         if (afterStr != null) 'after': afterStr,
