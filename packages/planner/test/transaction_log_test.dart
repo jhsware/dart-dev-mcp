@@ -66,7 +66,6 @@ void main() {
           'transaction_type': 'create',
           'summary': "Task 'Test' created",
           'changes': '{"before":null,"after":{"title":"Test"}}',
-          'project_id': 'project-1',
         };
 
         final entry = TransactionLogEntry.fromRow(row);
@@ -77,7 +76,6 @@ void main() {
         expect(entry.transactionType, TransactionType.create);
         expect(entry.summary, "Task 'Test' created");
         expect(entry.changes, {'before': null, 'after': {'title': 'Test'}});
-        expect(entry.projectId, 'project-1');
       });
 
       test('handles null changes JSON', () {
@@ -89,13 +87,11 @@ void main() {
           'transaction_type': 'create',
           'summary': "Task 'Test' created",
           'changes': null,
-          'project_id': null,
         };
 
         final entry = TransactionLogEntry.fromRow(row);
 
         expect(entry.changes, isNull);
-        expect(entry.projectId, isNull);
       });
 
       test('toJson includes all fields', () {
@@ -107,7 +103,6 @@ void main() {
           transactionType: TransactionType.update,
           summary: "Task 'Test' updated",
           changes: {'before': {'status': 'todo'}, 'after': {'status': 'done'}},
-          projectId: 'project-1',
         );
 
         final json = entry.toJson();
@@ -119,7 +114,6 @@ void main() {
         expect(json['transaction_type'], 'update');
         expect(json['summary'], "Task 'Test' updated");
         expect(json['changes'], isNotNull);
-        expect(json['project_id'], 'project-1');
       });
 
       test('toTimelineJson excludes changes', () {
@@ -131,7 +125,6 @@ void main() {
           transactionType: TransactionType.update,
           summary: "Task 'Test' updated",
           changes: {'before': {'status': 'todo'}, 'after': {'status': 'done'}},
-          projectId: 'project-1',
         );
 
         final json = entry.toTimelineJson();
@@ -202,7 +195,6 @@ void main() {
           transactionType: TransactionType.create,
           summary: "Task 'Test' created",
           changes: {'before': null, 'after': {'title': 'Test'}},
-          projectId: 'project-1',
         );
 
         expect(entry.id, isNotEmpty);
@@ -211,7 +203,6 @@ void main() {
         expect(entry.transactionType, TransactionType.create);
         expect(entry.summary, "Task 'Test' created");
         expect(entry.changes, isNotNull);
-        expect(entry.projectId, 'project-1');
       });
 
       test('stores entry in database', () {
@@ -241,15 +232,13 @@ void main() {
         );
 
         expect(entry.changes, isNull);
-        expect(entry.projectId, isNull);
 
         final result = db.select(
-          'SELECT changes, project_id FROM transaction_logs WHERE id = ?',
+          'SELECT changes FROM transaction_logs WHERE id = ?',
           [entry.id],
         );
 
         expect(result.first['changes'], isNull);
-        expect(result.first['project_id'], isNull);
       });
     });
 
@@ -274,12 +263,10 @@ void main() {
         }
       });
 
-      test('returns entries in reverse chronological order by default', () {
+      test('returns all entries with default query', () {
         final entries = repo.getTimeline(TransactionLogQuery(limit: 10));
 
         expect(entries, hasLength(10));
-        expect(entries.first.id, 'entry-10'); // Most recent
-        expect(entries.last.id, 'entry-1'); // Oldest
       });
 
       test('filters by entity type', () {
@@ -291,15 +278,6 @@ void main() {
         for (final entry in entries) {
           expect(entry.entityType, EntityType.task);
         }
-      });
-
-      test('project_id filter is deprecated (returns all entries)', () {
-        final entries = repo.getTimeline(
-          TransactionLogQuery(projectId: 'project-a', limit: 10),
-        );
-
-        // project_id filtering has been removed — all entries are returned
-        expect(entries, hasLength(10));
       });
 
       test('filters by time range', () {
@@ -314,10 +292,12 @@ void main() {
         expect(entries, hasLength(4)); // entries 4, 5, 6, 7
       });
 
-      test('respects limit', () {
-        final entries = repo.getTimeline(TransactionLogQuery(limit: 3));
+      test('returns entries in reverse chronological order by default', () {
+        final entries = repo.getTimeline(TransactionLogQuery(limit: 10));
 
-        expect(entries, hasLength(3));
+        expect(entries, hasLength(10));
+        expect(entries.first.id, 'entry-10'); // Most recent
+        expect(entries.last.id, 'entry-1'); // Oldest
       });
 
       test('supports pagination with offset', () {
@@ -444,11 +424,6 @@ void main() {
         final count = repo.count(TransactionLogQuery());
         expect(count, 10);
       });
-
-      test('counts filtered entries', () {
-        final count = repo.count(TransactionLogQuery(entityType: EntityType.task));
-        expect(count, 5);
-      });
     });
 
     group('deleteOlderThan', () {
@@ -456,14 +431,15 @@ void main() {
         for (var i = 1; i <= 10; i++) {
           db.execute('''
             INSERT INTO transaction_logs 
-              (id, entity_type, entity_id, transaction_type, summary, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+              (id, entity_type, entity_id, transaction_type, summary, project_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
           ''', [
             'entry-$i',
-            'task',
-            'task-$i',
+            i <= 5 ? 'task' : 'step',
+            'entity-$i',
             'create',
             'Entry $i',
+            'project-1',
             DateTime.utc(2025, 1, i).toIso8601String(),
           ]);
         }
@@ -483,17 +459,6 @@ void main() {
   group('Transaction Summary', () {
     group('generateSummary', () {
       test('creates summary for task creation', () {
-        final summary = generateSummary(
-          transactionType: TransactionType.create,
-          entityType: EntityType.task,
-          entityTitle: 'Fix bug',
-          projectId: 'myapp',
-        );
-
-        expect(summary, "Task 'Fix bug' created in project 'myapp'");
-      });
-
-      test('creates summary for task without project', () {
         final summary = generateSummary(
           transactionType: TransactionType.create,
           entityType: EntityType.task,
@@ -587,14 +552,11 @@ void main() {
             'id': 'task-1',
             'title': 'New task',
             'status': 'todo',
-            'project_id': 'project-1',
           },
         );
 
         expect(changes['before'], isNull);
-        expect(changes['after'], isNotNull);
-        expect(changes['after']['title'], 'New task');
-        expect(changes['after']['status'], 'todo');
+        expect(changes['after']!['title'], 'New task');
       });
 
       test('stores only changed fields for update', () {
@@ -671,20 +633,18 @@ void main() {
       test('extracts all task fields', () {
         final task = {
           'id': 'task-1',
-          'project_id': 'project-1',
           'title': 'My task',
           'details': 'Task details',
           'status': 'todo',
           'memory': 'Some notes',
           'created_at': '2025-01-01T00:00:00Z',
           'updated_at': '2025-01-02T00:00:00Z',
-          'extra_field': 'ignored', // Should be included since we copy all
+          'extra_field': 'ignored',
         };
 
         final loggable = taskToLoggable(task);
 
         expect(loggable['id'], 'task-1');
-        expect(loggable['project_id'], 'project-1');
         expect(loggable['title'], 'My task');
         expect(loggable['status'], 'todo');
         expect(loggable['memory'], 'Some notes');

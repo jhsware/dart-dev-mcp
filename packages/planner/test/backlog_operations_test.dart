@@ -74,7 +74,6 @@ void main() {
     group('add-item', () {
       test('creates item with all fields', () {
         final result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Fix login bug',
           'details': 'Users cannot log in with SSO',
           'type': 'bug',
@@ -88,7 +87,6 @@ void main() {
         expect(data['item']['details'], 'Users cannot log in with SSO');
         expect(data['item']['type'], 'bug');
         expect(data['item']['status'], 'open');
-        expect(data['item']['project_id'], 'test-project');
         expect(data['item']['id'], isNotEmpty);
         expect(data['item']['created_at'], isNotEmpty);
         expect(data['item']['updated_at'], isNotEmpty);
@@ -96,7 +94,6 @@ void main() {
 
       test('uses default type and status when not provided', () {
         final result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'New feature',
         });
 
@@ -107,26 +104,15 @@ void main() {
 
       test('validates required title', () {
         final result = itemOps.addItem({
-          'project_id': 'test-project',
         });
 
         final text = resultText(result);
         expect(text, contains('title is required'));
       });
 
-      test('defaults project_id to empty string when not provided', () {
-        final result = itemOps.addItem({
-          'title': 'Some item',
-        });
-
-        final data = parseResult(result);
-        expect(data['success'], isTrue);
-        expect(data['item']['project_id'], '');
-      });
 
       test('validates type enum', () {
         final result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item',
           'type': 'invalid_type',
         });
@@ -137,7 +123,6 @@ void main() {
 
       test('validates status enum', () {
         final result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item',
           'status': 'invalid_status',
         });
@@ -148,7 +133,6 @@ void main() {
 
       test('creates transaction log entry', () {
         final result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Logged item',
         });
 
@@ -168,7 +152,6 @@ void main() {
     group('show-item', () {
       test('returns item with empty history for new item', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Show me',
         });
         final addData = parseResult(addResult);
@@ -192,7 +175,6 @@ void main() {
     group('update-item', () {
       test('updates title and records history', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Original title',
         });
         final addData = parseResult(addResult);
@@ -216,7 +198,6 @@ void main() {
 
       test('updates status and records history', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Close me',
         });
         final addData = parseResult(addResult);
@@ -240,7 +221,6 @@ void main() {
 
       test('updates multiple fields and records separate history entries', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Multi update',
           'type': 'feature',
         });
@@ -264,7 +244,6 @@ void main() {
 
       test('validates type enum on update', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item',
         });
         final addData = parseResult(addResult);
@@ -289,7 +268,6 @@ void main() {
 
       test('returns error when no fields to update', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item',
         });
         final addData = parseResult(addResult);
@@ -302,7 +280,6 @@ void main() {
 
       test('creates transaction log entry on update', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Log update',
         });
         final addData = parseResult(addResult);
@@ -325,11 +302,9 @@ void main() {
     group('list-items', () {
       test('returns items ordered by updated_at DESC', () {
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'First item',
         });
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Second item',
         });
 
@@ -342,31 +317,13 @@ void main() {
         expect(items[1]['title'], 'First item');
       });
 
-      test('returns all items regardless of project_id filter (deprecated)', () {
-        itemOps.addItem({
-          'project_id': 'project-a',
-          'title': 'Item A',
-        });
-        itemOps.addItem({
-          'project_id': 'project-b',
-          'title': 'Item B',
-        });
-
-        // project_id filter is deprecated — all items should be returned
-        final result = itemOps.listItems({'project_id': 'project-a'});
-        final data = parseResult(result);
-
-        expect(data['count'], 2);
-      });
 
       test('filters by type', () {
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Bug fix',
           'type': 'bug',
         });
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'New feature',
           'type': 'feature',
         });
@@ -380,14 +337,12 @@ void main() {
 
       test('filters by status', () {
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Open item',
         });
         final addData = parseResult(addResult);
         final itemId = addData['item']['id'] as String;
 
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Another open',
         });
 
@@ -402,17 +357,14 @@ void main() {
 
       test('search_query matches on title and details', () {
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Login bug',
           'details': 'Some details',
         });
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Other item',
           'details': 'Login related issue',
         });
         itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Unrelated',
           'details': 'Nothing here',
         });
@@ -426,7 +378,6 @@ void main() {
       test('includes slate count per item', () {
         // Create item
         final addResult = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item with slates',
         });
         final addData = parseResult(addResult);
@@ -434,13 +385,11 @@ void main() {
 
         // Create two slates and link item to both
         final rel1Result = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'Release 1',
         });
         final rel1Id = parseResult(rel1Result)['slate']['id'] as String;
 
         final rel2Result = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'Release 2',
         });
         final rel2Id = parseResult(rel2Result)['slate']['id'] as String;
@@ -463,7 +412,6 @@ void main() {
     group('add-slate', () {
       test('creates slate with all fields', () {
         final result = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'v1.0',
           'notes': 'First slate with new features',
         });
@@ -472,16 +420,13 @@ void main() {
         expect(data['success'], isTrue);
         expect(data['slate']['title'], 'v1.0');
         expect(data['slate']['notes'], 'First slate with new features');
-        expect(data['slate']['project_id'], 'test-project');
         expect(data['slate']['id'], isNotEmpty);
       });
 
-      test('validates required fields and defaults project_id', () {
-        // project_id is no longer required — should default to empty string
+      test('validates required fields', () {
         final result1 = slateOps.addSlate({'title': 'v1.0'});
         final data1 = parseResult(result1);
         expect(data1['success'], isTrue);
-        expect(data1['slate']['project_id'], '');
 
         // title is still required
         final result2 = slateOps.addSlate({});
@@ -490,7 +435,6 @@ void main() {
 
       test('creates transaction log entry', () {
         final result = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'Logged slate',
         });
 
@@ -509,7 +453,6 @@ void main() {
     group('show-slate', () {
       test('returns slate with empty items list for new slate', () {
         final addResult = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'v2.0',
         });
         final addData = parseResult(addResult);
@@ -532,7 +475,6 @@ void main() {
     group('update-slate', () {
       test('updates title and notes', () {
         final addResult = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'Old title',
           'notes': 'Old notes',
         });
@@ -560,7 +502,6 @@ void main() {
 
       test('returns error when no fields to update', () {
         final addResult = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'Release',
         });
         final addData = parseResult(addResult);
@@ -574,11 +515,9 @@ void main() {
     group('list-slates', () {
       test('returns slates ordered by updated_at DESC', () {
         slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'v1.0',
         });
         slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'v2.0',
         });
 
@@ -590,38 +529,19 @@ void main() {
         expect(slates[0]['title'], 'v2.0');
       });
 
-      test('returns all slates regardless of project_id filter (deprecated)', () {
-        slateOps.addSlate({
-          'project_id': 'project-a',
-          'title': 'Release A',
-        });
-        slateOps.addSlate({
-          'project_id': 'project-b',
-          'title': 'Release B',
-        });
-
-        // project_id filter is deprecated — all slates should be returned
-        final result = slateOps.listSlates({'project_id': 'project-a'});
-        final data = parseResult(result);
-
-        expect(data['count'], 2);
-      });
 
       test('includes item count per slate', () {
         final relResult = slateOps.addSlate({
-          'project_id': 'test-project',
           'title': 'Slate with items',
         });
         final slateId = parseResult(relResult)['slate']['id'] as String;
 
         final item1Result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item 1',
         });
         final item1Id = parseResult(item1Result)['item']['id'] as String;
 
         final item2Result = itemOps.addItem({
-          'project_id': 'test-project',
           'title': 'Item 2',
         });
         final item2Id = parseResult(item2Result)['item']['id'] as String;
@@ -643,13 +563,11 @@ void main() {
   group('Slate-Item Junction', () {
     test('add-item-to-slate links item to slate', () {
       final relResult = slateOps.addSlate({
-        'project_id': 'test-project',
         'title': 'v1.0',
       });
       final slateId = parseResult(relResult)['slate']['id'] as String;
 
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Feature X',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -672,13 +590,11 @@ void main() {
 
     test('add-item-to-slate ignores duplicate', () {
       final relResult = slateOps.addSlate({
-        'project_id': 'test-project',
         'title': 'v1.0',
       });
       final slateId = parseResult(relResult)['slate']['id'] as String;
 
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Feature X',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -696,7 +612,6 @@ void main() {
 
     test('add-item-to-slate validates slate exists', () {
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Feature X',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -710,7 +625,6 @@ void main() {
 
     test('add-item-to-slate validates item exists', () {
       final relResult = slateOps.addSlate({
-        'project_id': 'test-project',
         'title': 'v1.0',
       });
       final slateId = parseResult(relResult)['slate']['id'] as String;
@@ -724,13 +638,11 @@ void main() {
 
     test('remove-item-from-slate unlinks item', () {
       final relResult = slateOps.addSlate({
-        'project_id': 'test-project',
         'title': 'v1.0',
       });
       final slateId = parseResult(relResult)['slate']['id'] as String;
 
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Feature X',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -750,7 +662,6 @@ void main() {
     test('add-item-to-task links item to task', () {
       final taskId = createTask('My task');
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Linked item',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -773,7 +684,6 @@ void main() {
     test('add-item-to-task ignores duplicate', () {
       final taskId = createTask('My task');
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Linked item',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -790,7 +700,6 @@ void main() {
 
     test('add-item-to-task validates task exists', () {
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Item',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;
@@ -815,7 +724,6 @@ void main() {
     test('remove-item-from-task unlinks item', () {
       final taskId = createTask('My task');
       final itemResult = itemOps.addItem({
-        'project_id': 'test-project',
         'title': 'Linked item',
       });
       final itemId = parseResult(itemResult)['item']['id'] as String;

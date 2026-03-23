@@ -119,14 +119,12 @@ templates:
       String title = 'Test Task',
       String details = 'Task details here',
       String status = 'started',
-      String projectId = 'proj-1',
     }) {
       return {
         'id': id,
         'title': title,
         'details': details,
         'status': status,
-        'project_id': projectId,
       };
     }
 
@@ -178,7 +176,6 @@ templates:
           title: 'Build feature X',
           details: 'Detailed description of feature X',
           status: 'todo',
-          projectId: 'myproj',
         ),
         steps: [],
       );
@@ -285,7 +282,6 @@ templates:
           'title': 'Custom Task',
           'details': 'details',
           'status': 'todo',
-          'project_id': 'p1',
         },
         steps: [],
       );
