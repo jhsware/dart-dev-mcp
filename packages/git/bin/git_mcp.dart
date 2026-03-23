@@ -4,88 +4,49 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:git_mcp/git_mcp.dart';
 import 'package:git/git.dart';
 import 'package:mcp_dart/mcp_dart.dart';
-import 'package:path/path.dart' as p;
 
 /// Git MCP Server
 ///
 /// Provides Git operations for version control with path restrictions.
 /// Supports SSH and GPG commit signing.
+/// Allowed paths are resolved from jhsware-code.yaml per project.
 ///
-/// Usage: `dart run bin/git_mcp.dart --project-dir=PATH [allowed_paths...]`
+/// Usage: `dart run bin/git_mcp.dart --project-dir=PATH1 [--project-dir=PATH2 ...]`
 void main(List<String> arguments) async {
-  String? projectDir;
-  final allowedPathArgs = <String>[];
+  final serverArgs = ServerArguments.parse(arguments);
 
-  // Parse arguments
-  for (final arg in arguments) {
-    if (arg.startsWith('--project-dir=')) {
-      projectDir = arg.substring('--project-dir='.length);
-    } else if (arg == '--help' || arg == '-h') {
-      _printUsage();
-      exit(0);
-    } else if (!arg.startsWith('-')) {
-      allowedPathArgs.add(arg);
-    }
+  if (serverArgs.helpRequested) {
+    _printUsage();
+    exit(0);
   }
 
   // Validate required arguments
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
+  if (serverArgs.projectDirs.isEmpty) {
+    stderr.writeln('Error: at least one --project-dir is required');
     stderr.writeln('');
     _printUsage();
     exit(1);
   }
 
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
-
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
-    exit(1);
-  }
-
-  // Convert allowed paths to absolute paths (default to project path if none specified)
-  final List<String> allowedPaths;
-  if (allowedPathArgs.isNotEmpty) {
-    allowedPaths = allowedPathArgs.map((path) {
-      if (p.isAbsolute(path)) {
-        return p.normalize(path);
-      } else {
-        return p.normalize(p.join(workingDir.path, path));
-      }
-    }).toList();
-  } else {
-    // Default: allow entire project
-    allowedPaths = [workingDir.path];
-  }
-
-  // Check if it's a git repository
-  final isGitDir = await GitDir.isGitDir(workingDir.path);
-  if (!isGitDir) {
-    logWarning('git', 'Not a git repository: $projectDir. Some operations may fail.');
+  // Validate all project directories exist
+  for (final dir in serverArgs.projectDirs) {
+    final workingDir = Directory(dir);
+    if (!await workingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $dir');
+      exit(1);
+    }
   }
 
   // Detect available signing methods
   final signingInfo = await detectSigningCapabilities();
 
   logInfo('git', 'Git MCP Server starting...');
-  logInfo('git', 'Project path: ${workingDir.path}');
-  logInfo('git', 'Is git repository: $isGitDir');
-  logInfo('git', 'Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
+  logInfo('git', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('git',
+      'Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
   if (signingInfo.sshAgentSocket != null) {
     logInfo('git', 'SSH Agent: ${signingInfo.sshAgentSocket}');
   }
-  logInfo('git', 'Allowed paths: ${allowedPaths.join(", ")}');
-
-  // Create git operations handlers
-  final gitOps = GitOperations(
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-
-  final commitOps = CommitOperations(
-    workingDir: workingDir,
-    signingInfo: signingInfo,
-  );
 
   final server = McpServer(
     Implementation(name: 'git-mcp', version: '1.0.0'),
@@ -120,51 +81,68 @@ Operations:
 - signing-status: Check SSH/GPG signing configuration and status''',
     inputSchema: ToolInputSchema(
       properties: {
+        'project_dir': JsonSchema.string(
+          description:
+              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+        ),
         'operation': JsonSchema.string(
           description: 'The git operation to perform',
           enumValues: _validOperations,
         ),
         'branch': JsonSchema.string(
-          description: 'Branch name (for branch-create, branch-switch, merge)',
+          description:
+              'Branch name (for branch-create, branch-switch, merge)',
         ),
         'from': JsonSchema.string(
-          description: 'Starting point for new branch (for branch-create). Default: current HEAD',
+          description:
+              'Starting point for new branch (for branch-create). Default: current HEAD',
         ),
         'files': JsonSchema.array(
           items: JsonSchema.string(),
-          description: 'Files to stage (for add). Use ["."] for all files including untracked.',
+          description:
+              'Files to stage (for add). Use ["."] for all files including untracked.',
         ),
         'all': JsonSchema.boolean(
-          description: 'Stage all changes including untracked files (for add). Default: false',
+          description:
+              'Stage all changes including untracked files (for add). Default: false',
         ),
         'message': JsonSchema.string(
-          description: 'Commit or stash message (for commit, stash, tag-create)',
+          description:
+              'Commit or stash message (for commit, stash, tag-create)',
         ),
         'sign': JsonSchema.string(
-          description: 'Signing method for commit: "auto" (default - uses SSH if available, else GPG if available, else none), "ssh", "gpg", or "none"',
+          description:
+              'Signing method for commit: "auto" (default - uses SSH if available, else GPG if available, else none), "ssh", "gpg", or "none"',
           enumValues: ['auto', 'ssh', 'gpg', 'none'],
         ),
         'stash_index': JsonSchema.integer(
-          description: 'Stash index to apply (for stash-apply, stash-pop). Default: 0 (latest)',
+          description:
+              'Stash index to apply (for stash-apply, stash-pop). Default: 0 (latest)',
         ),
         'tag': JsonSchema.string(
           description: 'Tag name (for tag-create)',
         ),
         'annotated': JsonSchema.boolean(
-          description: 'Create an annotated tag with message (for tag-create). Default: false',
+          description:
+              'Create an annotated tag with message (for tag-create). Default: false',
         ),
         'include_untracked': JsonSchema.boolean(
-          description: 'Include untracked files in stash (for stash). Default: false',
+          description:
+              'Include untracked files in stash (for stash). Default: false',
         ),
         'max_count': JsonSchema.integer(
-          description: 'Maximum number of commits to show (for log). Default: 10',
+          description:
+              'Maximum number of commits to show (for log). Default: 10',
         ),
         'target': JsonSchema.string(
-          description: 'Target for diff comparison (for diff). Supports branch name (e.g. "main"), commit range (e.g. "main..feature"), or commit hash. When omitted, shows staged and unstaged changes.',
+          description:
+              'Target for diff comparison (for diff). Supports branch name (e.g. "main"), commit range (e.g. "main..feature"), or commit hash. When omitted, shows staged and unstaged changes.',
         ),
       },
+      required: ['project_dir'],
     ),
-    callback: (args, extra) => _handleGit(args, gitOps, commitOps, workingDir, signingInfo),
+    callback: (args, extra) =>
+        _handleGit(args, serverArgs, signingInfo),
   );
 
   final transport = StdioServerTransport();
@@ -173,14 +151,16 @@ Operations:
 }
 
 void _printUsage() {
-  stderr.writeln('Usage: git_mcp --project-dir=PATH [allowed_paths...]');
+  stderr.writeln(
+      'Usage: git_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Path to the git repository (required)');
+  stderr.writeln(
+      '  --project-dir=PATH  Path to a project directory (required, can be repeated)');
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
-  stderr.writeln('Arguments:');
-  stderr.writeln('  allowed_paths       Paths that can be staged (default: project_path)');
+  stderr.writeln(
+      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
 }
 
 const _validOperations = [
@@ -204,16 +184,40 @@ const _validOperations = [
 
 Future<CallToolResult> _handleGit(
   Map<String, dynamic> args,
-  GitOperations gitOps,
-  CommitOperations commitOps,
-  Directory workingDir,
+  ServerArguments serverArgs,
   SigningInfo signingInfo,
 ) async {
-  final operation = args['operation'] as String?;
-
-  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+  // Validate project_dir is present and valid
+  final projectDir = args['project_dir'] as String?;
+  if (requireString(projectDir, 'project_dir') case final error?) {
     return error;
   }
+  if (!serverArgs.projectDirs.contains(projectDir)) {
+    return validationError('project_dir',
+        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+  }
+
+  final operation = args['operation'] as String?;
+  if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  final workingDir = Directory(projectDir!);
+
+  // Resolve allowed paths from ProjectConfigService
+  final allowedPaths =
+      ProjectConfigService.getAllowedPaths(projectDir, 'git');
+
+  // Create operation handlers for this project
+  final gitOps = GitOperations(
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
+  final commitOps = CommitOperations(
+    workingDir: workingDir,
+    signingInfo: signingInfo,
+  );
 
   // Verify it's a git directory for most operations
   if (operation != 'status' && operation != 'signing-status') {
@@ -231,7 +235,8 @@ Future<CallToolResult> _handleGit(
       case 'status':
         return gitOps.status();
       case 'branch-create':
-        return gitOps.branchCreate(args['branch'] as String?, args['from'] as String?);
+        return gitOps.branchCreate(
+            args['branch'] as String?, args['from'] as String?);
       case 'branch-list':
         return gitOps.branchList();
       case 'branch-switch':
@@ -239,19 +244,28 @@ Future<CallToolResult> _handleGit(
       case 'merge':
         return gitOps.merge(args['branch'] as String?);
       case 'add':
-        return gitOps.add(getFilesArg(args), all: args['all'] as bool? ?? false);
+        return gitOps.add(getFilesArg(args),
+            all: args['all'] as bool? ?? false);
       case 'commit':
-        return commitOps.commit(args['message'] as String?, sign: args['sign'] as String? ?? 'auto');
+        return commitOps.commit(args['message'] as String?,
+            sign: args['sign'] as String? ?? 'auto');
       case 'stash':
-        return commitOps.stash(args['message'] as String?, includeUntracked: args['include_untracked'] as bool? ?? false);
+        return commitOps.stash(args['message'] as String?,
+            includeUntracked:
+                args['include_untracked'] as bool? ?? false);
       case 'stash-list':
         return commitOps.stashList();
       case 'stash-apply':
-        return commitOps.stashApply((args['stash_index'] as num?)?.toInt() ?? 0, pop: false);
+        return commitOps.stashApply(
+            (args['stash_index'] as num?)?.toInt() ?? 0,
+            pop: false);
       case 'stash-pop':
-        return commitOps.stashApply((args['stash_index'] as num?)?.toInt() ?? 0, pop: true);
+        return commitOps.stashApply(
+            (args['stash_index'] as num?)?.toInt() ?? 0,
+            pop: true);
       case 'tag-create':
-        return gitOps.tagCreate(args['tag'] as String?, args['message'] as String?, args['annotated'] as bool? ?? false);
+        return gitOps.tagCreate(args['tag'] as String?,
+            args['message'] as String?, args['annotated'] as bool? ?? false);
       case 'tag-list':
         return gitOps.tagList();
       case 'log':

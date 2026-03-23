@@ -3,52 +3,49 @@ import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
-import 'package:path/path.dart' as p;
 
 /// Flutter Runner MCP Server
 ///
 /// Provides Flutter program execution via FVM with polling support for long-running processes.
 ///
-/// Usage: dart run bin/flutter_runner_mcp.dart --project-dir=PATH
+/// Usage: dart run bin/flutter_runner_mcp.dart --project-dir=PATH1 [--project-dir=PATH2 ...]
 void main(List<String> arguments) async {
-  String? projectDir;
+  final serverArgs = ServerArguments.parse(arguments);
 
-  // Parse arguments
-  for (final arg in arguments) {
-    if (arg.startsWith('--project-dir=')) {
-      projectDir = arg.substring('--project-dir='.length);
-    } else if (arg == '--help' || arg == '-h') {
-      _printUsage();
-      exit(0);
-    }
+  if (serverArgs.helpRequested) {
+    _printUsage();
+    exit(0);
   }
 
-  // Default to current directory if not specified
-  projectDir ??= Directory.current.path;
-
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
-
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project path does not exist: $projectDir');
+  // Validate required arguments
+  if (serverArgs.projectDirs.isEmpty) {
+    stderr.writeln('Error: at least one --project-dir is required');
+    stderr.writeln('');
+    _printUsage();
     exit(1);
   }
 
-  // Check if it's a Flutter project
-  final pubspecFile = File(p.join(workingDir.path, 'pubspec.yaml'));
-  if (!await pubspecFile.exists()) {
-    logWarning('flutter-runner', 'No pubspec.yaml found in $projectDir - may not be a Flutter project');
+  // Validate all project directories exist
+  for (final dir in serverArgs.projectDirs) {
+    final workingDir = Directory(dir);
+    if (!await workingDir.exists()) {
+      stderr.writeln('Error: Project path does not exist: $dir');
+      exit(1);
+    }
   }
 
   // Check if FVM is available
   final fvmCheck = await Process.run('which', ['fvm']);
   final useFvm = fvmCheck.exitCode == 0;
-  
+
   if (!useFvm) {
-    logWarning('flutter-runner', 'FVM not found. Using flutter directly.');
+    logWarning(
+        'flutter-runner', 'FVM not found. Using flutter directly.');
   }
 
   logInfo('flutter-runner', 'Flutter Runner MCP Server starting...');
-  logInfo('flutter-runner', 'Project path: ${workingDir.path}');
+  logInfo('flutter-runner',
+      'Project dirs: ${serverArgs.projectDirs.join(", ")}');
   logInfo('flutter-runner', 'Using FVM: $useFvm');
 
   final sessionManager = SessionManager();
@@ -83,6 +80,10 @@ For long-running operations, a session_id is returned.
 Use get_output with the session_id to poll for output.''',
     inputSchema: ToolInputSchema(
       properties: {
+        'project_dir': JsonSchema.string(
+          description:
+              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+        ),
         'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: [
@@ -110,7 +111,8 @@ Use get_output with the session_id to poll for output.''',
         ),
         'args': JsonSchema.array(
           items: JsonSchema.string(),
-          description: 'Additional arguments to pass to the Flutter command',
+          description:
+              'Additional arguments to pass to the Flutter command',
         ),
         'session_id': JsonSchema.string(
           description:
@@ -125,9 +127,10 @@ Use get_output with the session_id to poll for output.''',
               'Maximum number of chunks to return in get_output (default: 50, max: 200)',
         ),
       },
+      required: ['project_dir'],
     ),
-    callback: (args, extra) =>
-        _handleFlutterRunner(args, extra, workingDir, sessionManager, useFvm),
+    callback: (args, extra) => _handleFlutterRunner(
+        args, extra, serverArgs, sessionManager, useFvm),
   );
 
   final transport = StdioServerTransport();
@@ -136,10 +139,12 @@ Use get_output with the session_id to poll for output.''',
 }
 
 void _printUsage() {
-  stderr.writeln('Usage: flutter_runner_mcp [--project-dir=PATH]');
+  stderr.writeln(
+      'Usage: flutter_runner_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Working directory for the project (default: current directory)');
+  stderr.writeln(
+      '  --project-dir=PATH  Path to a project directory (required, can be repeated)');
   stderr.writeln('  --help, -h          Show this help message');
 }
 
@@ -159,15 +164,27 @@ const _validOperations = [
 Future<CallToolResult> _handleFlutterRunner(
   Map<String, dynamic> args,
   RequestHandlerExtra extra,
-  Directory workingDir,
+  ServerArguments serverArgs,
   SessionManager sessionManager,
   bool useFvm,
 ) async {
-  final operation = args['operation'] as String?;
-
-  if (requireStringOneOf(operation, 'operation', _validOperations) case final error?) {
+  // Validate project_dir is present and valid
+  final projectDir = args['project_dir'] as String?;
+  if (requireString(projectDir, 'project_dir') case final error?) {
     return error;
   }
+  if (!serverArgs.projectDirs.contains(projectDir)) {
+    return validationError('project_dir',
+        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+  }
+
+  final operation = args['operation'] as String?;
+  if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  final workingDir = Directory(projectDir!);
 
   try {
     switch (operation) {
@@ -259,7 +276,8 @@ Future<CallToolResult> _handleFlutterRunner(
         final chunkIndex = (args['chunk_index'] as num?)?.toInt() ?? 0;
         final maxChunks =
             ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
-        return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
+        return _getOutput(
+            sessionManager, sessionId, chunkIndex, maxChunks);
 
       case 'list_sessions':
         return _listSessions(sessionManager);
@@ -269,7 +287,8 @@ Future<CallToolResult> _handleFlutterRunner(
         return await _cancelSession(sessionManager, sessionId);
 
       default:
-        return validationError('operation', 'Unknown operation: $operation');
+        return validationError(
+            'operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
     return errorResult('flutter-runner:$operation', e, stackTrace, {
@@ -287,7 +306,8 @@ List<String>? _getExtraArgs(Map<String, dynamic> args) {
 }
 
 /// Get the Flutter executable and arguments
-(String, List<String>) _getFlutterCommand(bool useFvm, List<String> flutterArgs) {
+(String, List<String>) _getFlutterCommand(
+    bool useFvm, List<String> flutterArgs) {
   if (useFvm) {
     return ('fvm', ['flutter', ...flutterArgs]);
   } else {
@@ -304,12 +324,14 @@ Future<CallToolResult> _startFlutterCommandWithProgress(
   String operation,
   List<String> flutterArgs,
 ) async {
-  final (executable, cmdArgs) = _getFlutterCommand(useFvm, flutterArgs);
+  final (executable, cmdArgs) =
+      _getFlutterCommand(useFvm, flutterArgs);
   final commandStr = useFvm
       ? 'fvm flutter ${flutterArgs.join(' ')}'
       : 'flutter ${flutterArgs.join(' ')}';
 
-  final sessionId = sessionManager.createSession(operation, commandStr);
+  final sessionId =
+      sessionManager.createSession(operation, commandStr);
   final session = sessionManager.getSession(sessionId)!;
 
   final outputStream = streamCommand(
@@ -330,7 +352,8 @@ Future<CallToolResult> _startFlutterCommandWithProgress(
     // Send progress notification with latest output
     await extra.sendProgress(
       chunkCount.toDouble(),
-      message: 'Running $operation... (${allOutput.length} chars received)',
+      message:
+          'Running $operation... (${allOutput.length} chars received)',
     );
   }
 
@@ -355,9 +378,12 @@ Future<CallToolResult> _runFlutterCommandSync(
   List<String> flutterArgs,
 ) async {
   try {
-    final (executable, args) = _getFlutterCommand(useFvm, flutterArgs);
-    final commandStr = useFvm ? 'fvm flutter ${flutterArgs.join(' ')}' : 'flutter ${flutterArgs.join(' ')}';
-    
+    final (executable, args) =
+        _getFlutterCommand(useFvm, flutterArgs);
+    final commandStr = useFvm
+        ? 'fvm flutter ${flutterArgs.join(' ')}'
+        : 'flutter ${flutterArgs.join(' ')}';
+
     final result = await runCommand(workingDir, executable, args);
 
     final output = StringBuffer();
@@ -404,8 +430,9 @@ CallToolResult _getOutput(
   final startIndex = chunkIndex.clamp(0, totalChunks);
   final endIndex = (startIndex + maxChunks).clamp(0, totalChunks);
 
-  final chunks =
-      startIndex < totalChunks ? session.chunks.sublist(startIndex, endIndex) : <String>[];
+  final chunks = startIndex < totalChunks
+      ? session.chunks.sublist(startIndex, endIndex)
+      : <String>[];
 
   final hasMoreChunks = endIndex < totalChunks;
   final nextChunkIndex = hasMoreChunks ? endIndex : null;
@@ -431,7 +458,8 @@ CallToolResult _getOutput(
     response['message'] =
         'More chunks available. Call get_output with chunk_index: $nextChunkIndex';
   } else if (session.isComplete && !hasMoreChunks) {
-    response['message'] = 'All output has been retrieved. Operation complete.';
+    response['message'] =
+        'All output has been retrieved. Operation complete.';
   }
 
   return textResult(jsonEncode(response));

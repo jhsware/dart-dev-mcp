@@ -3,89 +3,40 @@ import 'dart:io';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:filesystem_mcp/filesystem_mcp.dart';
-import 'package:path/path.dart' as p;
 
 /// File System MCP Server
 ///
 /// Provides file system operations with restricted access to allowed paths.
+/// Allowed paths are resolved from jhsware-code.yaml per project.
 ///
-/// Usage: `dart run bin/file_edit_mcp.dart --project-dir=PATH <allowed_path1> [allowed_path2] ...`
+/// Usage: `dart run bin/file_edit_mcp.dart --project-dir=PATH1 [--project-dir=PATH2 ...]`
 void main(List<String> arguments) async {
-  String? projectDir;
-  final allowedPathArgs = <String>[];
+  final serverArgs = ServerArguments.parse(arguments);
 
-  // Parse arguments
-  for (final arg in arguments) {
-    if (arg.startsWith('--project-dir=')) {
-      projectDir = arg.substring('--project-dir='.length);
-    } else if (arg == '--help' || arg == '-h') {
-      _printUsage();
-      exit(0);
-    } else if (!arg.startsWith('-')) {
-      allowedPathArgs.add(arg);
-    }
+  if (serverArgs.helpRequested) {
+    _printUsage();
+    exit(0);
   }
 
   // Validate required arguments
-  if (projectDir == null || projectDir.isEmpty) {
-    stderr.writeln('Error: --project-dir is required');
+  if (serverArgs.projectDirs.isEmpty) {
+    stderr.writeln('Error: at least one --project-dir is required');
     stderr.writeln('');
     _printUsage();
     exit(1);
   }
 
-  if (allowedPathArgs.isEmpty) {
-    stderr.writeln('Error: At least one allowed path is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
-
-  final workingDir = Directory(p.normalize(p.absolute(projectDir)));
-
-  if (!await workingDir.exists()) {
-    stderr.writeln('Error: Project directory does not exist: $projectDir');
-    exit(1);
-  }
-
-  // Convert allowed paths to absolute paths
-  final allowedPaths = <String>[];
-  for (final arg in allowedPathArgs) {
-    final absolutePath = p.isAbsolute(arg)
-        ? p.normalize(arg)
-        : p.normalize(p.join(workingDir.path, arg));
-
-    final dir = Directory(absolutePath);
-    final file = File(absolutePath);
-
-    final dirExists = await dir.exists();
-    final fileExists = await file.exists();
-
-    if (!dirExists && !fileExists) {
-      logWarning('fs', 'Path does not exist: $arg');
+  // Validate all project directories exist
+  for (final dir in serverArgs.projectDirs) {
+    final workingDir = Directory(dir);
+    if (!await workingDir.exists()) {
+      stderr.writeln('Error: Project directory does not exist: $dir');
+      exit(1);
     }
-
-    allowedPaths.add(absolutePath);
   }
-
-  if (allowedPaths.isEmpty) {
-    stderr.writeln('Error: No valid paths provided');
-    exit(1);
-  }
-
-  // Create operation handlers
-  final readOps = FileReadOperations(
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final writeOps = FileWriteOperations(
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
 
   logInfo('fs', 'File Edit MCP Server starting...');
-  logInfo('fs', 'Project directory: ${workingDir.path}');
-  logInfo('fs', 'Allowed paths: ${allowedPaths.join(", ")}');
+  logInfo('fs', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
 
   final server = McpServer(
     Implementation(name: 'file-edit-mcp', version: '1.0.0'),
@@ -112,6 +63,10 @@ Operations:
 - extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)''',
     inputSchema: ToolInputSchema(
       properties: {
+        'project_dir': JsonSchema.string(
+          description:
+              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+        ),
         'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: _validOperations,
@@ -156,8 +111,9 @@ Operations:
               'For extract: whether to remove extracted lines from source file. Default: true (cut). Set false to copy.',
         ),
       },
+      required: ['project_dir'],
     ),
-    callback: (args, extra) => _handleFileSystem(args, readOps, writeOps),
+    callback: (args, extra) => _handleFileSystem(args, serverArgs),
   );
 
   final transport = StdioServerTransport();
@@ -167,15 +123,17 @@ Operations:
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: file_edit_mcp --project-dir=PATH <allowed_path1> [allowed_path2] ...');
+      'Usage: file_edit_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]');
   stderr.writeln('');
   stderr.writeln('Options:');
-  stderr.writeln('  --project-dir=PATH  Working directory for the project (required)');
+  stderr.writeln(
+      '  --project-dir=PATH  Path to a project directory (required, can be repeated)');
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
-  stderr.writeln('Arguments:');
-  stderr.writeln('  allowed_paths       Paths that can be accessed (relative to project-dir)');
+  stderr.writeln(
+      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
 }
+
 const _validOperations = [
   'list-content',
   'read-file',
@@ -187,12 +145,20 @@ const _validOperations = [
   'extract',
 ];
 
-
 Future<CallToolResult> _handleFileSystem(
   Map<String, dynamic> args,
-  FileReadOperations readOps,
-  FileWriteOperations writeOps,
+  ServerArguments serverArgs,
 ) async {
+  // Validate project_dir is present and valid
+  final projectDir = args['project_dir'] as String?;
+  if (requireString(projectDir, 'project_dir') case final error?) {
+    return error;
+  }
+  if (!serverArgs.projectDirs.contains(projectDir)) {
+    return validationError('project_dir',
+        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+  }
+
   final operation = args['operation'] as String?;
   final path = args['path'] as String? ?? '.';
 
@@ -200,6 +166,21 @@ Future<CallToolResult> _handleFileSystem(
       case final error?) {
     return error;
   }
+
+  // Resolve allowed paths from ProjectConfigService
+  final workingDir = Directory(projectDir!);
+  final allowedPaths =
+      ProjectConfigService.getAllowedPaths(projectDir, 'filesystem');
+
+  // Create operation handlers for this project
+  final readOps = FileReadOperations(
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
+  final writeOps = FileWriteOperations(
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
 
   try {
     switch (operation) {
@@ -213,7 +194,8 @@ Future<CallToolResult> _handleFileSystem(
         final pattern = args['pattern'] as String?;
         final filePattern = args['file-pattern'] as String?;
         final caseSensitive = args['case-sensitive'] as bool? ?? true;
-        return await readOps.searchText(path, pattern, filePattern, caseSensitive);
+        return await readOps.searchText(
+            path, pattern, filePattern, caseSensitive);
       case 'create-directory':
         return await writeOps.createDirectory(path);
       case 'create-file':
@@ -231,7 +213,12 @@ Future<CallToolResult> _handleFileSystem(
         final insertAt = args['insert_at'] as int?;
         final removeFromSource = args['remove_from_source'] as bool? ?? true;
         return await writeOps.extractLines(
-          path, destination, startLine, endLine, insertAt, removeFromSource,
+          path,
+          destination,
+          startLine,
+          endLine,
+          insertAt,
+          removeFromSource,
         );
       default:
         return validationError('operation', 'Unknown operation: $operation');
