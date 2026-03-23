@@ -11,9 +11,11 @@ export 'src/http_client.dart';
 export 'src/line_endings.dart';
 export 'src/logging.dart';
 export 'src/path_helpers.dart';
-export 'src/prompt_pack.dart';
+export 'src/project_config.dart';
+
 export 'src/prompt_pack_service.dart';
 export 'src/result_helpers.dart';
+export 'src/server_arguments.dart';
 export 'src/session_manager.dart';
 export 'src/sqlite_helpers.dart';
 export 'src/validation.dart';

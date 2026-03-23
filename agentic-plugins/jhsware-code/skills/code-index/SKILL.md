@@ -149,3 +149,7 @@ After indexing, these operations are available for exploring the codebase:
 - **File read fails**: Skip the file and continue with the next. Report skipped files at the end.
 - **index-file fails**: Check that `path` and `name` are provided (required fields). Retry once, then skip and report.
 - **Large file**: If a file is too large to fit in context, focus on extracting exports and imports (the most useful parts for search). Skip detailed parameter extraction if needed.
+
+## Tool Reference
+
+All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.

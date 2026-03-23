@@ -60,7 +60,6 @@ When given specific file paths to index:
 - If `auto-index` or `index-file` fails, check that `path` is provided. Retry once, then skip.
 - Report any skipped files at the end of the batch
 
-## Available Exploration Operations
+## Tool Reference
 
-After indexing, agents can use these operations to explore the codebase efficiently: `overview`, `file-summary`, `search`, `show-file`, `dependents`, `dependencies`, `search-annotations`, `stats`. See the code-index SKILL.md for detailed documentation of each operation.
-
+All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.

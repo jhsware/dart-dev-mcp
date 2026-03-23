@@ -1,4 +1,4 @@
-import 'package:jhsware_code_shared_libs/shared_libs.dart';
+import 'package:jhsware_code_shared_libs/src/prompt_pack.dart';
 import 'package:test/test.dart';
 
 void main() {

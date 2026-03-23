@@ -5,33 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Default to production mode (installed binaries)
 DEV_MODE=false
-PROJECT_DIR=""
-ACCESS_DEFAULT=false
-
-# Default allowed paths for fs and git operations
-DEFAULT_ALLOWED_PATHS=(
-  "./lib"
-  "./bin"
-  "./test"
-  "./docs"
-  "./pubspec.yaml"
-  "./README.md"
-  "./CHANGELOG.md"
-  "./.env.in"
-  "./.gitignore"
-  "./.github"
-  "./macos"
-  "git:./pubspec.lock"
-  "./packages"
-  "./claude.sh"
-  "./build.sh"
-)
+PROJECT_DIRS=()
 
 __help_text__=$(cat <<EOF
 Dart Dev MCP - Claude Desktop Launcher
 =======================================
 
-Usage: $0 <servers> [options] [allowed_paths...]
+Usage: $0 <servers> [options]
 
 Servers (comma-separated):
   fs          File system editing tools
@@ -47,18 +27,11 @@ Servers (comma-separated):
   all         Enable all servers
 
 Options:
-  --help              Show this help message
-  --development       Use dart run with source files (for development)
-  --project-dir=PATH  Working directory for the project (default: current directory)
-  --access-default    Include all default allowed paths, append any extra paths
-
-Arguments:
-  allowed_paths   Paths that fs and git servers can access (relative to project-dir)
-                  Default: ${DEFAULT_ALLOWED_PATHS[*]}
-
-Path Prefixes:
-  git:<path>      Path is only passed to git server (not file editing)
-                  Example: git:./docs - allows git staging of docs but not editing
+  --help                    Show this help message
+  --development             Use dart run with source files (for development)
+  --project-dir=PATH        Project directory (can be specified multiple times)
+  --planner-data-root=PATH  Root directory for planner/code-index databases
+                            DB path inferred as: [root]/projects/[dir-name]/db/planner.db
 
 SSH Signing:
   For SSH commit signing to work with passphrase-protected keys, make sure
@@ -68,45 +41,28 @@ SSH Signing:
   On macOS, to persist across reboots:
     ssh-add --apple-use-keychain ~/.ssh/id_rsa
 
+Allowed paths:
+  File system and git allowed paths are now configured per-project via
+  jhsware-code.yaml in each project directory.
+
 Examples:
-  # Launch with file system tools (using installed binaries)
-  $0 fs ./lib ./bin ./test ./pubspec.yaml ./README.md
+  # Launch with all tools for a single project
+  $0 all --project-dir=/path/to/project --planner-data-root=~/planner-data
 
-  # Launch in development mode (using dart run)
-  $0 --development fs ./lib ./bin ./test
+  # Launch with multiple project directories
+  $0 all --project-dir=/path/to/project1 --project-dir=/path/to/project2 --planner-data-root=~/planner-data
 
-  # Launch with a specific project directory
-  $0 --project-dir=/path/to/project all
+  # Launch in development mode
+  $0 --development all --project-dir=/path/to/project --planner-data-root=~/planner-data
 
-  # Launch with fetch tools
-  $0 fetch
-
-  # Launch with Dart runner for current project
-  $0 dart
-
-  # Launch with Git tools for current project
-  $0 git
-
-  # Launch with all tools
-  $0 all ./lib ./bin ./test
-
-  # Launch with multiple servers
-  $0 fs,dart,fetch ./lib ./bin ./test
-
-  # Allow editing lib/bin/test but only git staging for docs
-  $0 all ./lib ./bin ./test git:./docs git:./scripts
-
-  # Launch with default paths plus extra directories
-  $0 all --access-default ./agentic-plugins/my-plugin /extra/dir
-
-  # Launch with default paths only (same as no paths)
-  $0 all --access-default
+  # Launch with specific servers
+  $0 fs,dart,git --project-dir=/path/to/project
 EOF
 )
 
 # Parse arguments
 SERVERS=""
-PATHS=()
+PLANNER_DATA_ROOT=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -119,11 +75,11 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --project-dir=*)
-      PROJECT_DIR="${1#*=}"
+      PROJECT_DIRS+=("${1#*=}")
       shift
       ;;
-    --access-default)
-      ACCESS_DEFAULT=true
+    --planner-data-root=*)
+      PLANNER_DATA_ROOT="${1#*=}"
       shift
       ;;
     --*)
@@ -134,7 +90,9 @@ while [[ $# -gt 0 ]]; do
       if [ -z "$SERVERS" ]; then
         SERVERS="$1"
       else
-        PATHS+=("$1")
+        echo "Unknown positional argument: $1" >&2
+        echo "Allowed paths are now configured via jhsware-code.yaml in each project directory." >&2
+        exit 1
       fi
       shift
       ;;
@@ -146,27 +104,8 @@ if [ -z "$SERVERS" ]; then
   exit 0
 fi
 
-# Resolve allowed paths based on --access-default flag
-if [ "$ACCESS_DEFAULT" = true ]; then
-  # Prepend default paths to any user-provided paths
-  PATHS=("${DEFAULT_ALLOWED_PATHS[@]}" "${PATHS[@]}")
-elif [ ${#PATHS[@]} -eq 0 ]; then
-  PATHS=("${DEFAULT_ALLOWED_PATHS[@]}")
-fi
-
-# Use current directory if project dir not specified
-if [ -z "$PROJECT_DIR" ]; then
-  PROJECT_DIR="$(pwd)"
-fi
-
-# Convert to absolute path
-if [[ "$PROJECT_DIR" != /* ]]; then
-  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
-fi
-
-# Verify project directory exists
-if [ ! -d "$PROJECT_DIR" ]; then
-  echo "Error: Project directory does not exist: $PROJECT_DIR" >&2
+if [ ${#PROJECT_DIRS[@]} -eq 0 ]; then
+  echo "Error: at least one --project-dir is required" >&2
   exit 1
 fi
 
@@ -244,54 +183,6 @@ check_ssh_agent_identities() {
   return $?
 }
 
-# Convert paths to absolute paths relative to a base directory
-# Usage: get_absolute_paths <base_dir> <paths...>
-get_absolute_paths() {
-  local base_dir="$1"
-  shift
-  local paths=("$@")
-  local abs_paths=()
-  
-  for path in "${paths[@]}"; do
-    if [[ "$path" = /* ]]; then
-      # Already absolute
-      abs_paths+=("$path")
-    else
-      # Make absolute relative to base_dir
-      abs_paths+=("$(cd "$base_dir" 2>/dev/null && realpath -m "$path" 2>/dev/null || echo "$base_dir/$path")")
-    fi
-  done
-  
-  echo "${abs_paths[@]}"
-}
-
-# Filter paths by prefix and return clean paths
-# Usage: filter_paths <prefix> <paths...>
-# prefix: "git:" for git-only paths, "" for regular paths
-# Returns paths that match (with prefix removed) or don't have any prefix
-filter_paths() {
-  local filter_prefix="$1"
-  shift
-  local paths=("$@")
-  local filtered=()
-  
-  for path in "${paths[@]}"; do
-    if [[ "$filter_prefix" == "git:" ]]; then
-      # Return git-only paths (strip prefix)
-      if [[ "$path" == git:* ]]; then
-        filtered+=("${path#git:}")
-      fi
-    else
-      # Return regular paths (no prefix)
-      if [[ "$path" != git:* ]]; then
-        filtered+=("$path")
-      fi
-    fi
-  done
-  
-  echo "${filtered[@]}"
-}
-
 # Output server command configuration based on mode
 # Usage: output_server_cmd <binary_name> <dart_source> [env_json] [args...]
 # If env_json is "null", no env block is added
@@ -356,32 +247,32 @@ output_server_cmd() {
   fi
 }
 
+# Build --project-dir args array
+build_project_dir_args() {
+  local args=()
+  for dir in "${PROJECT_DIRS[@]}"; do
+    args+=("--project-dir=$dir")
+  done
+  echo "${args[@]}"
+}
+
 # Build MCP servers configuration
 build_mcp_config() {
   local servers="$1"
   local ssh_agent_socket="$2"
   shift 2
-  local paths=("$@")
-  
-  # Use PROJECT_DIR as the project path
-  local project_path="$PROJECT_DIR"
-  
-  # Separate regular paths from git-only paths
-  local regular_paths=($(filter_paths "" "${paths[@]}"))
-  local git_only_paths=($(filter_paths "git:" "${paths[@]}"))
-  
-  # Convert to absolute paths
-  local abs_regular_paths=($(get_absolute_paths "$project_path" "${regular_paths[@]}"))
-  local abs_git_only_paths=($(get_absolute_paths "$project_path" "${git_only_paths[@]}"))
-  
-  # Git gets both regular and git-only paths
-  local abs_git_paths=("${abs_regular_paths[@]}" "${abs_git_only_paths[@]}")
   
   # Build env JSON for git server (includes SSH_AUTH_SOCK)
   local git_env="null"
   if [ -n "$ssh_agent_socket" ]; then
     git_env="\"env\": { \"SSH_AUTH_SOCK\": \"$ssh_agent_socket\" }"
   fi
+
+  # Build project-dir args
+  local project_dir_args=()
+  for dir in "${PROJECT_DIRS[@]}"; do
+    project_dir_args+=("--project-dir=$dir")
+  done
   
   # Start JSON
   echo '{'
@@ -394,16 +285,15 @@ build_mcp_config() {
     servers="fs,fetch,dart,flutter,git,planner,code-index,apple-mail"
   fi
   
-  # File System Server - uses --project-dir and regular paths only (not git-only)
+  # File System Server
   if [[ "$servers" == *"fs"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "null" "--project-dir=$project_path" "${abs_regular_paths[@]}"
+    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
-
 
   # Fetch Server
   if [[ "$servers" == *"fetch"* ]]; then
@@ -415,58 +305,53 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Dart Runner Server - uses --project-dir
+  # Dart Runner Server
   if [[ "$servers" == *"dart"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-dart-runner": {'
-    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
   
-  # Flutter Runner Server - uses --project-dir
+  # Flutter Runner Server
   if [[ "$servers" == *"flutter"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-flutter-runner": {'
-    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
   
-  # Git Server - uses --project-dir AND all paths (regular + git-only) for staging
-  # Also includes SSH_AUTH_SOCK for SSH signing
+  # Git Server (includes SSH_AUTH_SOCK for SSH signing)
   if [[ "$servers" == *"git"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
     echo '    "dart-dev-mcp-git": {'
-    output_server_cmd "git-mcp" "git_mcp.dart" "$git_env" "--project-dir=$project_path" "${abs_git_paths[@]}"
+    output_server_cmd "git-mcp" "git_mcp.dart" "$git_env" "${project_dir_args[@]}"
     echo '    }'
   fi
   
-  # Planner Server - uses --project-dir for task/step management
+  # Planner Server
   if [[ "$servers" == *"planner"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    project_name=$(basename "$project_path")
-    
     echo '    "dart-dev-mcp-planner": {'
-    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/se.urbantalk.planner-app/projects/$project_name/db/planner.db"
+    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--planner-data-root=$PLANNER_DATA_ROOT" "${project_dir_args[@]}"
     echo '    }'
   fi
 
-  # Code Index Server - uses --project-dir and --db-path
+  # Code Index Server
   if [[ "$servers" == *"code-index"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
 
-    project_name=$(basename "$project_path")
-
     echo '    "dart-dev-mcp-code-index": {'
-    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--project-dir=$project_path" "--db-path=$HOME/Library/Application Support/se.urbantalk.planner-app/projects/$project_name/db/code_index.db" "${abs_regular_paths[@]}"
+    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--planner-data-root=$PLANNER_DATA_ROOT" "${project_dir_args[@]}"
     echo '    }'
   fi
 
@@ -486,7 +371,7 @@ build_mcp_config() {
     first=false
     
     echo '    "nix-infra-dev-mcp": {'
-    output_server_cmd "nix-infra-dev-mcp" "nix_infra_dev_mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "nix-infra-dev-mcp" "nix_infra_dev_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
 
@@ -496,7 +381,7 @@ build_mcp_config() {
     first=false
     
     echo '    "nix-infra-machine-mcp": {'
-    output_server_cmd "nix-infra-machine-mcp" "nix_infra_machine_mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "nix-infra-machine-mcp" "nix_infra_machine_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
 
@@ -506,7 +391,7 @@ build_mcp_config() {
     first=false
     
     echo '    "nix-infra-cluster-mcp": {'
-    output_server_cmd "nix-infra-cluster-mcp" "nix_infra_cluster_mcp.dart" "null" "--project-dir=$project_path"
+    output_server_cmd "nix-infra-cluster-mcp" "nix_infra_cluster_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
   
@@ -520,17 +405,9 @@ if [ "$DEV_MODE" = true ]; then
 else
   echo "Configuring Claude Desktop with MCP servers: $SERVERS"
 fi
-echo "Project directory: $PROJECT_DIR"
-
-# Show path summary
-regular_paths=($(filter_paths "" "${PATHS[@]}"))
-git_only_paths=($(filter_paths "git:" "${PATHS[@]}"))
-
-if [ ${#regular_paths[@]} -gt 0 ]; then
-  echo "Allowed paths (fs + git): ${regular_paths[*]}"
-fi
-if [ ${#git_only_paths[@]} -gt 0 ]; then
-  echo "Allowed paths (git only): ${git_only_paths[*]}"
+echo "Project directories: ${PROJECT_DIRS[*]}"
+if [ -n "$PLANNER_DATA_ROOT" ]; then
+  echo "Planner data root: $PLANNER_DATA_ROOT"
 fi
 
 # Check SSH agent for git signing
@@ -565,7 +442,17 @@ if [[ "$SERVERS" == *"git"* ]] || [[ "$SERVERS" == *"all"* ]]; then
   fi
 fi
 
-build_mcp_config "$SERVERS" "$SSH_AGENT_SOCKET" "${PATHS[@]}" > "$PATH_TO_CLAUDE/claude_desktop_config.json"
+# Warn if planner/code-index requested without planner-data-root
+if [[ "$SERVERS" == *"planner"* ]] || [[ "$SERVERS" == *"code-index"* ]] || [[ "$SERVERS" == *"all"* ]]; then
+  if [ -z "$PLANNER_DATA_ROOT" ]; then
+    echo ""
+    echo "Warning: --planner-data-root is required for planner and code-index servers" >&2
+    echo "  Example: --planner-data-root=\"\$HOME/Library/Application Support/se.urbantalk.planner-app\"" >&2
+    exit 1
+  fi
+fi
+
+build_mcp_config "$SERVERS" "$SSH_AGENT_SOCKET" > "$PATH_TO_CLAUDE/claude_desktop_config.json"
 
 echo ""
 echo "Configuration written to: $PATH_TO_CLAUDE/claude_desktop_config.json"
