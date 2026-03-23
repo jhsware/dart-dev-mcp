@@ -89,6 +89,8 @@ class StepOperations {
         changes: calculateChanges(
           transactionType: TransactionType.create,
           after: stepData,
+        ),
+
       );
     });
 
