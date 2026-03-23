@@ -44,4 +44,6 @@ When you need to analyze many files (more than ~10), spawn code-index-agent sub-
 - **Batch size**: 5-10 files per sub-agent to stay within context limits
 - **When to use**: When exploring a new area of the codebase, when the task touches many modules, or when you need to understand cross-cutting patterns
 - **What to ask sub-agents**: Ask focused questions — e.g., "What are the public APIs in these files?" or "What patterns are used for error handling in these files?"
-- **Collect results**: Gather sub-agent summaries before making planning decisions
+## Tool Reference
+
+All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.

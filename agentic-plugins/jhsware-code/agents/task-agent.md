@@ -10,3 +10,4 @@ skills:
 ---
 - only use filesystem tool for file access
 - only use git tool for git commits
+- All tool calls MUST include the `project_dir` parameter matching one of the registered project directories

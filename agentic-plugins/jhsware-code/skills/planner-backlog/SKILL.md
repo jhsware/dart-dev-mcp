@@ -79,6 +79,8 @@ After creating or updating items, list items to confirm the changes were applied
 
 ## Tool Reference
 
+All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.
+
 Use filesystem (dart-dev-mcp-fs) to read, search and edit files.
 Use git (dart-dev-mcp-git) for git operations.
 Use flutter (dart-dev-mcp-flutter-runner) or dart (dart-dev-mcp-dart-runner) to run code test, analyze or build the project.
