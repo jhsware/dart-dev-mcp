@@ -136,7 +136,7 @@ Task: {{task_title}}
 
 {{task_details}}
 
-Steps:
+## Steps to perform
 {{steps}}
 
 Implement this task. Use planner (dart-dev-mcp-planner) to find the task and steps. Start by updating the task status to started. Double check that the step hasn't been completed by another task. When working on a step first change step status to started.
@@ -163,7 +163,7 @@ To work on this parent task, process each step in order:
 2. Complete the sub-task fully (implement, test, commit) before marking the step as done.
 3. Update task memory with progress after each step.
 
-Steps:
+## Steps to perform
 {{steps}}
 
 Implement this parent task. Use planner (dart-dev-mcp-planner) to find the task and steps. Start by updating the task status to started. For each step, use get-subtask-prompt to fetch the sub-task details, then complete the sub-task before marking the step as done. Update task memory as you progress.

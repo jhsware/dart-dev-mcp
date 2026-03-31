@@ -91,6 +91,8 @@ Create tasks using `planner` with operation `add-task`. Each task must have:
   - If planning from a slate: `## Backlog Items` — list the item IDs and titles this task addresses
 - **status**: Set to `draft`
 
+> **IMPORTANT: Do NOT include step descriptions in the task details.** The details section should only contain background, purpose, files involved, backlog items, and acceptance criteria. Steps are added separately via `add-step` operations and will appear under a dedicated `## Steps to perform` header in the task execution prompt. Including step content in details confuses the LLM during task execution because it cannot distinguish between task context and actual steps to perform.
+
 ### Adding steps to tasks
 
 Add steps using `planner` with operation `add-step`. Each step should have:

@@ -7,6 +7,10 @@ model: opus
 
 ultrathink
 
+The task prompt contains two distinct sections:
+- **Task context** — title, details (background, purpose, files, acceptance criteria). This is reference information.
+- **`## Steps to perform`** — the numbered list of actual steps to execute. Only perform steps listed under this header.
+
 If the title of the task start with "Parent:" it is a parent task:
 - use skill /planner-do-parent-task and pass the task prompt
 

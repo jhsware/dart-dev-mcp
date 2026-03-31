@@ -9,6 +9,10 @@ agent: task-agent
 
 ultrathink
 
+The task prompt contains two distinct sections:
+- **Task context** — title, details (background, purpose, files, acceptance criteria). This is reference information.
+- **`## Steps to perform`** — the numbered list of actual steps to execute. Only perform steps listed under this header.
+
 When working on a task:
 - [ ] Step 1: Set task status to started
 - [ ] Step 2: Make sure we are on master and create a branch
