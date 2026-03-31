@@ -2,6 +2,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLANNER_DATA_ROOT=${SSH_KEY:-"$HOME/Library/Application Support/se.urbantalk.planner-app"}
+
+SERVERS=""
 
 # Default to production mode (installed binaries)
 DEV_MODE=false
@@ -61,8 +64,6 @@ EOF
 )
 
 # Parse arguments
-SERVERS=""
-PLANNER_DATA_ROOT=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
