@@ -6,7 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'planner.dart';
 
 /// Valid item types.
-const validItemTypes = ['feature', 'improvement', 'bug', 'change'];
+const validItemTypes = ['feature', 'improvement', 'bug', 'change', 'investigation'];
 
 /// Valid item statuses.
 const validItemStatuses = ['open', 'closed', 'archived'];

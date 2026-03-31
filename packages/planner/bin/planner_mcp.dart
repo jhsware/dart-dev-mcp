@@ -132,7 +132,7 @@ Operations:
 
 Task statuses: backlog, todo, draft, started, canceled, done, merged
 Step statuses: todo, started, canceled, done
-Item types: feature, improvement, bug, change
+Item types: feature, improvement, bug, change, investigation
 Item statuses: open, closed, archived
 Slate statuses: draft, todo, started, done, released
 
@@ -221,8 +221,8 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
               'Step ID associated with a git commit (for log-commit, optional)',
         ),
         'type': JsonSchema.string(
-          description: 'Item type: feature, improvement, bug, change',
-          enumValues: ['feature', 'improvement', 'bug', 'change'],
+          description: 'Item type: feature, improvement, bug, change, investigation',
+          enumValues: ['feature', 'improvement', 'bug', 'change', 'investigation'],
         ),
         'notes': JsonSchema.string(
           description: 'Slate notes (markdown)',
