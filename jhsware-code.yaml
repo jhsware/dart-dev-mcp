@@ -10,6 +10,7 @@ filesystem:
   - ./.gitignore
   - ./.github
   - ./packages
+  - ./agentic-plugins
   - ./claude.sh
   - ./build.sh
 git:
@@ -25,5 +26,6 @@ git:
   - ./.github
   - ./pubspec.lock
   - ./packages
+  - ./agentic-plugins
   - ./claude.sh
   - ./build.sh
