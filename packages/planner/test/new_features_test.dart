@@ -425,6 +425,230 @@ void main() {
       final updateData = parseResult(updateResult);
 
       expect(updateData['sub_task_id'], isNull);
+  });
+
+  group('migration v7 - add missing added_at columns', () {
+    test('adds added_at column to task_items when missing', () async {
+      // Create a separate database to simulate external tool scenario
+      final migrationTempDir = await Directory.systemTemp
+          .createTemp('planner_migration_v7_test_');
+      final migrationDbPath = p.join(migrationTempDir.path, 'test.db');
+
+      // Step 1: Manually create a database at schema version 6 with
+      // task_items and slate_items tables missing the added_at column,
+      // simulating what an external tool (e.g. viewer app) would create.
+      final rawDb = sqlite3.open(migrationDbPath);
+      rawDb.execute('PRAGMA journal_mode=WAL');
+      rawDb.execute('PRAGMA foreign_keys=ON');
+
+      // Create schema_metadata and set version to 6
+      rawDb.execute('''
+        CREATE TABLE schema_metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      final now = DateTime.now().toUtc().toIso8601String();
+      rawDb.execute('''
+        INSERT INTO schema_metadata (key, value, updated_at)
+        VALUES ('schema_version', '6', ?)
+      ''', [now]);
+
+      // Create required tables (tasks, steps, items, etc.)
+      rawDb.execute('''
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          details TEXT,
+          status TEXT NOT NULL DEFAULT 'todo',
+          memory TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      rawDb.execute('''
+        CREATE TABLE steps (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          details TEXT,
+          status TEXT NOT NULL DEFAULT 'todo',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          sort_order INTEGER,
+          sub_task_id TEXT,
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      ''');
+      rawDb.execute('''
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          details TEXT,
+          type TEXT NOT NULL DEFAULT 'feature',
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      rawDb.execute('''
+        CREATE TABLE item_history (
+          id TEXT PRIMARY KEY,
+          item_id TEXT NOT NULL,
+          field_name TEXT NOT NULL,
+          old_value TEXT,
+          new_value TEXT,
+          changed_at TEXT NOT NULL,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+      rawDb.execute('''
+        CREATE TABLE slates (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          notes TEXT,
+          status TEXT NOT NULL DEFAULT 'draft',
+          slate_date TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+
+      // Create task_items WITHOUT added_at (simulating external tool)
+      rawDb.execute('''
+        CREATE TABLE task_items (
+          task_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          PRIMARY KEY (task_id, item_id),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+
+      // Create slate_items WITHOUT added_at (simulating external tool)
+      rawDb.execute('''
+        CREATE TABLE slate_items (
+          slate_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          PRIMARY KEY (slate_id, item_id),
+          FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+
+      // Create transaction_logs table (needed by migration v6 check)
+      rawDb.execute('''
+        CREATE TABLE IF NOT EXISTS transaction_logs (
+          id TEXT PRIMARY KEY,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          transaction_type TEXT NOT NULL,
+          summary TEXT,
+          changes TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+
+      // Insert a task and item, then link them via task_items (no added_at)
+      final taskId = uuid.v4();
+      final itemId = uuid.v4();
+      rawDb.execute('''
+        INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+        VALUES (?, 'test-project', 'Test task', 'todo', ?, ?)
+      ''', [taskId, now, now]);
+      rawDb.execute('''
+        INSERT INTO items (id, project_id, title, type, status, created_at, updated_at)
+        VALUES (?, 'test-project', 'Test item', 'feature', 'open', ?, ?)
+      ''', [itemId, now, now]);
+      rawDb.execute('''
+        INSERT INTO task_items (task_id, item_id)
+        VALUES (?, ?)
+      ''', [taskId, itemId]);
+
+      // Verify added_at does NOT exist before migration
+      final colsBefore = rawDb.select("PRAGMA table_info(task_items)");
+      final colNamesBefore =
+          colsBefore.map((row) => row['name'] as String).toSet();
+      expect(colNamesBefore.contains('added_at'), isFalse);
+
+      rawDb.dispose();
+
+      // Step 2: Call initializeDatabase which will run migration v7
+      final migratedDb = initializeDatabase(migrationDbPath);
+
+      // Step 3: Verify added_at column now exists in task_items
+      final taskItemsCols =
+          migratedDb.select("PRAGMA table_info(task_items)");
+      final taskItemsColNames =
+          taskItemsCols.map((row) => row['name'] as String).toSet();
+      expect(taskItemsColNames.contains('added_at'), isTrue);
+
+      // Verify added_at column now exists in slate_items
+      final slateItemsCols =
+          migratedDb.select("PRAGMA table_info(slate_items)");
+      final slateItemsColNames =
+          slateItemsCols.map((row) => row['name'] as String).toSet();
+      expect(slateItemsColNames.contains('added_at'), isTrue);
+
+      // Step 4: Verify the existing task_items row got a default value
+      final taskItemRows = migratedDb.select(
+        'SELECT added_at FROM task_items WHERE task_id = ?',
+        [taskId],
+      );
+      expect(taskItemRows, hasLength(1));
+      expect(taskItemRows.first['added_at'], isNotNull);
+      expect(taskItemRows.first['added_at'], isNotEmpty);
+
+      // Step 5: Verify schema version is now 7
+      final versionResult = migratedDb.select(
+        "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
+      );
+      expect(versionResult.first['value'], '7');
+
+      // Step 6: Verify that queries using ORDER BY ti.added_at work
+      final queryResult = migratedDb.select('''
+        SELECT ti.task_id, ti.item_id, ti.added_at
+        FROM task_items ti
+        ORDER BY ti.added_at DESC
+      ''');
+      expect(queryResult, hasLength(1));
+
+      migratedDb.dispose();
+      await migrationTempDir.delete(recursive: true);
+    });
+
+    test('migration is no-op when added_at already exists', () async {
+      // Create a fresh database (which already has added_at in both tables)
+      final migrationTempDir = await Directory.systemTemp
+          .createTemp('planner_migration_v7_noop_test_');
+      final migrationDbPath = p.join(migrationTempDir.path, 'test.db');
+      final freshDb = initializeDatabase(migrationDbPath);
+
+      // Verify schema version is 7 (fresh db gets latest version)
+      final versionResult = freshDb.select(
+        "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
+      );
+      expect(versionResult.first['value'], '7');
+
+      // Verify added_at exists in both tables
+      final taskItemsCols =
+          freshDb.select("PRAGMA table_info(task_items)");
+      final taskItemsColNames =
+          taskItemsCols.map((row) => row['name'] as String).toSet();
+      expect(taskItemsColNames.contains('added_at'), isTrue);
+
+      final slateItemsCols =
+          freshDb.select("PRAGMA table_info(slate_items)");
+      final slateItemsColNames =
+          slateItemsCols.map((row) => row['name'] as String).toSet();
+      expect(slateItemsColNames.contains('added_at'), isTrue);
+
+      freshDb.dispose();
+      await migrationTempDir.delete(recursive: true);
     });
   });
 }
