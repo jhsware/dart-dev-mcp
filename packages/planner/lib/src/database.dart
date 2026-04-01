@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 6;
+const int currentSchemaVersion = 7;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -346,6 +346,38 @@ void _runMigrations(Database database) {
     logInfo('planner', 'Migration to schema version 6 complete.');
   }
 
+  // Migration from version 6 to version 7
+  // Add missing added_at column to task_items and slate_items tables.
+  // External tools (e.g. viewer apps) may have created these tables without
+  // the added_at column, and CREATE TABLE IF NOT EXISTS won't add it.
+  if (currentVersion < 7) {
+    logInfo('planner', 'Running migration to schema version 7...');
+
+    // Check task_items for missing added_at column
+    final taskItemsCols = database.select("PRAGMA table_info(task_items)");
+    final taskItemsColNames =
+        taskItemsCols.map((row) => row['name'] as String).toSet();
+
+    if (!taskItemsColNames.contains('added_at')) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      database.execute(
+          "ALTER TABLE task_items ADD COLUMN added_at TEXT NOT NULL DEFAULT '$now'");
+    }
+
+    // Check slate_items for missing added_at column
+    final slateItemsCols = database.select("PRAGMA table_info(slate_items)");
+    final slateItemsColNames =
+        slateItemsCols.map((row) => row['name'] as String).toSet();
+
+    if (!slateItemsColNames.contains('added_at')) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      database.execute(
+          "ALTER TABLE slate_items ADD COLUMN added_at TEXT NOT NULL DEFAULT '$now'");
+    }
+
+    _setSchemaVersion(database, 7);
+    logInfo('planner', 'Migration to schema version 7 complete.');
+  }
 
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);
