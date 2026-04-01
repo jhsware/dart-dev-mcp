@@ -425,6 +425,7 @@ void main() {
       final updateData = parseResult(updateResult);
 
       expect(updateData['sub_task_id'], isNull);
+    });
   });
 
   group('migration v7 - add missing added_at columns', () {

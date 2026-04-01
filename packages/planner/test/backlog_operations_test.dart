@@ -756,11 +756,11 @@ void main() {
       expect(tableNames, contains('task_items'));
     });
 
-    test('schema version is set to 6', () {
+    test('schema version is set to 7', () {
       final result = db.select(
         "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
       );
-      expect(result.first['value'], '6');
+      expect(result.first['value'], '7');
     });
 
     test('slates table has status and slate_date columns', () {
