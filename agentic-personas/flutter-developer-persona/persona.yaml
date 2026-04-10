@@ -41,7 +41,7 @@ description: "A software developer with Dart and Flutter skills."
 # Type: string
 # Constraints: Semantic version format (e.g. "1.0.0", "2.1", "1.0.0-beta.1")
 # Purpose: The persona package version. Increment when updating a persona.
-version: "0.1"
+version: "0.2"
 
 
 # -----------------------------------------------------------------------------
