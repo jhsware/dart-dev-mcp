@@ -1,0 +1,233 @@
+# =============================================================================
+# Persona Configuration Template
+# =============================================================================
+#
+# This file defines a persona for the builder_server agent system.
+# A persona configures the Claude Code agent with a system prompt, model,
+# tools, MCP servers, budget limits, and other execution parameters.
+#
+# To create your own persona:
+#   1. Copy this entire docs/personas/ directory to a new folder
+#   2. Edit this file and system_prompt.md to suit your use case
+#   3. Optionally add plugins to the plugins/ directory
+#   4. Zip the contents: zip -r my-persona.zip persona.yaml system_prompt.md plugins/
+#   5. Upload: curl --cert client.pem --key client-key.pem --cacert ca.pem \
+#        -X POST -H "Content-Type: application/zip" \
+#        --data-binary @my-persona.zip https://localhost:8443/personas
+#
+# The zip can contain files at the root level or inside a single top-level
+# directory — both layouts are accepted.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Required Fields
+# -----------------------------------------------------------------------------
+
+# name (required)
+# Type: string
+# Constraints: Alphanumeric characters, underscores, hyphens, dots, and spaces
+#   only. Maximum 128 characters.
+# Purpose: The persona's display name, shown in API responses and logs.
+name: "Flutter Developer"
+
+# description (required)
+# Type: string
+# Constraints: Must not contain shell metacharacters (; | & ` $ \ ( ) { } < > ! # ~)
+# Purpose: A human-readable description of what this persona does.
+description: "A software developer with Dart and Flutter skills."
+
+# version (required)
+# Type: string
+# Constraints: Semantic version format (e.g. "1.0.0", "2.1", "1.0.0-beta.1")
+# Purpose: The persona package version. Increment when updating a persona.
+version: "0.1.0"
+
+
+# -----------------------------------------------------------------------------
+# Model and Execution Settings
+# -----------------------------------------------------------------------------
+
+# model (optional)
+# Type: string
+# Default: Server's BUILDER_DEFAULT_MODEL environment variable
+# Constraints: Alphanumeric characters, underscores, hyphens, dots, colons only.
+# Purpose: The Claude model to use for this persona's agent sessions.
+# Examples: "claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"
+# Maps to CLI flag: --model
+model: "claude-opus-4-6"
+
+# effort (optional)
+# Type: string
+# Default: not set (uses Claude Code default)
+# Valid values: "low", "medium", "high", "max"
+# Purpose: Controls the agent's reasoning effort level.
+# Maps to CLI flag: --effort
+# effort: "high"
+
+# maxBudgetUsd (optional)
+# Type: number (float)
+# Default: 10.0
+# Constraints: Must be positive (> 0)
+# Purpose: Maximum spend in USD for a single task. The agent stops when this
+#   budget is reached, preventing runaway costs.
+# Maps to CLI flag: --max-budget-usd
+# NOTE: n/a for Max subscription
+maxBudgetUsd: 10.0
+
+# maxTurns (optional)
+# Type: integer
+# Default: 100
+# Constraints: Must be positive (> 0)
+# Purpose: Maximum number of conversation turns the agent can take per task.
+#   Acts as a safety limit to prevent infinite loops.
+# Maps to CLI flag: --max-turns
+maxTurns: 100
+
+
+# -----------------------------------------------------------------------------
+# Agent and Permissions
+# -----------------------------------------------------------------------------
+
+# agent (optional)
+# Type: string
+# Default: not set (uses default agent)
+# Constraints: Alphanumeric characters, underscores, hyphens, dots, colons only.
+# Purpose: Specifies a custom agent name to use instead of the default.
+# Maps to CLI flag: --agent
+# agent: "custom-agent"
+
+# permissionMode (optional)
+# Type: string
+# Default: not set (server uses --dangerously-skip-permissions for headless operation)
+# Valid values: "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan"
+# Purpose: Controls how the agent handles permission requests for tool use.
+#   In headless server operation, permissions are typically bypassed, but this
+#   field allows fine-grained control if needed.
+# Maps to CLI flag: --permission-mode
+# permissionMode: "auto"
+
+
+# -----------------------------------------------------------------------------
+# System Prompt
+# -----------------------------------------------------------------------------
+
+# systemPrompt (optional)
+# Type: string
+# Default: "system_prompt.md"
+# Constraints: Must not contain shell metacharacters. Must reference a file
+#   that exists within the persona zip.
+# Purpose: Filename of the system prompt file within the zip. The content of
+#   this file is passed to the agent via --append-system-prompt.
+systemPrompt: "system_prompt.md"
+
+
+# -----------------------------------------------------------------------------
+# Tools Configuration
+# -----------------------------------------------------------------------------
+
+# allowedTools (optional)
+# Type: list of strings
+# Default: [] (empty — no extra tools allowed beyond defaults)
+# Constraints: Each entry must be alphanumeric with optional underscores,
+#   hyphens, dots, colons, slashes, asterisks, and parenthesized arguments.
+# Purpose: Explicitly list tools the agent is allowed to use. Useful for
+#   restricting the agent to a specific set of capabilities.
+# Maps to CLI flag: --allowedTools (comma-separated)
+# Examples:
+#   - "Read"           — allow the Read file tool
+#   - "Bash"           — allow shell command execution
+#   - "mcp__*"         — allow all MCP tools (wildcard)
+#   - "Bash(git:*)"    — allow Bash but only for git commands
+allowedTools:
+  - "fetch"
+  - "filesystem"
+  - "git"
+  - "planner"
+  - "dart-runner"
+  - "flutter-runner"
+  - "WebSearch"
+
+# disallowedTools (optional)
+# Type: list of strings
+# Default: [] (empty — no tools blocked)
+# Constraints: Same pattern as allowedTools entries.
+# Purpose: Explicitly block specific tools. Takes precedence over allowedTools.
+#   Use to prevent the agent from using potentially dangerous tools.
+# Maps to CLI flag: --disallowed-tools (comma-separated)
+# disallowedTools:
+  - "Bash"
+  - "Edit"
+  - "Write"
+  - "MulitEdit"
+  - "Read"
+  - "Grep"
+  - "Glob"
+  - "WebFetch"
+# - "WebSearch"
+
+
+# -----------------------------------------------------------------------------
+# MCP Servers
+# -----------------------------------------------------------------------------
+
+# mcpServers (optional)
+# Type: map of server name → server configuration
+# Default: not set
+# Purpose: Define MCP (Model Context Protocol) servers that provide additional
+#   tools and capabilities to the agent. Each server is started as a subprocess.
+#   The server configs are written to an mcp-config.json file at extraction time
+#   and passed via --mcp-config.
+#
+# Each server configuration has:
+#   command (required): string — the command to run (no shell metacharacters)
+#   args (optional):    list of strings — command arguments (no shell metacharacters)
+#   env (optional):     map of string → string — environment variables (no shell metacharacters)
+#
+mcpServers:
+  dart-dev-mcp-fs:
+    command: "dart"
+    args:
+      - "run"
+      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/filesystem/bin/file_edit_mcp.dart"
+    requiresProjectDir: true
+  dart-dev-mcp-fetch:
+    command: "dart"
+    args:
+      - "run"
+      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/fetch/bin/fetch_mcp.dart"
+  dart-dev-mcp-dart-runner:
+    command: "dart"
+    args:
+      - "run"
+      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/dart_runner/bin/dart_runner_mcp.dart"
+    requiresProjectDir: true
+  dart-dev-mcp-flutter-runner:
+    command: "dart"
+    args:
+      - "run"
+      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/flutter_runner/bin/flutter_runner_mcp.dart"
+    requiresProjectDir: true
+  dart-dev-mcp-git:
+    command: "dart"
+    args:
+      - "run"
+      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/git/bin/git_mcp.dart"
+    requiresProjectDir: true
+
+
+# -----------------------------------------------------------------------------
+# Environment Setup
+# -----------------------------------------------------------------------------
+
+# envSetupCommand (optional)
+# Type: string
+# Default: not set
+# Constraints: Only whitelisted values are accepted for security:
+#   - "nix-shell"
+#   - "direnv allow"
+#   - "direnv exec" (can be followed by arguments, e.g. "direnv exec . <cmd>")
+# Purpose: A command to run before the agent starts, to set up the environment
+#   (e.g. enter a Nix shell or activate direnv). Any value not matching the
+#   whitelist is rejected during validation.
+# envSetupCommand: "direnv allow"
