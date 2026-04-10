@@ -11,8 +11,11 @@ filesystem:
   - ./.github
   - ./packages
   - ./agentic-plugins
+  - ./agentic-personas
   - ./claude.sh
   - ./build.sh
+  - ./build-plugins.sh
+  - ./build-personas.sh
 git:
   - ./lib
   - ./bin
@@ -27,5 +30,8 @@ git:
   - ./pubspec.lock
   - ./packages
   - ./agentic-plugins
+  - ./agentic-personas
   - ./claude.sh
   - ./build.sh
+  - ./build-plugins.sh
+  - ./build-personas.sh
