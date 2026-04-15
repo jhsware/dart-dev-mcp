@@ -70,6 +70,9 @@ Operations:
 - run: Run 'fvm flutter run' to run the app
 - build: Run 'fvm flutter build' to build the app
 - pub-get: Run 'fvm flutter pub get' to fetch dependencies
+- pub-run: Run 'fvm flutter pub run <package> [args...]' - commonly used for code
+           generation (e.g. target='build_runner', args=['build', '--delete-conflicting-outputs']).
+           The target parameter is REQUIRED and specifies the package to run.
 - clean: Run 'fvm flutter clean' to clean build artifacts
 - doctor: Run 'fvm flutter doctor' to check Flutter installation
 - get_output: Get output chunks from a running or completed session
@@ -92,6 +95,7 @@ Use get_output with the session_id to poll for output.''',
             'run',
             'build',
             'pub-get',
+            'pub-run',
             'clean',
             'doctor',
             'get_output',
@@ -101,7 +105,7 @@ Use get_output with the session_id to poll for output.''',
         ),
         'target': JsonSchema.string(
           description:
-              'Target file, directory, or build type. Used by analyze, test, run, build, and format.',
+              'Target file, directory, or build type. Used by analyze, test, run, build, and format. For pub-run this is the package name (REQUIRED), e.g. "build_runner".',
         ),
         'device': JsonSchema.string(
           description: 'Device ID to run on (for run operation)',
@@ -154,6 +158,7 @@ const _validOperations = [
   'run',
   'build',
   'pub-get',
+  'pub-run',
   'clean',
   'doctor',
   'get_output',
@@ -255,6 +260,20 @@ Future<CallToolResult> _handleFlutterRunner(
           workingDir,
           useFvm,
           ['pub', 'get', ...?_getExtraArgs(args)],
+        );
+
+      case 'pub-run':
+        final target = args['target'] as String?;
+        if (requireString(target, 'target') case final error?) {
+          return error;
+        }
+        return _startFlutterCommandWithProgress(
+          extra,
+          workingDir,
+          sessionManager,
+          useFvm,
+          'pub-run',
+          ['pub', 'run', target!, ...?_getExtraArgs(args)],
         );
 
       case 'clean':
