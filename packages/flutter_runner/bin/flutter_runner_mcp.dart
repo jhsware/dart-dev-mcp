@@ -34,19 +34,30 @@ void main(List<String> arguments) async {
     }
   }
 
-  // Check if FVM is available
-  final fvmCheck = await Process.run('which', ['fvm']);
-  final useFvm = fvmCheck.exitCode == 0;
-
-  if (!useFvm) {
-    logWarning(
-        'flutter-runner', 'FVM not found. Using flutter directly.');
+  // Resolve FVM usage per project. A project uses FVM when it has a .fvm
+  // directory (created by `fvm use <version>`). FVM is not required globally.
+  final fvmResolver = FvmResolver();
+  for (final dir in serverArgs.projectDirs) {
+    final resolution = await fvmResolver.resolve(dir);
+    if (resolution.fvmBinaryMissing) {
+      logWarning(
+        'flutter-runner',
+        'Project $dir has .fvm but the `fvm` binary is not on PATH. '
+            'Flutter commands for this project will fail until fvm is installed. '
+            'Install from https://fvm.app/',
+      );
+    } else if (resolution.useFvm) {
+      logInfo('flutter-runner', 'Project $dir -> using fvm (.fvm detected)');
+    } else {
+      logInfo(
+          'flutter-runner', 'Project $dir -> using system flutter (no .fvm)');
+    }
   }
 
   logInfo('flutter-runner', 'Flutter Runner MCP Server starting...');
   logInfo('flutter-runner',
       'Project dirs: ${serverArgs.projectDirs.join(", ")}');
-  logInfo('flutter-runner', 'Using FVM: $useFvm');
+
 
   final sessionManager = SessionManager();
 
@@ -134,7 +145,8 @@ Use get_output with the session_id to poll for output.''',
       required: ['project_dir'],
     ),
     callback: (args, extra) => _handleFlutterRunner(
-        args, extra, serverArgs, sessionManager, useFvm),
+        args, extra, serverArgs, sessionManager, fvmResolver),
+
   );
 
   final transport = StdioServerTransport();
@@ -165,13 +177,12 @@ const _validOperations = [
   'list_sessions',
   'cancel',
 ];
-
 Future<CallToolResult> _handleFlutterRunner(
   Map<String, dynamic> args,
   RequestHandlerExtra extra,
   ServerArguments serverArgs,
   SessionManager sessionManager,
-  bool useFvm,
+  FvmResolver fvmResolver,
 ) async {
   // Validate project_dir is present and valid
   final projectDir = args['project_dir'] as String?;
@@ -191,7 +202,20 @@ Future<CallToolResult> _handleFlutterRunner(
 
   final workingDir = Directory(projectDir!);
 
+  // Resolve per-project FVM usage (cached). If the project pins a Flutter
+  // version via .fvm but the fvm binary is missing, fail fast with a clear
+  // message rather than silently running the wrong SDK.
+  final fvmResolution = await fvmResolver.resolve(projectDir);
+  if (fvmResolution.fvmBinaryMissing) {
+    return validationError(
+      'project_dir',
+      'Project $projectDir has a .fvm directory but the `fvm` binary was '
+          'not found on PATH. Install fvm (https://fvm.app/) and try again.',
+    );
+  }
+  final useFvm = fvmResolution.useFvm;
   try {
+
     switch (operation) {
       case 'analyze':
         final target = args['target'] as String?;
@@ -532,3 +556,71 @@ Future<CallToolResult> _cancelSession(
 
   return textResult(jsonEncode(response));
 }
+
+/// Per-project FVM resolution.
+///
+/// A project is considered to use FVM when it has a `.fvm` directory at its
+/// root (created by `fvm use <version>`). The presence of `.fvm` pins a
+/// specific Flutter SDK and we MUST run flutter through `fvm` to use that
+/// pinned SDK. Projects without `.fvm` use the system `flutter` directly.
+///
+/// Results are cached per project_dir to avoid repeated filesystem and
+/// `which fvm` lookups on every tool invocation.
+class FvmResolver {
+  final Map<String, FvmResolution> _cache = {};
+  bool? _fvmBinaryAvailable;
+
+  Future<FvmResolution> resolve(String projectDir) async {
+    final cached = _cache[projectDir];
+    if (cached != null) return cached;
+
+    final fvmDir = Directory('$projectDir/.fvm');
+    final hasFvmDir = await fvmDir.exists();
+
+    if (!hasFvmDir) {
+      final res = const FvmResolution(useFvm: false, fvmBinaryMissing: false);
+      _cache[projectDir] = res;
+      return res;
+    }
+
+    // .fvm exists - we need fvm on PATH to honor the pinned version.
+    final fvmAvailable = await _checkFvmBinary();
+    final res = fvmAvailable
+        ? const FvmResolution(useFvm: true, fvmBinaryMissing: false)
+        : const FvmResolution(useFvm: false, fvmBinaryMissing: true);
+    _cache[projectDir] = res;
+    return res;
+  }
+
+  Future<bool> _checkFvmBinary() async {
+    final cached = _fvmBinaryAvailable;
+    if (cached != null) return cached;
+    try {
+      final result = await Process.run('which', ['fvm']);
+      final available = result.exitCode == 0;
+      _fvmBinaryAvailable = available;
+      return available;
+    } catch (_) {
+      _fvmBinaryAvailable = false;
+      return false;
+    }
+  }
+}
+
+/// Resolution for a single project_dir's FVM status.
+class FvmResolution {
+  /// True when the project has .fvm AND fvm is on PATH; commands should be
+  /// prefixed with `fvm`.
+  final bool useFvm;
+
+  /// True when the project has .fvm but the `fvm` binary is missing on the
+  /// host. Caller should surface a friendly install hint and not silently
+  /// fall back to the system flutter (which would use the wrong SDK).
+  final bool fvmBinaryMissing;
+
+  const FvmResolution({
+    required this.useFvm,
+    required this.fvmBinaryMissing,
+  });
+}
+
