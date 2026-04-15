@@ -36,7 +36,17 @@ void main(List<String> arguments) async {
 
   // Resolve FVM usage per project. A project uses FVM when it has a .fvm
   // directory (created by `fvm use <version>`). FVM is not required globally.
-  final fvmResolver = FvmResolver();
+  final fvmResolver = FvmResolver(
+    allowFallback: serverArgs.allowToolchainFallback,
+  );
+  if (serverArgs.allowToolchainFallback) {
+    logWarning(
+      'flutter-runner',
+      '--allow-toolchain-fallback is set: projects that declare .fvm but '
+          'lack the `fvm` binary will fall back to the system flutter with '
+          'a warning (pinned SDK will NOT be used).',
+    );
+  }
   for (final dir in serverArgs.projectDirs) {
     final resolution = await fvmResolver.resolve(dir);
     if (resolution.fvmBinaryMissing) {
@@ -44,7 +54,7 @@ void main(List<String> arguments) async {
         'flutter-runner',
         'Project $dir has .fvm but the `fvm` binary is not on PATH. '
             'Flutter commands for this project will fail until fvm is installed. '
-            'Install from https://fvm.app/',
+            'Install from https://fvm.app/ or restart with --allow-toolchain-fallback.',
       );
     } else if (resolution.useFvm) {
       logInfo('flutter-runner', 'Project $dir -> using fvm (.fvm detected)');
@@ -53,10 +63,6 @@ void main(List<String> arguments) async {
           'flutter-runner', 'Project $dir -> using system flutter (no .fvm)');
     }
   }
-
-  logInfo('flutter-runner', 'Flutter Runner MCP Server starting...');
-  logInfo('flutter-runner',
-      'Project dirs: ${serverArgs.projectDirs.join(", ")}');
 
 
   final sessionManager = SessionManager();
@@ -160,9 +166,17 @@ void _printUsage() {
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH  Path to a project directory (required, can be repeated)');
-  stderr.writeln('  --help, -h          Show this help message');
+      '  --project-dir=PATH             Path to a project directory (required, can be repeated)');
+  stderr.writeln(
+      '  --allow-toolchain-fallback     When .fvm is present but the `fvm` binary is');
+  stderr.writeln(
+      '                                 missing, log a warning and fall back to the');
+  stderr.writeln(
+      '                                 system flutter instead of erroring.');
+  stderr.writeln(
+      '  --help, -h                     Show this help message');
 }
+
 
 const _validOperations = [
   'analyze',
@@ -201,22 +215,27 @@ Future<CallToolResult> _handleFlutterRunner(
   }
 
   final workingDir = Directory(projectDir!);
-
   // Resolve per-project FVM usage (cached). If the project pins a Flutter
   // version via .fvm but the fvm binary is missing, fail fast with a clear
-  // message rather than silently running the wrong SDK.
+  // message rather than silently running the wrong SDK — unless the
+  // operator opted into soft-fallback via --allow-toolchain-fallback, in
+  // which case FvmResolver already downgraded the resolution and logged a
+  // warning.
   final fvmResolution = await fvmResolver.resolve(projectDir);
   if (fvmResolution.fvmBinaryMissing) {
     return validationError(
       'project_dir',
       'Project $projectDir has a .fvm directory but the `fvm` binary was '
-          'not found on PATH. Install fvm (https://fvm.app/) and try again.',
+          'not found on PATH. Install fvm (https://fvm.app/), or restart '
+          'the server with --allow-toolchain-fallback to allow a '
+          'warning-and-fallback to the system flutter.',
     );
   }
   final useFvm = fvmResolution.useFvm;
   try {
 
     switch (operation) {
+
       case 'analyze':
         final target = args['target'] as String?;
         return _startFlutterCommandWithProgress(
@@ -558,17 +577,19 @@ Future<CallToolResult> _cancelSession(
 }
 
 /// Per-project FVM resolution.
-///
-/// A project is considered to use FVM when it has a `.fvm` directory at its
-/// root (created by `fvm use <version>`). The presence of `.fvm` pins a
-/// specific Flutter SDK and we MUST run flutter through `fvm` to use that
-/// pinned SDK. Projects without `.fvm` use the system `flutter` directly.
-///
-/// Results are cached per project_dir to avoid repeated filesystem and
-/// `which fvm` lookups on every tool invocation.
 class FvmResolver {
+  /// When true, projects that declare `.fvm/` but have no `fvm` binary on
+  /// PATH are transparently downgraded to "use system flutter" with a
+  /// single warning per project (the pinned SDK is NOT used). When false
+  /// (default), the resolver reports `fvmBinaryMissing: true` and callers
+  /// should fail fast.
+  final bool allowFallback;
+
   final Map<String, FvmResolution> _cache = {};
+  final Set<String> _fallbackWarned = {};
   bool? _fvmBinaryAvailable;
+
+  FvmResolver({this.allowFallback = false});
 
   Future<FvmResolution> resolve(String projectDir) async {
     final cached = _cache[projectDir];
@@ -585,9 +606,27 @@ class FvmResolver {
 
     // .fvm exists - we need fvm on PATH to honor the pinned version.
     final fvmAvailable = await _checkFvmBinary();
-    final res = fvmAvailable
-        ? const FvmResolution(useFvm: true, fvmBinaryMissing: false)
-        : const FvmResolution(useFvm: false, fvmBinaryMissing: true);
+    if (fvmAvailable) {
+      final res = const FvmResolution(useFvm: true, fvmBinaryMissing: false);
+      _cache[projectDir] = res;
+      return res;
+    }
+
+    if (allowFallback) {
+      if (_fallbackWarned.add(projectDir)) {
+        logWarning(
+          'flutter-runner',
+          "Project $projectDir has .fvm but the 'fvm' binary is not on "
+              "PATH. --allow-toolchain-fallback is set; falling back to "
+              "the system flutter. The pinned SDK is NOT being used.",
+        );
+      }
+      final res = const FvmResolution(useFvm: false, fvmBinaryMissing: false);
+      _cache[projectDir] = res;
+      return res;
+    }
+
+    final res = const FvmResolution(useFvm: false, fvmBinaryMissing: true);
     _cache[projectDir] = res;
     return res;
   }
@@ -608,6 +647,7 @@ class FvmResolver {
 }
 
 /// Resolution for a single project_dir's FVM status.
+
 class FvmResolution {
   /// True when the project has .fvm AND fvm is on PATH; commands should be
   /// prefixed with `fvm`.
