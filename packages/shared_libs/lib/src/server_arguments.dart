@@ -26,6 +26,13 @@ class ServerArguments {
   /// Whether help was requested via --help or -h.
   final bool helpRequested;
 
+  /// When true, if a project declares a pinned toolchain (shell.nix,
+  /// flake.nix, .fvm/) but the required wrapper binary (`nix-shell`,
+  /// `nix`, `fvm`) is not on PATH, the server logs a warning and falls
+  /// back to the system `dart`/`flutter` instead of failing fast. Default
+  /// is false — fail fast so we never silently run against the wrong SDK.
+  final bool allowToolchainFallback;
+
   /// Any unrecognized arguments (not --project-dir, --planner-data-root, etc.).
   final List<String> unknownArguments;
 
@@ -34,8 +41,10 @@ class ServerArguments {
     this.plannerDataRoot,
     this.promptsFilePath,
     this.helpRequested = false,
+    this.allowToolchainFallback = false,
     this.unknownArguments = const [],
   });
+
 
   /// Infer planner DB path for a given project directory.
   ///
@@ -71,6 +80,7 @@ class ServerArguments {
     String? plannerDataRoot;
     String? promptsFilePath;
     bool helpRequested = false;
+    bool allowToolchainFallback = false;
     final unknownArguments = <String>[];
 
     for (int i = 0; i < arguments.length; i++) {
@@ -78,6 +88,8 @@ class ServerArguments {
 
       if (arg == '--help' || arg == '-h') {
         helpRequested = true;
+      } else if (arg == '--allow-toolchain-fallback') {
+        allowToolchainFallback = true;
       } else if (arg.startsWith('--project-dir=')) {
         final value = arg.substring('--project-dir='.length);
         if (value.isNotEmpty) {
@@ -127,9 +139,11 @@ class ServerArguments {
       plannerDataRoot: plannerDataRoot,
       promptsFilePath: promptsFilePath,
       helpRequested: helpRequested,
+      allowToolchainFallback: allowToolchainFallback,
       unknownArguments: unknownArguments,
     );
   }
+
 
   /// Normalize a path to absolute (handles ~, relative paths).
   static String _normalizeToAbsolutePath(String inputPath) {
@@ -148,6 +162,8 @@ class ServerArguments {
         'plannerDataRoot: $plannerDataRoot, '
         'promptsFilePath: $promptsFilePath, '
         'helpRequested: $helpRequested, '
+        'allowToolchainFallback: $allowToolchainFallback, '
         'unknownArguments: $unknownArguments)';
   }
 }
+

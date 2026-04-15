@@ -37,6 +37,14 @@ void main(List<String> arguments) async {
   logInfo('dart-runner', 'Dart Runner MCP Server starting...');
   logInfo('dart-runner',
       'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  if (serverArgs.allowToolchainFallback) {
+    logWarning(
+      'dart-runner',
+      '--allow-toolchain-fallback is set: projects that declare '
+          'shell.nix/flake.nix but lack nix-shell/nix will fall back to '
+          'the system dart with a warning (pinned SDK will NOT be used).',
+    );
+  }
 
   // Prime the nix-kind cache and log detected nix projects so operators
   // can see at a glance which projects will be wrapped in nix-shell.
@@ -53,6 +61,7 @@ void main(List<String> arguments) async {
         break;
     }
   }
+
 
 
   final sessionManager = SessionManager();
@@ -146,9 +155,17 @@ void _printUsage() {
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH  Path to a project directory (required, can be repeated)');
-  stderr.writeln('  --help, -h          Show this help message');
+      '  --project-dir=PATH             Path to a project directory (required, can be repeated)');
+  stderr.writeln(
+      '  --allow-toolchain-fallback     When shell.nix/flake.nix is present but');
+  stderr.writeln(
+      '                                 nix-shell/nix is missing, log a warning and');
+  stderr.writeln(
+      '                                 fall back to the system dart instead of erroring.');
+  stderr.writeln(
+      '  --help, -h                     Show this help message');
 }
+
 
 const _validOperations = [
   'analyze',
@@ -185,6 +202,7 @@ Future<CallToolResult> _handleDartRunner(
   }
 
   final workingDir = Directory(projectDir!);
+  final allowFallback = serverArgs.allowToolchainFallback;
 
   try {
     switch (operation) {
@@ -196,6 +214,7 @@ Future<CallToolResult> _handleDartRunner(
           sessionManager,
           'analyze',
           ['analyze', ?target, ...?_getExtraArgs(args)],
+          allowFallback: allowFallback,
         );
 
       case 'test':
@@ -210,6 +229,7 @@ Future<CallToolResult> _handleDartRunner(
             ?target,
             ...?_getExtraArgs(args),
           ],
+          allowFallback: allowFallback,
         );
 
       case 'run':
@@ -224,17 +244,20 @@ Future<CallToolResult> _handleDartRunner(
             ?target,
             ...?_getExtraArgs(args),
           ],
+          allowFallback: allowFallback,
         );
       case 'format':
         final target = args['target'] as String? ?? '.';
         return await _runDartCommandSync(
           workingDir,
           ['format', target, ...?_getExtraArgs(args)],
+          allowFallback: allowFallback,
         );
       case 'pub-get':
         return await _runDartCommandSync(
           workingDir,
           ['pub', 'get', ...?_getExtraArgs(args)],
+          allowFallback: allowFallback,
         );
 
       case 'pub-run':
@@ -248,6 +271,7 @@ Future<CallToolResult> _handleDartRunner(
           sessionManager,
           'pub-run',
           ['pub', 'run', target!, ...?_getExtraArgs(args)],
+          allowFallback: allowFallback,
         );
 
       case 'get_output':
@@ -334,19 +358,41 @@ bool _nixShellAvailable() =>
 bool _nixAvailable() => _nixAvailableCache ??= _whichExists('nix');
 
 /// The resolved command to execute for a given dart invocation.
+///
+/// If [error] is non-null the caller must return it directly without
+/// executing anything.
 class _ResolvedCommand {
   final String executable;
   final List<String> args;
   final _NixKind kind;
-  _ResolvedCommand(this.executable, this.args, this.kind);
+  final CallToolResult? error;
+  _ResolvedCommand(
+    this.executable,
+    this.args,
+    this.kind, {
+    this.error,
+  });
 
   String get display => '$executable ${args.join(' ')}';
 }
+
+/// Tracks per-project dirs we've already warned about to avoid log spam when
+/// fallback mode is active.
+final Set<String> _fallbackWarned = {};
 
 /// Given the project [workingDir] and the requested dart [dartArgs],
 /// return the concrete (executable, args) pair to spawn. When the project
 /// declares a nix environment, the dart command is wrapped so the
 /// project-pinned toolchain is used.
+///
+/// Behaviour when a required nix binary is missing on PATH:
+/// - [allowFallback] = false (default): returns a `_ResolvedCommand` whose
+///   [error] is a friendly JSON error telling the user to install Nix. The
+///   caller should return that error directly without executing anything.
+/// - [allowFallback] = true: logs a one-time warning per project and
+///   falls back to running the system `dart` directly, unwrapped. Use this
+///   when the operator explicitly opted in via `--allow-toolchain-fallback`
+///   and accepts that the wrong SDK may be used.
 ///
 /// Strategy (see task memory for rationale / timings):
 /// - shell.nix → `nix-shell --run "<escaped dart ...>" shell.nix`
@@ -356,13 +402,24 @@ class _ResolvedCommand {
 /// - otherwise → `dart <args>` unchanged.
 _ResolvedCommand _getDartCommand(
   Directory workingDir,
-  List<String> dartArgs,
-) {
+  List<String> dartArgs, {
+  required bool allowFallback,
+}) {
   final kind = _detectNixKind(workingDir);
   switch (kind) {
     case _NixKind.none:
       return _ResolvedCommand('dart', dartArgs, kind);
     case _NixKind.shellNix:
+      if (!_nixShellAvailable()) {
+        return _handleMissingNixBinary(
+          workingDir: workingDir,
+          dartArgs: dartArgs,
+          kind: kind,
+          binary: 'nix-shell',
+          declared: 'shell.nix',
+          allowFallback: allowFallback,
+        );
+      }
       final runCmd =
           ['dart', ...dartArgs].map(_posixSingleQuoteEscape).join(' ');
       return _ResolvedCommand(
@@ -371,6 +428,16 @@ _ResolvedCommand _getDartCommand(
         kind,
       );
     case _NixKind.flakeNix:
+      if (!_nixAvailable()) {
+        return _handleMissingNixBinary(
+          workingDir: workingDir,
+          dartArgs: dartArgs,
+          kind: kind,
+          binary: 'nix',
+          declared: 'flake.nix',
+          allowFallback: allowFallback,
+        );
+      }
       return _ResolvedCommand(
         'nix',
         ['develop', '--command', 'dart', ...dartArgs],
@@ -379,29 +446,40 @@ _ResolvedCommand _getDartCommand(
   }
 }
 
-/// Return a user-friendly error CallToolResult if [cmd] requires a nix
-/// binary that is not on PATH, else null.
-CallToolResult? _checkNixBinaryAvailable(_ResolvedCommand cmd) {
-  if (cmd.kind == _NixKind.shellNix && !_nixShellAvailable()) {
-    return textResult(jsonEncode({
-      'status': 'error',
-      'error':
-          "Project declares shell.nix but the 'nix-shell' binary was not "
-              "found on PATH. Install Nix (https://nixos.org/download) or "
-              "remove shell.nix to fall back to the system dart.",
-    }));
+_ResolvedCommand _handleMissingNixBinary({
+  required Directory workingDir,
+  required List<String> dartArgs,
+  required _NixKind kind,
+  required String binary,
+  required String declared,
+  required bool allowFallback,
+}) {
+  if (allowFallback) {
+    if (_fallbackWarned.add(workingDir.path)) {
+      logWarning(
+        'dart-runner',
+        "Project ${workingDir.path} declares $declared but '$binary' is "
+            "not on PATH. --allow-toolchain-fallback is set; falling back "
+            "to the system dart. The pinned toolchain is NOT being used.",
+      );
+    }
+    return _ResolvedCommand('dart', dartArgs, _NixKind.none);
   }
-  if (cmd.kind == _NixKind.flakeNix && !_nixAvailable()) {
-    return textResult(jsonEncode({
+  return _ResolvedCommand(
+    'dart',
+    dartArgs,
+    kind,
+    error: textResult(jsonEncode({
       'status': 'error',
-      'error':
-          "Project declares flake.nix but the 'nix' binary was not found "
-              "on PATH. Install Nix with flakes enabled, or remove flake.nix "
-              "to fall back to the system dart.",
-    }));
-  }
-  return null;
+      'error': "Project declares $declared but the '$binary' binary was "
+          "not found on PATH. Install Nix (https://nixos.org/download), "
+          "remove $declared to use the system dart, or restart the server "
+          "with --allow-toolchain-fallback to allow a warning-and-fallback "
+          "to the system dart.",
+    })),
+  );
 }
+
 
 /// Start a long-running Dart command with progress notifications
 Future<CallToolResult> _startDartCommandWithProgress(
@@ -409,11 +487,12 @@ Future<CallToolResult> _startDartCommandWithProgress(
   Directory workingDir,
   SessionManager sessionManager,
   String operation,
-  List<String> dartArgs,
-) async {
-  final cmd = _getDartCommand(workingDir, dartArgs);
-  final binaryError = _checkNixBinaryAvailable(cmd);
-  if (binaryError != null) return binaryError;
+  List<String> dartArgs, {
+  required bool allowFallback,
+}) async {
+  final cmd = _getDartCommand(workingDir, dartArgs,
+      allowFallback: allowFallback);
+  if (cmd.error != null) return cmd.error!;
 
   final sessionId =
       sessionManager.createSession(operation, cmd.display);
@@ -459,11 +538,12 @@ Future<CallToolResult> _startDartCommandWithProgress(
 /// Run a short Dart command synchronously
 Future<CallToolResult> _runDartCommandSync(
   Directory workingDir,
-  List<String> dartArgs,
-) async {
-  final cmd = _getDartCommand(workingDir, dartArgs);
-  final binaryError = _checkNixBinaryAvailable(cmd);
-  if (binaryError != null) return binaryError;
+  List<String> dartArgs, {
+  required bool allowFallback,
+}) async {
+  final cmd = _getDartCommand(workingDir, dartArgs,
+      allowFallback: allowFallback);
+  if (cmd.error != null) return cmd.error!;
 
   try {
     final result = await runCommand(workingDir, cmd.executable, cmd.args);
@@ -490,6 +570,7 @@ Future<CallToolResult> _runDartCommandSync(
     });
   }
 }
+
 
 
 /// Get output chunks from a session
