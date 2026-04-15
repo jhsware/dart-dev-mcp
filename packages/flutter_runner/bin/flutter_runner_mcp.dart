@@ -262,6 +262,20 @@ Future<CallToolResult> _handleFlutterRunner(
           ['pub', 'get', ...?_getExtraArgs(args)],
         );
 
+      case 'pub-run':
+        final target = args['target'] as String?;
+        if (requireString(target, 'target') case final error?) {
+          return error;
+        }
+        return _startFlutterCommandWithProgress(
+          extra,
+          workingDir,
+          sessionManager,
+          useFvm,
+          'pub-run',
+          ['pub', 'run', target!, ...?_getExtraArgs(args)],
+        );
+
       case 'clean':
         return await _runFlutterCommandSync(
           workingDir,

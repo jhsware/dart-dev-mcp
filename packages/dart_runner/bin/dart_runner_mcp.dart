@@ -60,6 +60,11 @@ Operations:
 - run: Run 'dart run' to execute a Dart program
 - format: Run 'dart format' to format code
 - pub-get: Run 'dart pub get' to fetch dependencies
+- pub-run: Run 'dart pub run <package> [args...]' - used for code generation
+           (e.g. target='build_runner', args=['build', '--delete-conflicting-outputs']).
+           The target parameter is REQUIRED and specifies the package to run.
+           Note: For modern Dart projects, prefer the 'run' operation with
+           target='<package>:<executable>' (e.g. 'build_runner:build_runner').
 - get_output: Get output chunks from a running or completed session
 - list_sessions: List all active sessions
 - cancel: Cancel a running session
@@ -80,6 +85,7 @@ Use get_output with the session_id to poll for output.''',
             'run',
             'format',
             'pub-get',
+            'pub-run',
             'get_output',
             'list_sessions',
             'cancel',
@@ -87,7 +93,7 @@ Use get_output with the session_id to poll for output.''',
         ),
         'target': JsonSchema.string(
           description:
-              'Target file or directory for run/test/analyze/format operations. Default: current directory',
+              'Target file or directory for run/test/analyze/format operations. Default: current directory. For pub-run this is the package name (REQUIRED), e.g. "build_runner".',
         ),
         'args': JsonSchema.array(
           items: JsonSchema.string(),
@@ -133,6 +139,7 @@ const _validOperations = [
   'run',
   'format',
   'pub-get',
+  'pub-run',
   'get_output',
   'list_sessions',
   'cancel',
@@ -207,11 +214,23 @@ Future<CallToolResult> _handleDartRunner(
           workingDir,
           ['format', target, ...?_getExtraArgs(args)],
         );
-
       case 'pub-get':
         return await _runDartCommandSync(
           workingDir,
           ['pub', 'get', ...?_getExtraArgs(args)],
+        );
+
+      case 'pub-run':
+        final target = args['target'] as String?;
+        if (requireString(target, 'target') case final error?) {
+          return error;
+        }
+        return _startDartCommandWithProgress(
+          extra,
+          workingDir,
+          sessionManager,
+          'pub-run',
+          ['pub', 'run', target!, ...?_getExtraArgs(args)],
         );
 
       case 'get_output':
