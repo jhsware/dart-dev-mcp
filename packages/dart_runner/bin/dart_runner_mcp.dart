@@ -38,6 +38,23 @@ void main(List<String> arguments) async {
   logInfo('dart-runner',
       'Project dirs: ${serverArgs.projectDirs.join(", ")}');
 
+  // Prime the nix-kind cache and log detected nix projects so operators
+  // can see at a glance which projects will be wrapped in nix-shell.
+  for (final dir in serverArgs.projectDirs) {
+    final kind = _detectNixKind(Directory(dir));
+    switch (kind) {
+      case _NixKind.shellNix:
+        logInfo('dart-runner',
+            'Detected shell.nix in $dir — dart commands will run via nix-shell.');
+      case _NixKind.flakeNix:
+        logInfo('dart-runner',
+            'Detected flake.nix in $dir — dart commands will run via nix develop.');
+      case _NixKind.none:
+        break;
+    }
+  }
+
+
   final sessionManager = SessionManager();
 
   final server = McpServer(
@@ -265,6 +282,127 @@ List<String>? _getExtraArgs(Map<String, dynamic> args) {
   return null;
 }
 
+/// Kind of nix environment detected for a project directory.
+enum _NixKind { none, shellNix, flakeNix }
+
+/// Cache of nix-kind detection keyed on absolute project directory.
+/// Avoids re-checking the filesystem on every MCP invocation.
+final Map<String, _NixKind> _nixKindCache = {};
+
+/// Detect whether a project uses nix-shell / nix flake.
+///
+/// Preference order: `shell.nix` > `flake.nix` > none.
+/// `shell.nix` wins because a project may ship both (flake for builds,
+/// shell.nix for dev env) and we specifically want the dev-env Dart SDK.
+_NixKind _detectNixKind(Directory workingDir) {
+  final key = workingDir.path;
+  final cached = _nixKindCache[key];
+  if (cached != null) return cached;
+
+  _NixKind kind;
+  if (File('${workingDir.path}/shell.nix').existsSync()) {
+    kind = _NixKind.shellNix;
+  } else if (File('${workingDir.path}/flake.nix').existsSync()) {
+    kind = _NixKind.flakeNix;
+  } else {
+    kind = _NixKind.none;
+  }
+  _nixKindCache[key] = kind;
+  return kind;
+}
+
+/// POSIX single-quote escape: wraps [arg] in single quotes, escaping any
+/// embedded single quote as `'\''`. Safe to pass through `sh -c` / `--run`.
+String _posixSingleQuoteEscape(String arg) {
+  return "'${arg.replaceAll("'", r"'\''")}'";
+}
+
+bool? _nixShellAvailableCache;
+bool? _nixAvailableCache;
+
+bool _whichExists(String binary) {
+  try {
+    final result = Process.runSync('which', [binary]);
+    return result.exitCode == 0;
+  } on ProcessException {
+    return false;
+  }
+}
+
+bool _nixShellAvailable() =>
+    _nixShellAvailableCache ??= _whichExists('nix-shell');
+bool _nixAvailable() => _nixAvailableCache ??= _whichExists('nix');
+
+/// The resolved command to execute for a given dart invocation.
+class _ResolvedCommand {
+  final String executable;
+  final List<String> args;
+  final _NixKind kind;
+  _ResolvedCommand(this.executable, this.args, this.kind);
+
+  String get display => '$executable ${args.join(' ')}';
+}
+
+/// Given the project [workingDir] and the requested dart [dartArgs],
+/// return the concrete (executable, args) pair to spawn. When the project
+/// declares a nix environment, the dart command is wrapped so the
+/// project-pinned toolchain is used.
+///
+/// Strategy (see task memory for rationale / timings):
+/// - shell.nix → `nix-shell --run "<escaped dart ...>" shell.nix`
+///   (impure — inherits PATH and reuses the cached nix store derivation,
+///   so only the first invocation pays the shell-build cost).
+/// - flake.nix → `nix develop --command dart <args>` (no escaping needed).
+/// - otherwise → `dart <args>` unchanged.
+_ResolvedCommand _getDartCommand(
+  Directory workingDir,
+  List<String> dartArgs,
+) {
+  final kind = _detectNixKind(workingDir);
+  switch (kind) {
+    case _NixKind.none:
+      return _ResolvedCommand('dart', dartArgs, kind);
+    case _NixKind.shellNix:
+      final runCmd =
+          ['dart', ...dartArgs].map(_posixSingleQuoteEscape).join(' ');
+      return _ResolvedCommand(
+        'nix-shell',
+        ['--run', runCmd, 'shell.nix'],
+        kind,
+      );
+    case _NixKind.flakeNix:
+      return _ResolvedCommand(
+        'nix',
+        ['develop', '--command', 'dart', ...dartArgs],
+        kind,
+      );
+  }
+}
+
+/// Return a user-friendly error CallToolResult if [cmd] requires a nix
+/// binary that is not on PATH, else null.
+CallToolResult? _checkNixBinaryAvailable(_ResolvedCommand cmd) {
+  if (cmd.kind == _NixKind.shellNix && !_nixShellAvailable()) {
+    return textResult(jsonEncode({
+      'status': 'error',
+      'error':
+          "Project declares shell.nix but the 'nix-shell' binary was not "
+              "found on PATH. Install Nix (https://nixos.org/download) or "
+              "remove shell.nix to fall back to the system dart.",
+    }));
+  }
+  if (cmd.kind == _NixKind.flakeNix && !_nixAvailable()) {
+    return textResult(jsonEncode({
+      'status': 'error',
+      'error':
+          "Project declares flake.nix but the 'nix' binary was not found "
+              "on PATH. Install Nix with flakes enabled, or remove flake.nix "
+              "to fall back to the system dart.",
+    }));
+  }
+  return null;
+}
+
 /// Start a long-running Dart command with progress notifications
 Future<CallToolResult> _startDartCommandWithProgress(
   RequestHandlerExtra extra,
@@ -273,14 +411,18 @@ Future<CallToolResult> _startDartCommandWithProgress(
   String operation,
   List<String> dartArgs,
 ) async {
+  final cmd = _getDartCommand(workingDir, dartArgs);
+  final binaryError = _checkNixBinaryAvailable(cmd);
+  if (binaryError != null) return binaryError;
+
   final sessionId =
-      sessionManager.createSession(operation, dartArgs.join(' '));
+      sessionManager.createSession(operation, cmd.display);
   final session = sessionManager.getSession(sessionId)!;
 
   final outputStream = streamCommand(
     workingDir,
-    'dart',
-    dartArgs,
+    cmd.executable,
+    cmd.args,
     onProcessStarted: (process) => session.setProcess(process),
   );
 
@@ -307,7 +449,7 @@ Future<CallToolResult> _startDartCommandWithProgress(
     'status': 'completed',
     'session_id': sessionId,
     'operation': operation,
-    'command': 'dart ${dartArgs.join(' ')}',
+    'command': cmd.display,
     'output': allOutput.toString(),
   };
 
@@ -319,11 +461,15 @@ Future<CallToolResult> _runDartCommandSync(
   Directory workingDir,
   List<String> dartArgs,
 ) async {
+  final cmd = _getDartCommand(workingDir, dartArgs);
+  final binaryError = _checkNixBinaryAvailable(cmd);
+  if (binaryError != null) return binaryError;
+
   try {
-    final result = await runCommand(workingDir, 'dart', dartArgs);
+    final result = await runCommand(workingDir, cmd.executable, cmd.args);
 
     final output = StringBuffer();
-    output.writeln('Command: dart ${dartArgs.join(' ')}');
+    output.writeln('Command: ${cmd.display}');
     output.writeln('Exit code: ${result.exitCode}');
     output.writeln('');
 
@@ -340,10 +486,11 @@ Future<CallToolResult> _runDartCommandSync(
     return textResult(output.toString());
   } catch (e, stackTrace) {
     return errorResult('dart-runner:command', e, stackTrace, {
-      'command': 'dart ${dartArgs.join(' ')}',
+      'command': cmd.display,
     });
   }
 }
+
 
 /// Get output chunks from a session
 CallToolResult _getOutput(
