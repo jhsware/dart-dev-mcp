@@ -113,6 +113,22 @@ class SlateOperations {
               'added_at': row['added_at'],
             })
         .toList();
+        .toList();
+
+    // Get slate history ordered by changed_at DESC
+    final historyResult = database.select(
+        'SELECT id, field_name, old_value, new_value, changed_at FROM slate_history WHERE slate_id = ? ORDER BY changed_at DESC',
+        [id]);
+
+    final history = historyResult
+        .map((row) => {
+              'id': row['id'],
+              'field_name': row['field_name'],
+              'old_value': row['old_value'],
+              'new_value': row['new_value'],
+              'changed_at': row['changed_at'],
+            })
+        .toList();
 
     return jsonResult({
       'id': slate['id'],
@@ -123,6 +139,7 @@ class SlateOperations {
       'created_at': slate['created_at'],
       'updated_at': slate['updated_at'],
       'items': items,
+      'history': history,
     });
   }
 
