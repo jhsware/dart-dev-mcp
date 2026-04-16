@@ -66,7 +66,15 @@ class FileReadOperations {
   }
 
   /// Read a single file with line numbers.
-  Future<CallToolResult> readFile(String path) async {
+  ///
+  /// Optionally accepts [startLine] and [endLine] (1-indexed, inclusive)
+  /// to return only a specific line range. Line numbers in the output
+  /// reflect the original file positions.
+  Future<CallToolResult> readFile(
+    String path, {
+    int? startLine,
+    int? endLine,
+  }) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
       return validationError('path', '$pathError. $_allowedPathsHint');
@@ -74,7 +82,8 @@ class FileReadOperations {
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
+      return validationError(
+          'path', 'Not allowed for: $path. $_allowedPathsHint');
     }
 
     final file = File(filePath);
@@ -82,9 +91,48 @@ class FileReadOperations {
       return notFoundError('File', path);
     }
 
+    // Validate line range parameters
+    if (startLine != null && startLine < 1) {
+      return validationError('startLine', 'startLine must be >= 1');
+    }
+    if (endLine != null && endLine < 1) {
+      return validationError('endLine', 'endLine must be >= 1');
+    }
+    if (endLine != null && startLine == null) {
+      return validationError('endLine', 'endLine requires startLine');
+    }
+    if (startLine != null &&
+        endLine != null &&
+        endLine < startLine) {
+      return validationError(
+          'endLine', 'endLine must be >= startLine');
+    }
+
     final content = await file.readAsString();
     final normalized = normalizeLineEndings(content);
-    return textResult(addLineNumbers(normalized));
+
+    if (startLine == null) {
+      // No line range — return full file (existing behavior)
+      return textResult(addLineNumbers(normalized));
+    }
+
+    // Line range requested — slice the content
+    final lines = normalized.split('\n');
+
+    if (startLine > lines.length) {
+      return validationError('startLine',
+          'startLine ($startLine) exceeds file length (${lines.length} lines)');
+    }
+
+    // Clamp endLine to file length
+    final actualEndLine =
+        endLine == null ? lines.length : endLine.clamp(1, lines.length);
+
+    final slicedLines = lines.sublist(startLine - 1, actualEndLine);
+    final slicedContent = slicedLines.join('\n');
+
+    return textResult(
+        addLineNumbers(slicedContent, startLineNumber: startLine));
   }
 
   /// Read multiple files.
