@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 7;
+const int currentSchemaVersion = 8;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -107,6 +107,24 @@ Database initializeDatabase(String dbPath) {
 
   database.execute(
       'CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)');
+
+  // Create slate_history table
+  database.execute('''
+    CREATE TABLE IF NOT EXISTS slate_history (
+      id TEXT PRIMARY KEY,
+      slate_id TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      changed_at TEXT NOT NULL,
+      FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE
+    )
+  ''');
+
+  database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_slate_history_slate_id ON slate_history(slate_id)');
+
+
 
   // Create slates table
   database.execute('''
@@ -378,6 +396,29 @@ void _runMigrations(Database database) {
     _setSchemaVersion(database, 7);
     logInfo('planner', 'Migration to schema version 7 complete.');
   }
+
+  // Migration from version 7 to version 8
+  // Add slate_history table for per-field change tracking on slates
+  if (currentVersion < 8) {
+    logInfo('planner', 'Running migration to schema version 8...');
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS slate_history (
+        id TEXT PRIMARY KEY,
+        slate_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        changed_at TEXT NOT NULL,
+        FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE
+      )
+    ''');
+    database.execute(
+        'CREATE INDEX IF NOT EXISTS idx_slate_history_slate_id ON slate_history(slate_id)');
+    _setSchemaVersion(database, 8);
+    logInfo('planner', 'Migration to schema version 8 complete.');
+  }
+
+
 
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);
