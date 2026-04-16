@@ -176,6 +176,7 @@ void main() {
       final text = resultText(result);
       expect(text, contains('No parent directory traversal allowed'));
       expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
+    });
   });
 
   group('readFile line range support', () {
