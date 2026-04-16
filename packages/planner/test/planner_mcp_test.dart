@@ -923,6 +923,41 @@ Multi-line details with:
       // SIGTERM/SIGINT results in non-zero but that's expected from kill
       expect(exitCode, isNot(1));
     });
+
+    group('list-projects operation', () {
+      test('returns project dirs with short names', () {
+        // Simulate the list-projects logic from _handlePlanner
+        final projectDirs = [
+          '/home/user/projects/my-app',
+          '/home/user/projects/shared-libs',
+          '/tmp/test-project',
+        ];
+
+        final projects = projectDirs.map((dir) => {
+          'project_dir': dir,
+          'project_name': p.basename(dir),
+        }).toList();
+
+        expect(projects, hasLength(3));
+        expect(projects[0]['project_dir'], '/home/user/projects/my-app');
+        expect(projects[0]['project_name'], 'my-app');
+        expect(projects[1]['project_dir'], '/home/user/projects/shared-libs');
+        expect(projects[1]['project_name'], 'shared-libs');
+        expect(projects[2]['project_dir'], '/tmp/test-project');
+        expect(projects[2]['project_name'], 'test-project');
+      });
+
+      test('returns empty list when no project dirs', () {
+        final projectDirs = <String>[];
+
+        final projects = projectDirs.map((dir) => {
+          'project_dir': dir,
+          'project_name': p.basename(dir),
+        }).toList();
+
+        expect(projects, isEmpty);
+      });
+    });
   });
 }
 

@@ -102,6 +102,8 @@ void main(List<String> arguments) async {
     description: '''Task and step management for AI-assisted development.
 
 Operations:
+- list-projects: List all registered project directories with their short names. Returns project_dir (full path) and project_name (basename) for each. Does not require a specific project_dir context.
+- get-project-instructions: Read project instructions from AGENTS.md
 - get-project-instructions: Read project instructions from AGENTS.md
 - add-task: Create a new task
 - show-task: Show task details with list of steps and linked backlog items. Requires: id.
@@ -278,6 +280,7 @@ void _printUsage() {
 }
 
 const _validOperations = [
+  'list-projects',
   'get-project-instructions',
   'add-task',
   'show-task',
@@ -327,6 +330,15 @@ Future<CallToolResult> _handlePlanner(
   if (requireStringOneOf(operation, 'operation', _validOperations)
       case final error?) {
     return error;
+  }
+
+  // Handle list-projects before DB setup (it's a global operation)
+  if (operation == 'list-projects') {
+    final projects = serverArgs.projectDirs.map((dir) => {
+      'project_dir': dir,
+      'project_name': p.basename(dir),
+    }).toList();
+    return jsonResult({'projects': projects, 'count': projects.length});
   }
 
   // Get or create database for this project
