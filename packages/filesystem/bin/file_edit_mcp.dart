@@ -54,7 +54,7 @@ void main(List<String> arguments) async {
 
 Operations:
 - list-content: Recursively list files and directories
-- read-file: Read a single file with line numbers
+- read-file: Read a single file with line numbers (supports startLine/endLine for partial reads)
 - read-files: Read multiple files (comma-separated paths)
 - search-text: Search for text pattern (regex) in files
 - create-directory: Create a new directory
@@ -89,14 +89,20 @@ Operations:
           description: 'Whether search is case-sensitive. Default: true',
         ),
         'startLine': JsonSchema.integer(
-          description: '''For edit-file: starting line number (1-indexed).
+          description:
+              '''Starting line number (1-indexed). Used by read-file and edit-file.
+For read-file:
+- If not provided: reads entire file
+- If provided without endLine: reads from startLine to end of file
+- If provided with endLine: reads lines startLine to endLine
+For edit-file:
 - If not provided: overwrites entire file
 - If provided without endLine: inserts at this line
 - If provided with endLine: replaces lines startLine to endLine''',
         ),
         'endLine': JsonSchema.integer(
           description:
-              'For edit-file: ending line number (1-indexed, inclusive)',
+              'Ending line number (1-indexed, inclusive). Used by read-file and edit-file.',
         ),
         'destination': JsonSchema.string(
           description:
@@ -187,7 +193,10 @@ Future<CallToolResult> _handleFileSystem(
       case 'list-content':
         return await readOps.listContent(path);
       case 'read-file':
-        return await readOps.readFile(path);
+        final startLine = args['startLine'] as int?;
+        final endLine = args['endLine'] as int?;
+        return await readOps.readFile(path,
+            startLine: startLine, endLine: endLine);
       case 'read-files':
         return await readOps.readFiles(path.split(','));
       case 'search-text':

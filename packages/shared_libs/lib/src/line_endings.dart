@@ -60,8 +60,9 @@ String applyLineEndings(String content, LineEndingStyle style) {
 
 /// Add line numbers to content
 ///
-/// Adds "L#: " prefix to each line where # is the line number (1-indexed)
-String addLineNumbers(String content) {
+/// Adds "L#: " prefix to each line where # is the line number.
+/// [startLineNumber] specifies the number for the first line (default: 1).
+String addLineNumbers(String content, {int startLineNumber = 1}) {
   if (content.isEmpty) {
     return content;
   }
@@ -70,7 +71,7 @@ String addLineNumbers(String content) {
   final numberedLines = <String>[];
 
   for (var i = 0; i < lines.length; i++) {
-    numberedLines.add('L${i + 1}: ${lines[i]}');
+    numberedLines.add('L${startLineNumber + i}: ${lines[i]}');
   }
 
   return numberedLines.join('\n');
