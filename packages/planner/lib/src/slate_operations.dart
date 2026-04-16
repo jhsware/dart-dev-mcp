@@ -113,7 +113,6 @@ class SlateOperations {
               'added_at': row['added_at'],
             })
         .toList();
-        .toList();
 
     // Get slate history ordered by changed_at DESC
     final historyResult = database.select(
