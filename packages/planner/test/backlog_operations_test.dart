@@ -739,6 +739,113 @@ void main() {
     });
   });
 
+  // ===== SLATE HISTORY =====
+
+  group('Slate History', () {
+    test('showSlate returns empty history for new slate', () {
+      final addResult = slateOps.addSlate({
+        'title': 'New slate',
+      });
+      final addData = parseResult(addResult);
+      final slateId = addData['slate']['id'] as String;
+
+      final result = slateOps.showSlate({'id': slateId});
+      final data = parseResult(result);
+
+      expect(data['id'], slateId);
+      expect(data['title'], 'New slate');
+      expect(data['history'], isEmpty);
+    });
+
+    test('updateSlate records title change in history', () {
+      final addResult = slateOps.addSlate({
+        'title': 'Original title',
+      });
+      final addData = parseResult(addResult);
+      final slateId = addData['slate']['id'] as String;
+
+      final updateResult = slateOps.updateSlate({
+        'id': slateId,
+        'title': 'Updated title',
+      });
+      final updateData = parseResult(updateResult);
+
+      expect(updateData['title'], 'Updated title');
+
+      final history = updateData['history'] as List;
+      expect(history, hasLength(1));
+      expect(history[0]['field_name'], 'title');
+      expect(history[0]['old_value'], 'Original title');
+      expect(history[0]['new_value'], 'Updated title');
+    });
+
+    test('updateSlate records status change in history', () {
+      final addResult = slateOps.addSlate({
+        'title': 'Status test',
+        'status': 'draft',
+      });
+      final addData = parseResult(addResult);
+      final slateId = addData['slate']['id'] as String;
+
+      slateOps.updateSlate({
+        'id': slateId,
+        'status': 'started',
+      });
+
+      final showResult = slateOps.showSlate({'id': slateId});
+      final showData = parseResult(showResult);
+
+      expect(showData['status'], 'started');
+      final history = showData['history'] as List;
+      expect(history, hasLength(1));
+      expect(history[0]['field_name'], 'status');
+      expect(history[0]['old_value'], 'draft');
+      expect(history[0]['new_value'], 'started');
+    });
+
+    test('updateSlate records multiple field changes separately', () {
+      final addResult = slateOps.addSlate({
+        'title': 'Multi update',
+        'status': 'draft',
+      });
+      final addData = parseResult(addResult);
+      final slateId = addData['slate']['id'] as String;
+
+      slateOps.updateSlate({
+        'id': slateId,
+        'title': 'New title',
+        'status': 'todo',
+      });
+
+      final showResult = slateOps.showSlate({'id': slateId});
+      final showData = parseResult(showResult);
+
+      final history = showData['history'] as List;
+      expect(history, hasLength(2));
+      final fieldNames = history.map((h) => h['field_name']).toSet();
+      expect(fieldNames, containsAll(['title', 'status']));
+    });
+
+    test('updateSlate does not record history when value unchanged', () {
+      final addResult = slateOps.addSlate({
+        'title': 'Same title',
+      });
+      final addData = parseResult(addResult);
+      final slateId = addData['slate']['id'] as String;
+
+      slateOps.updateSlate({
+        'id': slateId,
+        'title': 'Same title',
+      });
+
+      final showResult = slateOps.showSlate({'id': slateId});
+      final showData = parseResult(showResult);
+
+      final history = showData['history'] as List;
+      expect(history, isEmpty);
+    });
+  });
+
   // ===== MIGRATION =====
 
   group('Migration', () {
@@ -751,16 +858,17 @@ void main() {
 
       expect(tableNames, contains('items'));
       expect(tableNames, contains('item_history'));
+      expect(tableNames, contains('slate_history'));
       expect(tableNames, contains('slates'));
       expect(tableNames, contains('slate_items'));
       expect(tableNames, contains('task_items'));
     });
 
-    test('schema version is set to 7', () {
+    test('schema version is set to 8', () {
       final result = db.select(
         "SELECT value FROM schema_metadata WHERE key = 'schema_version'",
       );
-      expect(result.first['value'], '7');
+      expect(result.first['value'], '8');
     });
 
     test('slates table has status and slate_date columns', () {
