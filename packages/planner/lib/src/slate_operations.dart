@@ -114,6 +114,21 @@ class SlateOperations {
             })
         .toList();
 
+    // Get slate history ordered by changed_at DESC
+    final historyResult = database.select(
+        'SELECT id, field_name, old_value, new_value, changed_at FROM slate_history WHERE slate_id = ? ORDER BY changed_at DESC',
+        [id]);
+
+    final history = historyResult
+        .map((row) => {
+              'id': row['id'],
+              'field_name': row['field_name'],
+              'old_value': row['old_value'],
+              'new_value': row['new_value'],
+              'changed_at': row['changed_at'],
+            })
+        .toList();
+
     return jsonResult({
       'id': slate['id'],
       'title': slate['title'],
@@ -123,6 +138,7 @@ class SlateOperations {
       'created_at': slate['created_at'],
       'updated_at': slate['updated_at'],
       'items': items,
+      'history': history,
     });
   }
 
@@ -140,20 +156,32 @@ class SlateOperations {
       return notFoundError('Slate', id!);
     }
 
+    final existing = Map<String, dynamic>.from(existingResult.first);
     final before =
-        slateToLoggable(Map<String, dynamic>.from(existingResult.first));
+        slateToLoggable(existing);
 
     final updates = <String>[];
     final values = <Object?>[];
+    final changedFields = <MapEntry<String, MapEntry<String?, String?>>>[];
 
     if (args?.containsKey('title') == true) {
+      final newTitle = args!['title'] as String?;
+      if (existing['title'] != newTitle) {
+        changedFields.add(MapEntry(
+            'title', MapEntry(existing['title'] as String?, newTitle)));
+      }
       updates.add('title = ?');
-      values.add(args!['title']);
+      values.add(newTitle);
     }
 
     if (args?.containsKey('notes') == true) {
+      final newNotes = args!['notes'] as String?;
+      if (existing['notes'] != newNotes) {
+        changedFields.add(MapEntry(
+            'notes', MapEntry(existing['notes'] as String?, newNotes)));
+      }
       updates.add('notes = ?');
-      values.add(args!['notes']);
+      values.add(newNotes);
     }
 
     if (args?.containsKey('status') == true) {
@@ -162,13 +190,22 @@ class SlateOperations {
           case final error?) {
         return error;
       }
+      if (existing['status'] != newStatus) {
+        changedFields.add(MapEntry(
+            'status', MapEntry(existing['status'] as String?, newStatus)));
+      }
       updates.add('status = ?');
       values.add(newStatus);
     }
 
     if (args?.containsKey('release_date') == true) {
+      final newDate = args!['release_date'] as String?;
+      if (existing['slate_date'] != newDate) {
+        changedFields.add(MapEntry(
+            'slate_date', MapEntry(existing['slate_date'] as String?, newDate)));
+      }
       updates.add('slate_date = ?');
-      values.add(args!['release_date']);
+      values.add(newDate);
     }
 
     if (updates.isEmpty) {
@@ -183,6 +220,15 @@ class SlateOperations {
     withRetryTransactionSync(database, () {
       database.execute(
           'UPDATE slates SET ${updates.join(", ")} WHERE id = ?', values);
+
+      // Insert slate_history rows for each changed field
+      for (final change in changedFields) {
+        final historyId = _uuid.v4();
+        database.execute('''
+          INSERT INTO slate_history (id, slate_id, field_name, old_value, new_value, changed_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        ''', [historyId, id, change.key, change.value.key, change.value.value, now]);
+      }
 
       final afterResult =
           database.select('SELECT * FROM slates WHERE id = ?', [id]);
