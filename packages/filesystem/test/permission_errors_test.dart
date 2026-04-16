@@ -176,6 +176,87 @@ void main() {
       final text = resultText(result);
       expect(text, contains('No parent directory traversal allowed'));
       expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
+  });
+
+  group('readFile line range support', () {
+    late File rangeTestFile;
+
+    setUp(() async {
+      // Create a 10-line file for range tests
+      final lines = List.generate(10, (i) => 'Line ${i + 1}');
+      rangeTestFile = File('${libDir.path}/range_test.dart');
+      await rangeTestFile.writeAsString(lines.join('\n'));
+    });
+
+    test('no line range returns full file', () async {
+      final result = await readOps.readFile('lib/range_test.dart');
+      final text = resultText(result);
+      expect(text, contains('L1: Line 1'));
+      expect(text, contains('L10: Line 10'));
+    });
+
+    test('startLine and endLine returns specified range', () async {
+      final result = await readOps.readFile('lib/range_test.dart',
+          startLine: 3, endLine: 7);
+      final text = resultText(result);
+      expect(text, contains('L3: Line 3'));
+      expect(text, contains('L7: Line 7'));
+      expect(text, isNot(contains('L2:')));
+      expect(text, isNot(contains('L8:')));
+    });
+
+    test('startLine only returns from startLine to end of file', () async {
+      final result =
+          await readOps.readFile('lib/range_test.dart', startLine: 8);
+      final text = resultText(result);
+      expect(text, contains('L8: Line 8'));
+      expect(text, contains('L9: Line 9'));
+      expect(text, contains('L10: Line 10'));
+      expect(text, isNot(contains('L7:')));
+    });
+
+    test('startLine=1 endLine=1 returns single line', () async {
+      final result = await readOps.readFile('lib/range_test.dart',
+          startLine: 1, endLine: 1);
+      final text = resultText(result);
+      expect(text, equals('L1: Line 1'));
+    });
+
+    test('endLine beyond file length clamps to file length', () async {
+      final result = await readOps.readFile('lib/range_test.dart',
+          startLine: 8, endLine: 100);
+      final text = resultText(result);
+      expect(text, contains('L8: Line 8'));
+      expect(text, contains('L10: Line 10'));
+      expect(text, isNot(contains('L11:')));
+    });
+
+    test('startLine beyond file length returns error', () async {
+      final result =
+          await readOps.readFile('lib/range_test.dart', startLine: 999);
+      final text = resultText(result);
+      expect(text, contains('startLine (999) exceeds file length'));
+    });
+
+    test('startLine < 1 returns error', () async {
+      final result =
+          await readOps.readFile('lib/range_test.dart', startLine: 0);
+      final text = resultText(result);
+      expect(text, contains('startLine must be >= 1'));
+    });
+
+    test('endLine < startLine returns error', () async {
+      final result = await readOps.readFile('lib/range_test.dart',
+          startLine: 5, endLine: 3);
+      final text = resultText(result);
+      expect(text, contains('endLine must be >= startLine'));
+    });
+
+    test('endLine without startLine returns error', () async {
+      final result =
+          await readOps.readFile('lib/range_test.dart', endLine: 5);
+      final text = resultText(result);
+      expect(text, contains('endLine requires startLine'));
     });
   });
 }
