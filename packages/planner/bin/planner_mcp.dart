@@ -102,8 +102,7 @@ void main(List<String> arguments) async {
     description: '''Task and step management for AI-assisted development.
 
 Operations:
-- list-projects: List all registered project directories with their short names. Returns project_dir (full path) and project_name (basename) for each. Does not require a specific project_dir context.
-- get-project-instructions: Read project instructions from AGENTS.md
+- list-projects: List all registered project directories with their short names. Takes no arguments — project_dir and any other args are ignored. Returns project_dir (full path) and project_name (basename) for each.
 - get-project-instructions: Read project instructions from AGENTS.md
 - add-task: Create a new task
 - show-task: Show task details with list of steps and linked backlog items. Requires: id.
@@ -143,9 +142,8 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
       properties: {
         'project_dir': JsonSchema.string(
           description:
-              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+              'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects, which is global and takes no arguments.',
         ),
-        'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: _validOperations,
         ),
@@ -249,7 +247,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
               'When true, list-items returns only items not assigned to any slate',
         ),
       },
-      required: ['project_dir'],
+      required: [],
     ),
     callback: (args, extra) => _handlePlanner(
         args, serverArgs, getDatabase, promptPackService),
