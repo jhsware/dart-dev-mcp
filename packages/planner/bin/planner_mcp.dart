@@ -316,7 +316,23 @@ Future<CallToolResult> _handlePlanner(
   Database Function(String projectDir) getDatabase,
   PromptPackService promptPackService,
 ) async {
-  // Validate project_dir is present and valid
+  // Validate operation first (needed to short-circuit list-projects)
+  final operation = args['operation'] as String?;
+  if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  // Handle list-projects before project_dir validation (it's a global operation)
+  if (operation == 'list-projects') {
+    final projects = serverArgs.projectDirs.map((dir) => {
+      'project_dir': dir,
+      'project_name': p.basename(dir),
+    }).toList();
+    return jsonResult({'projects': projects, 'count': projects.length});
+  }
+
+  // Validate project_dir is present and valid (required for all ops except list-projects)
   final projectDir = args['project_dir'] as String?;
   if (requireString(projectDir, 'project_dir') case final error?) {
     return error;
@@ -326,20 +342,6 @@ Future<CallToolResult> _handlePlanner(
         'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
   }
 
-  final operation = args['operation'] as String?;
-  if (requireStringOneOf(operation, 'operation', _validOperations)
-      case final error?) {
-    return error;
-  }
-
-  // Handle list-projects before DB setup (it's a global operation)
-  if (operation == 'list-projects') {
-    final projects = serverArgs.projectDirs.map((dir) => {
-      'project_dir': dir,
-      'project_name': p.basename(dir),
-    }).toList();
-    return jsonResult({'projects': projects, 'count': projects.length});
-  }
 
   // Get or create database for this project
   final database = getDatabase(projectDir!);
