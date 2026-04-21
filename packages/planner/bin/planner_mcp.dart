@@ -102,8 +102,7 @@ void main(List<String> arguments) async {
     description: '''Task and step management for AI-assisted development.
 
 Operations:
-- list-projects: List all registered project directories with their short names. Returns project_dir (full path) and project_name (basename) for each. Does not require a specific project_dir context.
-- get-project-instructions: Read project instructions from AGENTS.md
+- list-projects: List all registered project directories with their short names. Takes no arguments — project_dir and any other args are ignored. Returns project_dir (full path) and project_name (basename) for each.
 - get-project-instructions: Read project instructions from AGENTS.md
 - add-task: Create a new task
 - show-task: Show task details with list of steps and linked backlog items. Requires: id.
@@ -143,7 +142,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
       properties: {
         'project_dir': JsonSchema.string(
           description:
-              'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
+              'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects, which is global and takes no arguments.',
         ),
         'operation': JsonSchema.string(
           description: 'The operation to perform',
@@ -253,7 +252,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
               'When true, list-items returns only items not assigned to any slate',
         ),
       },
-      required: ['project_dir'],
+      required: [],
     ),
     callback: (args, extra) => _handlePlanner(
         args, serverArgs, getDatabase, promptPackService),
@@ -320,7 +319,23 @@ Future<CallToolResult> _handlePlanner(
   Database Function(String projectDir) getDatabase,
   PromptPackService promptPackService,
 ) async {
-  // Validate project_dir is present and valid
+  // Validate operation first (needed to short-circuit list-projects)
+  final operation = args['operation'] as String?;
+  if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  // Handle list-projects before project_dir validation (it's a global operation)
+  if (operation == 'list-projects') {
+    final projects = serverArgs.projectDirs.map((dir) => {
+      'project_dir': dir,
+      'project_name': p.basename(dir),
+    }).toList();
+    return jsonResult({'projects': projects, 'count': projects.length});
+  }
+
+  // Validate project_dir is present and valid (required for all ops except list-projects)
   final projectDir = args['project_dir'] as String?;
   if (requireString(projectDir, 'project_dir') case final error?) {
     return error;
@@ -330,20 +345,6 @@ Future<CallToolResult> _handlePlanner(
         'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
   }
 
-  final operation = args['operation'] as String?;
-  if (requireStringOneOf(operation, 'operation', _validOperations)
-      case final error?) {
-    return error;
-  }
-
-  // Handle list-projects before DB setup (it's a global operation)
-  if (operation == 'list-projects') {
-    final projects = serverArgs.projectDirs.map((dir) => {
-      'project_dir': dir,
-      'project_name': p.basename(dir),
-    }).toList();
-    return jsonResult({'projects': projects, 'count': projects.length});
-  }
 
   // Get or create database for this project
   final database = getDatabase(projectDir!);
