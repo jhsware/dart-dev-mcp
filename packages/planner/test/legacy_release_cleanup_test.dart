@@ -32,7 +32,7 @@ void main() {
   /// Create a DB with legacy 'releases' schema (simulating planner_app).
   /// Does NOT create schema_metadata — simulating MCP opening a planner_app DB
   /// for the first time.
-  Database _createLegacyDb(String dbPath) {
+  Database createLegacyDb(String dbPath) {
     final db = sqlite3.open(dbPath);
     db.execute('PRAGMA journal_mode=WAL');
     db.execute('PRAGMA foreign_keys=ON');
@@ -95,7 +95,7 @@ void main() {
   group('Legacy release schema cleanup', () {
     test('renames releases tables to slates when no slates tables exist', () {
       final dbPath = p.join(tempDir.path, 'test_rename.db');
-      final legacyDb = _createLegacyDb(dbPath);
+      final legacyDb = createLegacyDb(dbPath);
 
       // Seed a release row
       final now = DateTime.now().toUtc().toIso8601String();
@@ -132,7 +132,7 @@ void main() {
     test('drops releases when both releases and slates exist (slates has data)',
         () {
       final dbPath = p.join(tempDir.path, 'test_both.db');
-      final legacyDb = _createLegacyDb(dbPath);
+      final legacyDb = createLegacyDb(dbPath);
 
       final now = DateTime.now().toUtc().toIso8601String();
       // Seed release row (legacy)
@@ -179,7 +179,7 @@ void main() {
 
     test('keeps releases data when slates is empty', () {
       final dbPath = p.join(tempDir.path, 'test_keep_releases.db');
-      final legacyDb = _createLegacyDb(dbPath);
+      final legacyDb = createLegacyDb(dbPath);
 
       final now = DateTime.now().toUtc().toIso8601String();
       legacyDb.execute('''
@@ -213,7 +213,7 @@ void main() {
 
     test('updateSlate succeeds after legacy cleanup', () {
       final dbPath = p.join(tempDir.path, 'test_update.db');
-      final legacyDb = _createLegacyDb(dbPath);
+      final legacyDb = createLegacyDb(dbPath);
 
       final now = DateTime.now().toUtc().toIso8601String();
       legacyDb.execute('''
@@ -246,7 +246,7 @@ void main() {
 
     test('drops triggers and views referencing releases', () {
       final dbPath = p.join(tempDir.path, 'test_triggers.db');
-      final legacyDb = _createLegacyDb(dbPath);
+      final legacyDb = createLegacyDb(dbPath);
       legacyDb.dispose();
 
       final db = initializeDatabase(dbPath);
