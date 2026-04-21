@@ -924,38 +924,107 @@ Multi-line details with:
       expect(exitCode, isNot(1));
     });
 
-    group('list-projects operation', () {
-      test('returns project dirs with short names', () {
-        // Simulate the list-projects logic from _handlePlanner
-        final projectDirs = [
-          '/home/user/projects/my-app',
-          '/home/user/projects/shared-libs',
-          '/tmp/test-project',
+    group('list-projects dispatcher logic', () {
+      /// Simulates the _handlePlanner dispatch logic for list-projects
+      /// and project_dir validation, mirroring the actual code in planner_mcp.dart.
+      Map<String, dynamic>? simulateDispatch(
+        Map<String, dynamic> args,
+        List<String> registeredDirs,
+      ) {
+        final validOperations = [
+          'list-projects', 'get-project-instructions', 'add-task',
+          'show-task', 'update-task', 'show-task-memory',
+          'update-task-memory', 'list-tasks', 'add-step', 'show-step',
+          'update-step', 'get-subtask-prompt', 'add-item', 'show-item',
+          'update-item', 'list-items', 'add-slate', 'show-slate',
+          'update-slate', 'list-slates', 'add-item-to-slate',
+          'remove-item-from-slate', 'add-item-to-task',
+          'remove-item-from-task', 'log-commit', 'log-merge',
+          'get-timeline', 'get-audit-trail',
         ];
 
-        final projects = projectDirs.map((dir) => {
-          'project_dir': dir,
-          'project_name': p.basename(dir),
-        }).toList();
+        // Step 1: validate operation
+        final operation = args['operation'] as String?;
+        if (operation == null || !validOperations.contains(operation)) {
+          return {'error': 'operation is required'};
+        }
 
-        expect(projects, hasLength(3));
+        // Step 2: short-circuit for list-projects (no project_dir needed)
+        if (operation == 'list-projects') {
+          final projects = registeredDirs.map((dir) => {
+            'project_dir': dir,
+            'project_name': p.basename(dir),
+          }).toList();
+          return {'projects': projects, 'count': projects.length};
+        }
+
+        // Step 3: validate project_dir for all other operations
+        final projectDir = args['project_dir'] as String?;
+        if (projectDir == null || projectDir.isEmpty) {
+          return {'error': 'project_dir is required'};
+        }
+        if (!registeredDirs.contains(projectDir)) {
+          return {'error': 'project_dir must be one of: ${registeredDirs.join(", ")}'};
+        }
+
+        // Would proceed to handle the operation...
+        return null; // indicates success (would dispatch to handler)
+      }
+
+      test('list-projects works with no project_dir arg', () {
+        final result = simulateDispatch(
+          {'operation': 'list-projects'},
+          ['/home/user/projects/my-app', '/tmp/test-project'],
+        );
+
+        expect(result, isNotNull);
+        expect(result!['error'], isNull);
+        expect(result['count'], 2);
+        final projects = result['projects'] as List;
         expect(projects[0]['project_dir'], '/home/user/projects/my-app');
         expect(projects[0]['project_name'], 'my-app');
-        expect(projects[1]['project_dir'], '/home/user/projects/shared-libs');
-        expect(projects[1]['project_name'], 'shared-libs');
-        expect(projects[2]['project_dir'], '/tmp/test-project');
-        expect(projects[2]['project_name'], 'test-project');
+        expect(projects[1]['project_dir'], '/tmp/test-project');
+        expect(projects[1]['project_name'], 'test-project');
       });
 
-      test('returns empty list when no project dirs', () {
-        final projectDirs = <String>[];
+      test('list-projects ignores garbage extra args', () {
+        final result = simulateDispatch(
+          {
+            'operation': 'list-projects',
+            'id': 'whatever',
+            'status': 'bogus',
+            'task_id': 'nope',
+          },
+          ['/home/user/projects/my-app'],
+        );
 
-        final projects = projectDirs.map((dir) => {
-          'project_dir': dir,
-          'project_name': p.basename(dir),
-        }).toList();
+        expect(result, isNotNull);
+        expect(result!['error'], isNull);
+        expect(result['count'], 1);
+        expect(
+          (result['projects'] as List).first['project_dir'],
+          '/home/user/projects/my-app',
+        );
+      });
 
-        expect(projects, isEmpty);
+      test('other operations without project_dir return validation error', () {
+        final result = simulateDispatch(
+          {'operation': 'list-tasks'},
+          ['/home/user/projects/my-app'],
+        );
+
+        expect(result, isNotNull);
+        expect(result!['error'], contains('project_dir'));
+      });
+
+      test('other operations with invalid project_dir return validation error', () {
+        final result = simulateDispatch(
+          {'operation': 'list-tasks', 'project_dir': '/not/registered'},
+          ['/home/user/projects/my-app'],
+        );
+
+        expect(result, isNotNull);
+        expect(result!['error'], contains('project_dir must be one of'));
       });
     });
   });

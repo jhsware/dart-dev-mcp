@@ -144,6 +144,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
           description:
               'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects, which is global and takes no arguments.',
         ),
+        'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: _validOperations,
         ),
