@@ -491,6 +491,40 @@ void _cleanupLegacyReleaseSchema(Database database) {
 
   logInfo('planner', 'Found legacy release tables, running cleanup...');
 
+  // --- Drop triggers and views referencing legacy tables FIRST ---
+  // SQLite with foreign_keys=ON validates triggers during RENAME COLUMN,
+  // so stale triggers must be removed before any schema changes.
+  final triggers = database.select(
+      "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql IS NOT NULL");
+  for (final trigger in triggers) {
+    final sql = (trigger['sql'] as String).toLowerCase();
+    if (sql.contains('releases') ||
+        sql.contains('release_items') ||
+        sql.contains('release_history')) {
+      final name = trigger['name'] as String;
+      logInfo('planner', 'Dropping legacy trigger: $name');
+      database.execute('DROP TRIGGER IF EXISTS "$name"');
+    }
+  }
+
+  final views = database.select(
+      "SELECT name, sql FROM sqlite_master WHERE type='view' AND sql IS NOT NULL");
+  for (final view in views) {
+    final sql = (view['sql'] as String).toLowerCase();
+    if (sql.contains('releases') ||
+        sql.contains('release_items') ||
+        sql.contains('release_history')) {
+      final name = view['name'] as String;
+      logInfo('planner', 'Dropping legacy view: $name');
+      database.execute('DROP VIEW IF EXISTS "$name"');
+    }
+  }
+
+  // --- Drop legacy indexes ---
+  database.execute('DROP INDEX IF EXISTS idx_releases_project_id');
+  database.execute('DROP INDEX IF EXISTS idx_releases_status');
+  database.execute('DROP INDEX IF EXISTS idx_release_history_release_id');
+
   final existingTables = database
       .select("SELECT name FROM sqlite_master WHERE type='table'")
       .map((row) => row['name'] as String)
@@ -499,22 +533,18 @@ void _cleanupLegacyReleaseSchema(Database database) {
   // --- Handle releases → slates ---
   if (existingTables.contains('releases')) {
     if (existingTables.contains('slates')) {
-      // Both exist: keep whichever has data, drop the other
       final releasesCount =
           database.select('SELECT COUNT(*) as c FROM releases').first['c'] as int;
       final slatesCount =
           database.select('SELECT COUNT(*) as c FROM slates').first['c'] as int;
 
       if (releasesCount > 0 && slatesCount == 0) {
-        // releases has data, slates is empty — drop slates, rename releases
         database.execute('DROP TABLE slates');
         database.execute('ALTER TABLE releases RENAME TO slates');
       } else {
-        // slates has data (or both empty) — drop releases
         database.execute('DROP TABLE releases');
       }
     } else {
-      // Only releases exists — rename to slates
       database.execute('ALTER TABLE releases RENAME TO slates');
     }
   }
@@ -558,7 +588,6 @@ void _cleanupLegacyReleaseSchema(Database database) {
   }
 
   // --- Rename legacy columns if still present ---
-  // Check slates for release_date column
   final slatesCols = database.select("PRAGMA table_info(slates)");
   final slatesColNames = slatesCols.map((row) => row['name'] as String).toSet();
   if (slatesColNames.contains('release_date') &&
@@ -567,7 +596,6 @@ void _cleanupLegacyReleaseSchema(Database database) {
         'ALTER TABLE slates RENAME COLUMN release_date TO slate_date');
   }
 
-  // Check slate_items for release_id column
   final slateItemsExists = database
       .select(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='slate_items'")
@@ -582,38 +610,20 @@ void _cleanupLegacyReleaseSchema(Database database) {
     }
   }
 
-  // --- Drop triggers and views referencing legacy tables ---
-  final triggers = database.select(
-      "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql IS NOT NULL");
-  for (final trigger in triggers) {
-    final sql = (trigger['sql'] as String).toLowerCase();
-    if (sql.contains('releases') ||
-        sql.contains('release_items') ||
-        sql.contains('release_history')) {
-      final name = trigger['name'] as String;
-      logInfo('planner', 'Dropping legacy trigger: $name');
-      database.execute('DROP TRIGGER IF EXISTS "$name"');
+  // Check slate_history for release_id column (renamed from release_history)
+  final slateHistoryExists = database
+      .select(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='slate_history'")
+      .isNotEmpty;
+  if (slateHistoryExists) {
+    final shCols = database.select("PRAGMA table_info(slate_history)");
+    final shColNames = shCols.map((row) => row['name'] as String).toSet();
+    if (shColNames.contains('release_id') &&
+        !shColNames.contains('slate_id')) {
+      database.execute(
+          'ALTER TABLE slate_history RENAME COLUMN release_id TO slate_id');
     }
   }
-
-  final views = database.select(
-      "SELECT name, sql FROM sqlite_master WHERE type='view' AND sql IS NOT NULL");
-  for (final view in views) {
-    final sql = (view['sql'] as String).toLowerCase();
-    if (sql.contains('releases') ||
-        sql.contains('release_items') ||
-        sql.contains('release_history')) {
-      final name = view['name'] as String;
-      logInfo('planner', 'Dropping legacy view: $name');
-      database.execute('DROP VIEW IF EXISTS "$name"');
-    }
-  }
-
-  // --- Drop legacy indexes ---
-  database.execute('DROP INDEX IF EXISTS idx_releases_project_id');
-  database.execute('DROP INDEX IF EXISTS idx_releases_status');
-  database.execute('DROP INDEX IF EXISTS idx_release_history_release_id');
 
   logInfo('planner', 'Legacy release schema cleanup complete.');
 }
-
