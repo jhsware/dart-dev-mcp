@@ -110,7 +110,7 @@ Operations:
 - update-task: Update task properties
 - show-task-memory: Show task memory/notes
 - update-task-memory: Update task memory/notes
-- list-tasks: List all tasks (optional filter: status)
+- list-tasks: List all tasks (optional filter: status). Supports pagination: start_at (default 0), limit (default 30, max 100).
 - add-step: Add a step to a task. Use sub_task_id to link the step to a sub-task (for parent task pattern).
 - show-step: Show step details
 - update-step: Update step properties
@@ -118,11 +118,11 @@ Operations:
 - add-item: Create a new backlog item. Requires: title. Optional: details, type, status.
 - show-item: Show item details with edit history, linked tasks, and linked slates. Requires: id.
 - update-item: Update item fields. Requires: id. Optional: title, details, type, status.
-- list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any slate).
+- list-items: List items with filters. Optional: search_query, type, status, backlog_only (boolean, returns only items not in any slate). Supports pagination: start_at (default 0), limit (default 30, max 100).
 - add-slate: Create a new slate. Requires: title. Optional: notes, status (draft/todo/started/done/released, default draft), release_date (ISO 8601 date).
 - show-slate: Show slate with its items (includes status and release_date). Requires: id.
 - update-slate: Update slate fields. Requires: id. Optional: title, notes, status, release_date.
-- list-slates: List all slates. Optional: status filter.
+- list-slates: List all slates. Optional: status filter. Supports pagination: start_at (default 0), limit (default 30, max 100).
 - add-item-to-slate: Assign item to slate. Requires: release_id, item_id.
 - remove-item-from-slate: Remove item from slate. Requires: release_id, item_id.
 - add-item-to-task: Link a backlog item to a task. Requires: task_id, item_id.
@@ -193,7 +193,11 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
         ),
         'limit': JsonSchema.integer(
           description:
-              'Maximum entries to return (for get-timeline, default 20)',
+              'Maximum entries to return. Defaults: list-tasks/list-items/list-slates = 30 (max 100), get-timeline = 20.',
+        ),
+        'start_at': JsonSchema.integer(
+          description:
+              'Zero-based offset into the result set for list-tasks, list-items, list-slates. Default 0.',
         ),
         'before': JsonSchema.string(
           description:

@@ -287,12 +287,22 @@ class ItemOperations {
     return showItem(args);
   }
 
-  /// List items with optional filters.
+  /// List items with optional filters and pagination.
   CallToolResult listItems(Map<String, dynamic>? args) {
     final searchQuery = args?['search_query'] as String?;
     final type = args?['type'] as String?;
     final status = args?['status'] as String?;
     final backlogOnly = args?['backlog_only'] as bool? ?? false;
+    final startAt = (args?['start_at'] as int?) ?? 0;
+    final limit = (args?['limit'] as int?) ?? 30;
+
+    // Validate pagination params
+    if (startAt < 0) {
+      return validationError('start_at', 'start_at must be >= 0');
+    }
+    if (limit <= 0 || limit > 100) {
+      return validationError('limit', 'limit must be between 1 and 100');
+    }
 
     // Validate type if provided
     if (type != null && type.isNotEmpty) {
@@ -341,6 +351,13 @@ class ItemOperations {
         ? 'LEFT JOIN slate_items si_filter ON si_filter.item_id = i.id'
         : '';
 
+    // Get total count
+    final countResult = database.select(
+      'SELECT COUNT(*) as total FROM items i $backlogJoin $whereClause',
+      values,
+    );
+    final total = countResult.first['total'] as int;
+
     final query = '''
       SELECT 
         i.id,
@@ -354,9 +371,10 @@ class ItemOperations {
       $backlogJoin
       $whereClause
       ORDER BY i.updated_at DESC
+      LIMIT ? OFFSET ?
     ''';
 
-    final result = database.select(query, values);
+    final result = database.select(query, [...values, limit, startAt]);
 
     final items = result
         .map((row) => {
@@ -373,6 +391,10 @@ class ItemOperations {
     return jsonResult({
       'items': items,
       'count': items.length,
+      'total': total,
+      'start_at': startAt,
+      'limit': limit,
+      'has_more': total > startAt + items.length,
       'filters': {
         'search_query': ?searchQuery,
         'type': ?type,
@@ -381,4 +403,5 @@ class ItemOperations {
       },
     });
   }
+
 }
