@@ -258,9 +258,19 @@ class SlateOperations {
     return showSlate(args);
   }
 
-  /// List slates with optional filters.
+  /// List slates with optional filters and pagination.
   CallToolResult listSlates(Map<String, dynamic>? args) {
     final status = args?['status'] as String?;
+    final startAt = (args?['start_at'] as int?) ?? 0;
+    final limit = (args?['limit'] as int?) ?? 30;
+
+    // Validate pagination params
+    if (startAt < 0) {
+      return validationError('start_at', 'start_at must be >= 0');
+    }
+    if (limit <= 0 || limit > 100) {
+      return validationError('limit', 'limit must be between 1 and 100');
+    }
 
     final conditions = <String>[];
     final values = <Object?>[];
@@ -277,6 +287,13 @@ class SlateOperations {
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
 
+    // Get total count
+    final countResult = database.select(
+      'SELECT COUNT(*) as total FROM slates r $whereClause',
+      values,
+    );
+    final total = countResult.first['total'] as int;
+
     final query = '''
       SELECT 
         r.id,
@@ -290,9 +307,10 @@ class SlateOperations {
       FROM slates r
       $whereClause
       ORDER BY r.updated_at DESC
+      LIMIT ? OFFSET ?
     ''';
 
-    final result = database.select(query, values);
+    final result = database.select(query, [...values, limit, startAt]);
 
     final slates = result
         .map((row) => {
@@ -310,11 +328,16 @@ class SlateOperations {
     return jsonResult({
       'slates': slates,
       'count': slates.length,
+      'total': total,
+      'start_at': startAt,
+      'limit': limit,
+      'has_more': total > startAt + slates.length,
       'filters': {
         'status': ?status,
       },
     });
   }
+
 
   /// Add an item to a slate.
   CallToolResult addItemToSlate(Map<String, dynamic>? args) {
