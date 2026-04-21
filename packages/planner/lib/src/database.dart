@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 8;
+const int currentSchemaVersion = 9;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -30,6 +30,13 @@ Database initializeDatabase(String dbPath) {
       updated_at TEXT NOT NULL
     )
   ''');
+
+  // Clean up legacy 'releases' tables from planner_app before creating
+  // the current schema tables. This ensures renamed tables are in place
+  // so CREATE TABLE IF NOT EXISTS becomes a no-op.
+  _cleanupLegacyReleaseSchema(database);
+
+
 
   // Create tasks table
   database.execute('''
@@ -418,6 +425,19 @@ void _runMigrations(Database database) {
     logInfo('planner', 'Migration to schema version 8 complete.');
   }
 
+  // Migration from version 8 to version 9
+  // Defensive cleanup for databases that were at v8 but still have legacy
+  // 'releases' tables (e.g. DB originally created by planner_app).
+  // The cleanup itself runs on every startup via _cleanupLegacyReleaseSchema,
+  // but we bump the version so future migrations can rely on a clean state.
+  if (currentVersion < 9) {
+    logInfo('planner', 'Running migration to schema version 9...');
+    // Cleanup already ran at startup; just update transaction logs
+    database.execute(
+        "UPDATE transaction_logs SET entity_type = 'slate' WHERE entity_type = 'release'");
+    _setSchemaVersion(database, 9);
+    logInfo('planner', 'Migration to schema version 9 complete.');
+  }
 
 
   // Verify we're at the expected version
@@ -455,4 +475,155 @@ void closeDatabase(Database database) {
   } catch (e, stackTrace) {
     logError('planner:close-database', e, stackTrace);
   }
+}
+
+/// Clean up legacy 'releases'/'release_items'/'release_history' tables that
+/// may have been created by planner_app (Flutter GUI). This runs on every
+/// startup before CREATE TABLE IF NOT EXISTS so renamed tables are in place.
+void _cleanupLegacyReleaseSchema(Database database) {
+  // Check if any legacy tables exist
+  final legacyTables = database.select(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('releases', 'release_items', 'release_history')");
+
+  if (legacyTables.isEmpty) {
+    return; // No legacy tables, nothing to do
+  }
+
+  logInfo('planner', 'Found legacy release tables, running cleanup...');
+
+  // --- Drop triggers and views referencing legacy tables FIRST ---
+  // SQLite with foreign_keys=ON validates triggers during RENAME COLUMN,
+  // so stale triggers must be removed before any schema changes.
+  final triggers = database.select(
+      "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql IS NOT NULL");
+  for (final trigger in triggers) {
+    final sql = (trigger['sql'] as String).toLowerCase();
+    if (sql.contains('releases') ||
+        sql.contains('release_items') ||
+        sql.contains('release_history')) {
+      final name = trigger['name'] as String;
+      logInfo('planner', 'Dropping legacy trigger: $name');
+      database.execute('DROP TRIGGER IF EXISTS "$name"');
+    }
+  }
+
+  final views = database.select(
+      "SELECT name, sql FROM sqlite_master WHERE type='view' AND sql IS NOT NULL");
+  for (final view in views) {
+    final sql = (view['sql'] as String).toLowerCase();
+    if (sql.contains('releases') ||
+        sql.contains('release_items') ||
+        sql.contains('release_history')) {
+      final name = view['name'] as String;
+      logInfo('planner', 'Dropping legacy view: $name');
+      database.execute('DROP VIEW IF EXISTS "$name"');
+    }
+  }
+
+  // --- Drop legacy indexes ---
+  database.execute('DROP INDEX IF EXISTS idx_releases_project_id');
+  database.execute('DROP INDEX IF EXISTS idx_releases_status');
+  database.execute('DROP INDEX IF EXISTS idx_release_history_release_id');
+
+  final existingTables = database
+      .select("SELECT name FROM sqlite_master WHERE type='table'")
+      .map((row) => row['name'] as String)
+      .toSet();
+
+  // --- Handle releases → slates ---
+  if (existingTables.contains('releases')) {
+    if (existingTables.contains('slates')) {
+      final releasesCount =
+          database.select('SELECT COUNT(*) as c FROM releases').first['c'] as int;
+      final slatesCount =
+          database.select('SELECT COUNT(*) as c FROM slates').first['c'] as int;
+
+      if (releasesCount > 0 && slatesCount == 0) {
+        database.execute('DROP TABLE slates');
+        database.execute('ALTER TABLE releases RENAME TO slates');
+      } else {
+        database.execute('DROP TABLE releases');
+      }
+    } else {
+      database.execute('ALTER TABLE releases RENAME TO slates');
+    }
+  }
+
+  // --- Handle release_items → slate_items ---
+  if (existingTables.contains('release_items')) {
+    if (existingTables.contains('slate_items')) {
+      final releaseItemsCount =
+          database.select('SELECT COUNT(*) as c FROM release_items').first['c'] as int;
+      final slateItemsCount =
+          database.select('SELECT COUNT(*) as c FROM slate_items').first['c'] as int;
+
+      if (releaseItemsCount > 0 && slateItemsCount == 0) {
+        database.execute('DROP TABLE slate_items');
+        database.execute('ALTER TABLE release_items RENAME TO slate_items');
+      } else {
+        database.execute('DROP TABLE release_items');
+      }
+    } else {
+      database.execute('ALTER TABLE release_items RENAME TO slate_items');
+    }
+  }
+
+  // --- Handle release_history → slate_history ---
+  if (existingTables.contains('release_history')) {
+    if (existingTables.contains('slate_history')) {
+      final releaseHistCount =
+          database.select('SELECT COUNT(*) as c FROM release_history').first['c'] as int;
+      final slateHistCount =
+          database.select('SELECT COUNT(*) as c FROM slate_history').first['c'] as int;
+
+      if (releaseHistCount > 0 && slateHistCount == 0) {
+        database.execute('DROP TABLE slate_history');
+        database.execute('ALTER TABLE release_history RENAME TO slate_history');
+      } else {
+        database.execute('DROP TABLE release_history');
+      }
+    } else {
+      database.execute('ALTER TABLE release_history RENAME TO slate_history');
+    }
+  }
+
+  // --- Rename legacy columns if still present ---
+  final slatesCols = database.select("PRAGMA table_info(slates)");
+  final slatesColNames = slatesCols.map((row) => row['name'] as String).toSet();
+  if (slatesColNames.contains('release_date') &&
+      !slatesColNames.contains('slate_date')) {
+    database.execute(
+        'ALTER TABLE slates RENAME COLUMN release_date TO slate_date');
+  }
+
+  final slateItemsExists = database
+      .select(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='slate_items'")
+      .isNotEmpty;
+  if (slateItemsExists) {
+    final siCols = database.select("PRAGMA table_info(slate_items)");
+    final siColNames = siCols.map((row) => row['name'] as String).toSet();
+    if (siColNames.contains('release_id') &&
+        !siColNames.contains('slate_id')) {
+      database.execute(
+          'ALTER TABLE slate_items RENAME COLUMN release_id TO slate_id');
+    }
+  }
+
+  // Check slate_history for release_id column (renamed from release_history)
+  final slateHistoryExists = database
+      .select(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='slate_history'")
+      .isNotEmpty;
+  if (slateHistoryExists) {
+    final shCols = database.select("PRAGMA table_info(slate_history)");
+    final shColNames = shCols.map((row) => row['name'] as String).toSet();
+    if (shColNames.contains('release_id') &&
+        !shColNames.contains('slate_id')) {
+      database.execute(
+          'ALTER TABLE slate_history RENAME COLUMN release_id TO slate_id');
+    }
+  }
+
+  logInfo('planner', 'Legacy release schema cleanup complete.');
 }
