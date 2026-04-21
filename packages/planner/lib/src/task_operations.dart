@@ -325,9 +325,19 @@ class TaskOperations {
     });
   }
 
-  /// List tasks with optional filters.
+  /// List tasks with optional filters and pagination.
   CallToolResult listTasks(Map<String, dynamic>? args) {
     final status = args?['status'] as String?;
+    final startAt = (args?['start_at'] as int?) ?? 0;
+    final limit = (args?['limit'] as int?) ?? 30;
+
+    // Validate pagination params
+    if (startAt < 0) {
+      return validationError('start_at', 'start_at must be >= 0');
+    }
+    if (limit <= 0 || limit > 100) {
+      return validationError('limit', 'limit must be between 1 and 100');
+    }
 
     // Validate status if provided
     if (status != null && status.isNotEmpty) {
@@ -348,7 +358,14 @@ class TaskOperations {
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(" AND ")}';
 
-    // Query with step count subquery
+    // Get total count
+    final countResult = database.select(
+      'SELECT COUNT(*) as total FROM tasks t $whereClause',
+      values,
+    );
+    final total = countResult.first['total'] as int;
+
+    // Query with step count subquery and pagination
     final query = '''
       SELECT 
         t.id,
@@ -360,9 +377,10 @@ class TaskOperations {
       FROM tasks t
       $whereClause
       ORDER BY t.updated_at DESC
+      LIMIT ? OFFSET ?
     ''';
 
-    final result = database.select(query, values);
+    final result = database.select(query, [...values, limit, startAt]);
 
     final tasks = result
         .map((row) => {
@@ -378,9 +396,14 @@ class TaskOperations {
     return jsonResult({
       'tasks': tasks,
       'count': tasks.length,
+      'total': total,
+      'start_at': startAt,
+      'limit': limit,
+      'has_more': total > startAt + tasks.length,
       'filters': {
         'status': ?status,
       },
     });
   }
+
 }
