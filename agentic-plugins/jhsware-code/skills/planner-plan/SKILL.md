@@ -46,11 +46,11 @@ Summarize your findings before moving to Phase 3. You should understand:
 
 When creating tasks from a slate (user mentions a slate or passes a release_id):
 
-- [ ] Step 1: **Get the slate and its items**: Call `planner show-slate` with the slate ID to get the slate details and all assigned items. Details about the slate is specified in the linked items.
+- [ ] Step 1: **Get the slate and it's items**: Call `planner show-slate` with the slate ID to get the slate details and all assigned items. Details about the slate is specified in the linked items.
 
 - [ ] Step 2: **Change status of slate to started**
 
-- [ ] Step 3: **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider:
+- [ ] Step 3: **Analyze and group items**: Review the items and group related ones that could be implemented together in a single task. Consider: 
    - Items that affect the same files or modules
    - Items that have logical dependencies on each other
    - Items of the same type that can be batched (e.g. multiple bugs in one area)
@@ -58,6 +58,7 @@ When creating tasks from a slate (user mentions a slate or passes a release_id):
 - [ ] Step 4: **Still do Phase 2 exploration**: Codebase exploration is still needed to create accurate tasks with correct file references. Use the item descriptions to guide your exploration — focus on files and areas mentioned in the items.
 
 - [ ] Step 5: **Create tasks linked to items**: For each task created in Phase 3:
+   - It is very important to read the item details to understand what the task should accomplish, the title is not enough
    - Reference the backlog items it addresses in the task details
    - After creating the task and its steps, link each relevant item using `planner` with operation `add-item-to-task` (requires `task_id` and `item_id`)
    - A single task can address multiple related items
