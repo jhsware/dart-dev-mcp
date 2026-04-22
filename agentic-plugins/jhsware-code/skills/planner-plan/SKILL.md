@@ -336,13 +336,14 @@ planner: add-item-to-task (task_id: "<csv-task-id>", item_id: "<item-4-id>")
 
 ## Tool Reference
 
-All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.
-
-Use planner (dart-dev-mcp-planner) to interact with the task planner and backlog.
-Use filesystem (dart-dev-mcp-fs) to read, search and edit files.
-Use git (dart-dev-mcp-git) for git operations.
-Use flutter (dart-dev-mcp-flutter-runner) or dart (dart-dev-mcp-dart-runner) to run code test, analyze or build the project. Use the `pub-run` operation for code generation (e.g. `build_runner build --delete-conflicting-outputs`).
-
 Do not use native tools: Bash, Read, Write, Edit, Git.
 Do not delete files, ask user to delete them.
 Do not run bash commands, ask user to do this.
+
+Use planner (dart-dev-mcp-planner) to interact with the task planner and backlog.
+
+The following tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error:
+
+Use filesystem (dart-dev-mcp-fs) to read, search and edit files.
+Use git (dart-dev-mcp-git) for git operations.
+Use flutter (dart-dev-mcp-flutter-runner) or dart (dart-dev-mcp-dart-runner) to run code test, analyze or build the project. Use the `pub-run` operation for code generation (e.g. `build_runner build --delete-conflicting-outputs`).
