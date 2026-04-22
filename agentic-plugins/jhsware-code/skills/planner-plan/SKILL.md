@@ -3,8 +3,6 @@ name: planner-plan
 description: Create a plan and use the planner tool to create one or more tasks with steps that describe how to perform the plan. Can also create tasks from slates, linking tasks to backlog items.
 allowed-tools: planner, filesystem, git, fetch, convert, flutter-runner, dart-runner, code-index
 model: opus
-context: fork
-agent: planner-agent
 ---
 
 ultrathink
@@ -15,10 +13,11 @@ Each project has it's own planning database and directory structure. When planni
 
 Before doing anything else:
 
-- [ ] Step 1:. **Ask user** if they want the created task/tasks to have status draft or todo unless this can be inferred from the user instructions.
-- [ ] Step 2: **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
-- [ ] Step 3: **List existing tasks**: Call `planner` with operation `list-tasks` to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
-- [ ] Step 4: **Check for slate context**: If the user mentions a slate or passes a release_id, call `planner` with operation `show-slate` to get the slate details and its items. This enables slate-based planning (see Phase 2a).
+- [ ] Step 1: Use planner tool list-projects operation to find information about available projects in this session.
+- [ ] Step 2:. **Ask user** if they want the created task/tasks to have status draft or todo unless this can be inferred from the user instructions.
+- [ ] Step 3: **Read project instructions**: Call `planner` with operation `get-project-instructions` to understand project conventions, naming patterns, and constraints.
+- [ ] Step 4: **List existing tasks**: Call `planner` with operation `list-tasks` to check for duplicates or related work already planned. If a similar task exists, consider updating it rather than creating a new one.
+- [ ] Step 5: **Check for slate context**: If the user mentions a slate or passes a release_id, call `planner` with operation `show-slate` to get the slate details and its items. This enables slate-based planning (see Phase 2a).
 
 ## Phase 2 — Research & Exploration
 
