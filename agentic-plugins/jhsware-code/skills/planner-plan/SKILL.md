@@ -91,7 +91,7 @@ Create tasks using `planner` with operation `add-task`. Each task must have:
   - If planning from a slate: `## Backlog Items` — list the item IDs and titles this task addresses
 - **status**: Set to `draft`
 
-> **IMPORTANT: Do NOT include step descriptions in the task details.** The details section should only contain background, purpose, files involved, backlog items, and acceptance criteria. Steps are added separately via `add-step` operations and will appear under a dedicated `## Steps to perform` header in the task execution prompt. Including step content in details confuses the LLM during task execution because it cannot distinguish between task context and actual steps to perform.
+> **IMPORTANT: Do NOT include list of steps in the task details.** The details section should only contain background, purpose, files involved, backlog items, and acceptance criteria. Steps are added separately via `add-step` operations and will appear under a dedicated `## Steps to perform` header in the task execution prompt. Including step content in details confuses the LLM during task execution because it cannot distinguish between task context and actual steps to perform.
 
 ### Adding steps to tasks
 
@@ -133,7 +133,8 @@ After creating all tasks:
 - [ ] Step 4: Verify acceptance criteria are clear and testable
 - [ ] Step 5: For parent tasks: verify every step has a `sub_task_id` set
 - [ ] Step 6: For parent tasks: verify sub-tasks have their own steps defined
-- [ ] Step 7: For slate-based tasks: verify all slate items are linked to at least one task via `add-item-to-task`
+- [ ] Step 8: For parent tasks: verify list of sub-tasks isn't listed in task details
+- [ ] Step 9: For slate-based tasks: verify all slate items are linked to at least one task via `add-item-to-task`
 
 ## Error Handling
 
