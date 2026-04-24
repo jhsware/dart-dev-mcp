@@ -4,7 +4,7 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 9;
+const int currentSchemaVersion = 10;
 
 /// Initialize the planner database with WAL mode and proper configuration.
 Database initializeDatabase(String dbPath) {
@@ -439,6 +439,17 @@ void _runMigrations(Database database) {
     logInfo('planner', 'Migration to schema version 9 complete.');
   }
 
+  // Migration from version 9 to version 10
+  // Repair stale foreign keys on slate_history / slate_items that still
+  // reference the dropped 'releases' table.
+  if (currentVersion < 10) {
+    logInfo('planner', 'Running migration to schema version 10...');
+    _repairStaleForeignKeys(database);
+    _setSchemaVersion(database, 10);
+    logInfo('planner', 'Migration to schema version 10 complete.');
+  }
+
+
 
   // Verify we're at the expected version
   final finalVersion = _getSchemaVersion(database);
@@ -486,7 +497,9 @@ void _cleanupLegacyReleaseSchema(Database database) {
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('releases', 'release_items', 'release_history')");
 
   if (legacyTables.isEmpty) {
-    return; // No legacy tables, nothing to do
+    // No legacy tables, but stale FKs may still exist — repair them
+    _repairStaleForeignKeys(database);
+    return;
   }
 
   logInfo('planner', 'Found legacy release tables, running cleanup...');
@@ -625,5 +638,127 @@ void _cleanupLegacyReleaseSchema(Database database) {
     }
   }
 
+  // After renaming, also repair any stale FKs left on slate_history/slate_items
+  _repairStaleForeignKeys(database);
+
   logInfo('planner', 'Legacy release schema cleanup complete.');
 }
+
+/// Returns true when `PRAGMA foreign_key_list(<tableName>)` reports any
+/// reference to a table not present in `sqlite_master`.
+bool _hasStaleForeignKey(Database database, String tableName) {
+  final tableExists = database
+      .select(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'")
+      .isNotEmpty;
+  if (!tableExists) return false;
+
+  final fkList = database.select("PRAGMA foreign_key_list('$tableName')");
+  if (fkList.isEmpty) return false;
+
+  final existingTables = database
+      .select("SELECT name FROM sqlite_master WHERE type='table'")
+      .map((row) => row['name'] as String)
+      .toSet();
+
+  for (final fk in fkList) {
+    final referencedTable = fk['table'] as String;
+    if (!existingTables.contains(referencedTable)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Canonical CREATE TABLE statements for tables that may need FK repair.
+const _canonicalSchemas = {
+  'slate_history': '''
+    CREATE TABLE slate_history (
+      id TEXT PRIMARY KEY,
+      slate_id TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      changed_at TEXT NOT NULL,
+      FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE
+    )
+  ''',
+  'slate_items': '''
+    CREATE TABLE slate_items (
+      slate_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (slate_id, item_id),
+      FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    )
+  ''',
+};
+
+/// Canonical indexes for tables that may need FK repair.
+const _canonicalIndexes = {
+  'slate_history': [
+    'CREATE INDEX IF NOT EXISTS idx_slate_history_slate_id ON slate_history(slate_id)',
+  ],
+  'slate_items': <String>[],
+};
+
+/// Rebuild a table with the canonical schema to fix stale foreign keys.
+/// Creates `<table>_new`, copies rows, drops old, renames new, recreates indexes.
+void _rebuildTable(Database database, String tableName) {
+  final schema = _canonicalSchemas[tableName];
+  if (schema == null) return;
+
+  logInfo('planner', 'Rebuilding $tableName to fix stale foreign keys...');
+
+  // Get column names from the existing table
+  final cols = database.select("PRAGMA table_info('$tableName')");
+  final columnNames = cols.map((row) => row['name'] as String).join(', ');
+
+  // Create new table with canonical schema
+  final newTableName = '${tableName}_new';
+  final createSql = schema.replaceFirst(tableName, newTableName);
+  database.execute(createSql);
+
+  // Copy rows
+  database.execute(
+      'INSERT INTO "$newTableName" ($columnNames) SELECT $columnNames FROM "$tableName"');
+
+  // Drop old, rename new
+  database.execute('DROP TABLE "$tableName"');
+  database.execute('ALTER TABLE "$newTableName" RENAME TO "$tableName"');
+
+  // Recreate indexes
+  final indexes = _canonicalIndexes[tableName] ?? [];
+  for (final idx in indexes) {
+    database.execute(idx);
+  }
+
+  logInfo('planner', 'Rebuilt $tableName successfully.');
+}
+
+/// Inspect slate_history and slate_items for stale FK references and rebuild
+/// any that point to missing tables.
+void _repairStaleForeignKeys(Database database) {
+  final tablesToCheck = ['slate_history', 'slate_items'];
+  final needsRepair =
+      tablesToCheck.where((t) => _hasStaleForeignKey(database, t)).toList();
+
+  if (needsRepair.isEmpty) return;
+
+  logInfo('planner',
+      'Found stale foreign keys in: ${needsRepair.join(', ')}. Repairing...');
+
+  // Disable FK enforcement during rebuild
+  database.execute('PRAGMA foreign_keys=OFF');
+
+  for (final table in needsRepair) {
+    _rebuildTable(database, table);
+  }
+
+  // Re-enable FK enforcement
+  database.execute('PRAGMA foreign_keys=ON');
+
+  logInfo('planner', 'Stale foreign key repair complete.');
+}
+

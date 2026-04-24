@@ -265,4 +265,286 @@ void main() {
       db.dispose();
     });
   });
+
+  group('Stale FK repair (legacy tables already gone)', () {
+    test('repairs stale FK on slate_history referencing releases', () {
+      final dbPath = p.join(tempDir.path, 'test_stale_fk.db');
+      final db = sqlite3.open(dbPath);
+      db.execute('PRAGMA journal_mode=WAL');
+      // Keep foreign_keys OFF so we can create the broken schema
+      db.execute('PRAGMA foreign_keys=OFF');
+
+      // schema_metadata at v9
+      db.execute('''
+        CREATE TABLE schema_metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      final now = DateTime.now().toUtc().toIso8601String();
+      db.execute(
+          "INSERT INTO schema_metadata (key, value, updated_at) VALUES ('schema_version', '9', '$now')");
+
+      // Canonical tables
+      db.execute('''
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          details TEXT,
+          status TEXT NOT NULL DEFAULT 'todo',
+          memory TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE steps (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          details TEXT,
+          status TEXT NOT NULL DEFAULT 'todo',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          sort_order INTEGER,
+          sub_task_id TEXT,
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          details TEXT,
+          type TEXT NOT NULL DEFAULT 'feature',
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE item_history (
+          id TEXT PRIMARY KEY,
+          item_id TEXT NOT NULL,
+          field_name TEXT NOT NULL,
+          old_value TEXT,
+          new_value TEXT,
+          changed_at TEXT NOT NULL,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE slates (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          notes TEXT,
+          status TEXT NOT NULL DEFAULT 'draft',
+          slate_date TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE slate_items (
+          slate_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (slate_id, item_id),
+          FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE task_items (
+          task_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (task_id, item_id),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+
+      // Broken slate_history: FK references releases(id) but releases table
+      // does not exist. This is the exact state we're fixing.
+      db.execute('''
+        CREATE TABLE slate_history (
+          id TEXT PRIMARY KEY,
+          slate_id TEXT NOT NULL,
+          field_name TEXT NOT NULL,
+          old_value TEXT,
+          new_value TEXT,
+          changed_at TEXT NOT NULL,
+          FOREIGN KEY (slate_id) REFERENCES releases(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute(
+          'CREATE INDEX idx_slate_history_slate_id ON slate_history(slate_id)');
+
+      // transaction_logs table (needed by migrations)
+      db.execute('''
+        CREATE TABLE IF NOT EXISTS transaction_logs (
+          id TEXT PRIMARY KEY,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          transaction_type TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          changes TEXT,
+          project_id TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+
+      // Seed a slate
+      db.execute('''
+        INSERT INTO slates (id, project_id, title, status, created_at, updated_at)
+        VALUES ('s1', 'proj1', 'Sprint 1', 'draft', '$now', '$now')
+      ''');
+
+      db.dispose();
+
+      // Open with initializeDatabase — should repair stale FK
+      final fixedDb = initializeDatabase(dbPath);
+      final txRepo = TransactionLogRepository(fixedDb);
+      txRepo.initializeTable();
+      final slateOps = SlateOperations(
+        database: fixedDb,
+        transactionLogRepository: txRepo,
+      );
+
+      // This should NOT throw "no such table: main.releases"
+      final result = slateOps.updateSlate({'id': 's1', 'status': 'todo'});
+      final data = parseResult(result);
+      expect(data['status'], 'todo');
+
+      // Verify FK now references slates, not releases
+      final fkList = fixedDb.select("PRAGMA foreign_key_list('slate_history')");
+      expect(fkList, isNotEmpty);
+      expect(fkList.first['table'], 'slates');
+
+      // Verify schema version bumped to 10
+      final version = fixedDb.select(
+          "SELECT value FROM schema_metadata WHERE key = 'schema_version'");
+      expect(version.first['value'], '10');
+
+      fixedDb.dispose();
+    });
+
+    test('repairs stale FK on slate_items referencing releases', () {
+      final dbPath = p.join(tempDir.path, 'test_stale_fk_items.db');
+      final db = sqlite3.open(dbPath);
+      db.execute('PRAGMA journal_mode=WAL');
+      db.execute('PRAGMA foreign_keys=OFF');
+
+      final now = DateTime.now().toUtc().toIso8601String();
+      db.execute('''
+        CREATE TABLE schema_metadata (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      db.execute(
+          "INSERT INTO schema_metadata (key, value, updated_at) VALUES ('schema_version', '9', '$now')");
+
+      db.execute('''
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL,
+          details TEXT, status TEXT NOT NULL DEFAULT 'todo', memory TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE steps (
+          id TEXT PRIMARY KEY, task_id TEXT NOT NULL, title TEXT NOT NULL,
+          details TEXT, status TEXT NOT NULL DEFAULT 'todo',
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          sort_order INTEGER, sub_task_id TEXT,
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL,
+          details TEXT, type TEXT NOT NULL DEFAULT 'feature',
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE item_history (
+          id TEXT PRIMARY KEY, item_id TEXT NOT NULL, field_name TEXT NOT NULL,
+          old_value TEXT, new_value TEXT, changed_at TEXT NOT NULL,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE slates (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL,
+          notes TEXT, status TEXT NOT NULL DEFAULT 'draft', slate_date TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+      ''');
+
+      // Broken slate_items: FK references releases(id)
+      db.execute('''
+        CREATE TABLE slate_items (
+          slate_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (slate_id, item_id),
+          FOREIGN KEY (slate_id) REFERENCES releases(id) ON DELETE CASCADE,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+
+      db.execute('''
+        CREATE TABLE slate_history (
+          id TEXT PRIMARY KEY, slate_id TEXT NOT NULL, field_name TEXT NOT NULL,
+          old_value TEXT, new_value TEXT, changed_at TEXT NOT NULL,
+          FOREIGN KEY (slate_id) REFERENCES slates(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute(
+          'CREATE INDEX idx_slate_history_slate_id ON slate_history(slate_id)');
+      db.execute('''
+        CREATE TABLE task_items (
+          task_id TEXT NOT NULL, item_id TEXT NOT NULL, added_at TEXT NOT NULL,
+          PRIMARY KEY (task_id, item_id),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+      ''');
+      db.execute('''
+        CREATE TABLE IF NOT EXISTS transaction_logs (
+          id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+          transaction_type TEXT NOT NULL, summary TEXT NOT NULL, changes TEXT,
+          project_id TEXT, created_at TEXT NOT NULL
+        )
+      ''');
+
+      db.execute('''
+        INSERT INTO slates (id, project_id, title, status, created_at, updated_at)
+        VALUES ('s1', 'proj1', 'Sprint 1', 'draft', '$now', '$now')
+      ''');
+
+      db.dispose();
+
+      // Open with initializeDatabase — should repair stale FK on slate_items
+      final fixedDb = initializeDatabase(dbPath);
+
+      // Verify FK on slate_items now references slates
+      final fkList = fixedDb.select("PRAGMA foreign_key_list('slate_items')");
+      final slateFK = fkList.where((r) => r['from'] == 'slate_id').toList();
+      expect(slateFK, isNotEmpty);
+      expect(slateFK.first['table'], 'slates');
+
+      fixedDb.dispose();
+    });
+  });
 }
+ 
