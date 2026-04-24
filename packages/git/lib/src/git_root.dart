@@ -13,8 +13,12 @@ import 'package:path/path.dart' as p;
 /// The walk uses the raw [startDir] string without resolving symlinks, so
 /// callers that pass `--project-dir` values walk from the exact path the MCP
 /// was launched with.
-String? findGitRoot(String startDir) {
+///
+/// [stopAt] is an optional boundary for testing: when set, the walk stops
+/// (returning `null`) once it would move above that directory.
+String? findGitRoot(String startDir, {String? stopAt}) {
   var current = p.normalize(p.absolute(startDir));
+  final boundary = stopAt != null ? p.normalize(p.absolute(stopAt)) : null;
 
   while (true) {
     final gitPath = p.join(current, '.git');
@@ -27,6 +31,10 @@ String? findGitRoot(String startDir) {
     final parent = p.dirname(current);
     if (parent == current) {
       // Reached filesystem root without finding .git
+      return null;
+    }
+    if (boundary != null && current == boundary) {
+      // Reached the test boundary without finding .git
       return null;
     }
     current = parent;
