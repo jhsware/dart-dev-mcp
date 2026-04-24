@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:git_mcp/git_mcp.dart';
+import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -1331,6 +1333,161 @@ Expire-Date: 0
         workingDirectory: repoDir.path,
       );
       expect(result.stdout, contains('SSH signed via simulation'));
+    });
+  });
+
+  group('Monorepo layout (git root != project dir)', () {
+    late Directory tempDir;
+    late Directory repoDir;
+    late Directory subProjectDir;
+    late String subLibDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('git_mcp_monorepo_int_');
+      repoDir = Directory(p.join(tempDir.path, 'repo'));
+      subProjectDir = Directory(p.join(repoDir.path, 'packages', 'sub'));
+      subLibDir = p.join(subProjectDir.path, 'lib');
+
+      // Create monorepo structure
+      await Directory(subLibDir).create(recursive: true);
+
+      // git init at repo root
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run('git', ['config', 'user.email', 'test@example.com'],
+          workingDirectory: repoDir.path);
+      await Process.run('git', ['config', 'user.name', 'Test User'],
+          workingDirectory: repoDir.path);
+
+      // Create an out-of-scope file at repo root
+      await File(p.join(repoDir.path, 'README.md'))
+          .writeAsString('# Monorepo');
+
+      // Create a file inside sub-project
+      await File(p.join(subLibDir, 'foo.dart'))
+          .writeAsString('void foo() {}');
+
+      // Initial commit with all files
+      await Process.run('git', ['add', '.'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'initial'],
+        workingDirectory: repoDir.path,
+      );
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('findGitRoot returns repo root from sub-project', () {
+      final result = findGitRoot(subProjectDir.path);
+      expect(result, equals(p.normalize(repoDir.path)));
+    });
+
+    test('status succeeds from sub-project', () async {
+      // Modify a file so status has something to show
+      await File(p.join(subLibDir, 'foo.dart'))
+          .writeAsString('void foo() { /* changed */ }');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+
+      final result = await gitOps.status();
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('packages/sub/lib/foo.dart'));
+    });
+
+    test('add explicit file and commit from sub-project', () async {
+      // Modify file
+      await File(p.join(subLibDir, 'foo.dart'))
+          .writeAsString('void foo() { /* v2 */ }');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+      final signingInfo = await detectSigningCapabilities();
+      final commitOps = CommitOperations(
+        workingDir: repoDir,
+        signingInfo: signingInfo,
+      );
+
+      // Stage via relative path (resolved against projectDir)
+      var result = await gitOps.add(['lib/foo.dart']);
+      var text = (result.content.first as TextContent).text;
+      expect(text, contains('Staged'));
+
+      // Verify via git that the correct file is staged
+      final diffResult = await Process.run(
+        'git', ['diff', '--cached', '--name-only'],
+        workingDirectory: repoDir.path,
+      );
+      expect(diffResult.stdout, contains('packages/sub/lib/foo.dart'));
+
+      // Commit
+      result = await commitOps.commit('Add sub foo', sign: 'none');
+      text = (result.content.first as TextContent).text;
+      expect(text, contains('Add sub foo'));
+
+      // Verify commit in log
+      final logResult = await Process.run(
+        'git', ['log', '--oneline'],
+        workingDirectory: repoDir.path,
+      );
+      expect(logResult.stdout, contains('Add sub foo'));
+    });
+
+    test('add --all only stages files within sub-project', () async {
+      // Modify file inside sub-project
+      await File(p.join(subLibDir, 'foo.dart'))
+          .writeAsString('void foo() { /* v3 */ }');
+
+      // Modify file outside sub-project
+      await File(p.join(repoDir.path, 'README.md'))
+          .writeAsString('# Monorepo updated');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+
+      final result = await gitOps.add(null, all: true);
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('Staged 1 file(s)'));
+      expect(text, contains('Skipped (outside allowed paths)'));
+      expect(text, contains('README.md'));
+    });
+
+    test('diff works from sub-project', () async {
+      // Modify file
+      await File(p.join(subLibDir, 'foo.dart'))
+          .writeAsString('void foo() { /* diffed */ }');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+
+      final result = await gitOps.diff();
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('foo.dart'));
+      expect(text, contains('diffed'));
+    });
+
+    test('findGitRoot returns null when no .git exists', () {
+      final noGitDir = p.join(tempDir.path, 'no_repo', 'sub');
+      Directory(noGitDir).createSync(recursive: true);
+
+      // Use stopAt to avoid walking above tempDir
+      final result = findGitRoot(noGitDir, stopAt: tempDir.path);
+      expect(result, isNull);
     });
   });
 }
