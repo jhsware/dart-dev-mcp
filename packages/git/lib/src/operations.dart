@@ -13,11 +13,18 @@ import 'git_runner.dart';
 /// Provides branch, merge, staging, tag, log, and diff operations
 /// as methods returning [CallToolResult].
 class GitOperations {
+  /// The git repository root — used as CWD for all git commands.
   final Directory workingDir;
+
+  /// The project directory — used for resolving relative paths and
+  /// anchoring access control. May differ from [workingDir] in monorepos.
+  final Directory projectDir;
+
   final List<String> allowedPaths;
 
   GitOperations({
     required this.workingDir,
+    required this.projectDir,
     required this.allowedPaths,
   });
 
@@ -171,7 +178,7 @@ class GitOperations {
         return textResult('Nothing to stage');
       }
 
-      final filesToAdd = <String>[];
+      final absFilesToAdd = <String>[];
       final deniedFiles = <String>[];
 
       for (final line in statusOutput.split('\n')) {
@@ -187,23 +194,24 @@ class GitOperations {
           fileName = fileName.substring(1, fileName.length - 1);
         }
 
+        // Porcelain paths are relative to git root (workingDir)
         final absPath = p.normalize(p.join(workingDir.path, fileName));
 
         if (isAllowedPath(allowedPaths, absPath)) {
-          filesToAdd.add(fileName);
+          absFilesToAdd.add(absPath);
         } else {
-          deniedFiles.add(fileName);
+          deniedFiles.add(p.relative(absPath, from: projectDir.path));
         }
       }
 
-      if (filesToAdd.isEmpty) {
+      if (absFilesToAdd.isEmpty) {
         final msg = deniedFiles.isNotEmpty
             ? 'No files to stage. The following files are outside allowed paths:\n  ${deniedFiles.join('\n  ')}'
             : 'Nothing to stage';
         return textResult(msg);
       }
 
-      final result = await runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
+      final result = await runGit(workingDir, ['add', '--verbose', ...absFilesToAdd]);
 
       if (result.exitCode != 0) {
         return textResult('Error staging files: ${result.stderr}');
@@ -214,7 +222,7 @@ class GitOperations {
       if (verboseOutput.isNotEmpty) {
         output.writeln(verboseOutput);
       }
-      output.writeln('Staged ${filesToAdd.length} file(s)');
+      output.writeln('Staged ${absFilesToAdd.length} file(s)');
 
       if (deniedFiles.isNotEmpty) {
         output.writeln('');
@@ -234,7 +242,7 @@ class GitOperations {
       );
     }
 
-    final filesToAdd = <String>[];
+    final absFilesToAdd = <String>[];
     final deniedFiles = <String>[];
 
     for (final file in files) {
@@ -242,18 +250,19 @@ class GitOperations {
         return add(null, all: true);
       }
 
+      // Resolve relative paths against projectDir (not workingDir/git root)
       final absPath = p.isAbsolute(file)
           ? p.normalize(file)
-          : p.normalize(p.join(workingDir.path, file));
+          : p.normalize(p.join(projectDir.path, file));
 
       if (isAllowedPath(allowedPaths, absPath)) {
-        filesToAdd.add(file);
+        absFilesToAdd.add(absPath);
       } else {
         deniedFiles.add(file);
       }
     }
 
-    if (filesToAdd.isEmpty) {
+    if (absFilesToAdd.isEmpty) {
       return validationError(
         'files',
         'None of the specified files are within allowed paths.\n'
@@ -262,7 +271,8 @@ class GitOperations {
       );
     }
 
-    final result = await runGit(workingDir, ['add', '--verbose', ...filesToAdd]);
+    // Pass absolute paths to git so CWD doesn't affect resolution
+    final result = await runGit(workingDir, ['add', '--verbose', ...absFilesToAdd]);
 
     if (result.exitCode != 0) {
       return textResult('Error staging files: ${result.stderr}');
@@ -273,7 +283,7 @@ class GitOperations {
     if (verboseOutput.isNotEmpty) {
       output.writeln(verboseOutput);
     }
-    output.writeln('Staged files: ${filesToAdd.join(", ")}');
+    output.writeln('Staged files: ${absFilesToAdd.map((f) => p.relative(f, from: projectDir.path)).join(", ")}');
 
     if (deniedFiles.isNotEmpty) {
       output.writeln('');

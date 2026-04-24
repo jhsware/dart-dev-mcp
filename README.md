@@ -36,6 +36,15 @@ Git version control operations with SSH/GPG signing support:
 - `diff` - Show changes
 - `signing-status` - Check SSH/GPG signing configuration
 
+#### Monorepo support
+
+The Git MCP auto-detects the enclosing git repository by walking upward from the `--project-dir` until a `.git` entry is found. This means you can point `--project-dir` at any sub-directory of a monorepo and git operations work transparently — no configuration is required.
+
+Path-based access control (the `git:` list in `jhsware-code.yaml`) stays anchored at the project directory. Even though git runs from the parent repo root, you can only stage and commit files inside your project's allowed paths.
+
+If no `.git` is found all the way up to the filesystem root, the server returns a clear error: `No git repository found. Searched for a .git directory starting at "<projectDir>" and walking up to the filesystem root without success. Run "git init" here or in a parent directory.`
+
+
 ### 3. Planner MCP (`packages/planner/bin/planner_mcp.dart`)
 Task and step management for AI-assisted development:
 - Task operations: `add-task`, `show-task`, `update-task`, `list-tasks`

@@ -1,10 +1,13 @@
+import 'dart:io';
+
+import 'package:git_mcp/git_mcp.dart';
+import 'package:mcp_dart/mcp_dart.dart';
+
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// This replicates the exact _isAllowedPath function from bin/git_mcp.dart
-/// to ensure the implementation is tested.
-/// 
-/// IMPORTANT: If you change _isAllowedPath in git_mcp.dart, update this copy too!
+/// Replicates the isAllowedPath function from shared_libs to ensure
+/// the implementation is tested independently.
 bool gitMcpIsAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = p.normalize(path);
   
@@ -220,4 +223,98 @@ void main() {
       });
     });
   });
+
+  group('monorepo layout (workingDir != projectDir)', () {
+    late Directory tempDir;
+    late Directory repoDir;
+    late Directory subProjectDir;
+    late String subLibDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('git_mcp_monorepo_');
+      repoDir = Directory(p.join(tempDir.path, 'repo'));
+      subProjectDir = Directory(p.join(repoDir.path, 'packages', 'sub'));
+      subLibDir = p.join(subProjectDir.path, 'lib');
+
+      // Create monorepo structure
+      await Directory(subLibDir).create(recursive: true);
+
+      // git init at repo root
+      await Process.run('git', ['init'], workingDirectory: repoDir.path);
+      await Process.run('git', ['config', 'user.email', 'test@example.com'],
+          workingDirectory: repoDir.path);
+      await Process.run('git', ['config', 'user.name', 'Test User'],
+          workingDirectory: repoDir.path);
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('git add with relative path resolves against projectDir', () async {
+      // Create a file inside the sub-project
+      final fooFile = File(p.join(subLibDir, 'foo.dart'));
+      await fooFile.writeAsString('void main() {}');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+
+      final result = await gitOps.add(['lib/foo.dart']);
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('Staged'));
+    });
+
+    test('git add rejects absolute path outside projectDir', () async {
+      // Create a file outside the sub-project
+      final outsideFile = File(p.join(repoDir.path, 'README.md'));
+      await outsideFile.writeAsString('# Repo');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+
+      final result = await gitOps.add([outsideFile.path]);
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('allowed paths'));
+
+    });
+
+    test('git add --all filters files outside the sub-project', () async {
+      // Create files and do an initial commit so git tracks them individually
+      final insideFile = File(p.join(subLibDir, 'bar.dart'));
+      await insideFile.writeAsString('void bar() {}');
+      final outsideFile = File(p.join(repoDir.path, 'README.md'));
+      await outsideFile.writeAsString('# Repo');
+
+      await Process.run('git', ['add', '.'], workingDirectory: repoDir.path);
+      await Process.run(
+        'git', ['commit', '--no-gpg-sign', '-m', 'initial'],
+        workingDirectory: repoDir.path,
+      );
+
+      // Now modify both files so they show up individually in porcelain output
+      await insideFile.writeAsString('void bar() { /* changed */ }');
+      await outsideFile.writeAsString('# Repo updated');
+
+      final gitOps = GitOperations(
+        workingDir: repoDir,
+        projectDir: subProjectDir,
+        allowedPaths: [subLibDir],
+      );
+
+      final result = await gitOps.add(null, all: true);
+      final text = (result.content.first as TextContent).text;
+      expect(text, contains('Staged 1 file(s)'));
+      expect(text, contains('Skipped (outside allowed paths)'));
+      expect(text, contains('README.md'));
+    });
+  });
 }
+

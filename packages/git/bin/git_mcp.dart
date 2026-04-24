@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:git_mcp/git_mcp.dart';
-import 'package:git/git.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
 /// Git MCP Server
@@ -203,7 +202,21 @@ Future<CallToolResult> _handleGit(
     return error;
   }
 
-  final workingDir = Directory(projectDir!);
+  // Auto-detect git repository root by walking up from projectDir
+  final gitRoot = findGitRoot(projectDir!);
+
+  // signing-status does not need a git repo
+  if (gitRoot == null && operation != 'signing-status') {
+    return validationError(
+      'path',
+      'No git repository found. Searched for a .git directory starting at '
+      '"$projectDir" and walking up to the filesystem root without success. '
+      'Run "git init" here or in a parent directory.',
+    );
+  }
+
+  final workingDir = Directory(gitRoot ?? projectDir);
+  final projectDirectory = Directory(projectDir);
 
   // Resolve allowed paths from ProjectConfigService
   final allowedPaths =
@@ -212,23 +225,13 @@ Future<CallToolResult> _handleGit(
   // Create operation handlers for this project
   final gitOps = GitOperations(
     workingDir: workingDir,
+    projectDir: projectDirectory,
     allowedPaths: allowedPaths,
   );
   final commitOps = CommitOperations(
     workingDir: workingDir,
     signingInfo: signingInfo,
   );
-
-  // Verify it's a git directory for most operations
-  if (operation != 'status' && operation != 'signing-status') {
-    final isGitDir = await GitDir.isGitDir(workingDir.path);
-    if (!isGitDir) {
-      return validationError(
-        'path',
-        '${workingDir.path} is not a git repository. Run "git init" first.',
-      );
-    }
-  }
 
   try {
     switch (operation) {
