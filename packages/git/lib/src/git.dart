@@ -4,6 +4,7 @@
 library;
 
 export 'commit_operations.dart';
+export 'git_root.dart';
 export 'git_runner.dart';
 export 'operations.dart';
 export 'signing.dart';
