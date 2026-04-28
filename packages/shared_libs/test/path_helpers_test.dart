@@ -411,4 +411,91 @@ void main() {
       expect(validateRelativePath('a/b/c/d/e/file.dart'), isNull);
     });
   });
+
+  group('resolveWorkingDir', () {
+    late Directory tempDir;
+    late Directory projectDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('resolveWorkingDir_');
+      projectDir = Directory('${tempDir.path}/project')..createSync();
+      // Create sub-package structure
+      Directory('${projectDir.path}/packages/foo/lib').createSync(recursive: true);
+      // Create a regular file for the "not a directory" test
+      File('${projectDir.path}/some.txt').createSync();
+    });
+
+    tearDown(() {
+      tempDir.deleteSync(recursive: true);
+    });
+
+    test('null working_dir returns projectDir', () {
+      final result = resolveWorkingDir(projectDir, null);
+      expect(result.error, isNull);
+      expect(result.directory!.path, projectDir.path);
+    });
+
+    test('empty string returns projectDir', () {
+      final result = resolveWorkingDir(projectDir, '');
+      expect(result.error, isNull);
+      expect(result.directory!.path, projectDir.path);
+    });
+
+    test('whitespace-only returns projectDir', () {
+      final result = resolveWorkingDir(projectDir, '   ');
+      expect(result.error, isNull);
+      expect(result.directory!.path, projectDir.path);
+    });
+
+    test('valid sub-package path resolves correctly', () {
+      final result = resolveWorkingDir(projectDir, 'packages/foo');
+      expect(result.error, isNull);
+      expect(result.directory!.path, endsWith('packages/foo'));
+    });
+
+    test('nested valid path resolves correctly', () {
+      final result = resolveWorkingDir(projectDir, 'packages/foo/lib');
+      expect(result.error, isNull);
+      expect(result.directory!.path, endsWith('packages/foo/lib'));
+    });
+
+    test('absolute path is rejected', () {
+      final result = resolveWorkingDir(projectDir, '/etc/passwd');
+      expect(result.directory, isNull);
+      expect(result.error, contains('absolute'));
+    });
+
+    test('parent traversal (..) is rejected', () {
+      final result = resolveWorkingDir(projectDir, '../escape');
+      expect(result.directory, isNull);
+      expect(result.error, isNotNull);
+    });
+
+
+    test('hidden segment is rejected', () {
+      final result = resolveWorkingDir(projectDir, '.hidden/foo');
+      expect(result.directory, isNull);
+      expect(result.error, contains('hidden'));
+    });
+
+    test('non-existent path returns error', () {
+      final result = resolveWorkingDir(projectDir, 'packages/does_not_exist');
+      expect(result.directory, isNull);
+      expect(result.error, contains('does not exist'));
+    });
+
+    test('file (not directory) returns error', () {
+      final result = resolveWorkingDir(projectDir, 'some.txt');
+      expect(result.directory, isNull);
+      expect(result.error, contains('not a directory'));
+    });
+
+    test('sneaky escape via .. is caught by validation before filesystem', () {
+      final result = resolveWorkingDir(projectDir, 'packages/foo/../../..');
+      expect(result.directory, isNull);
+      expect(result.error, isNotNull);
+    });
+
+  });
 }
+
