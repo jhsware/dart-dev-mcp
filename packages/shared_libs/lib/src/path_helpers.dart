@@ -74,3 +74,54 @@ List<String> getAllowedRelativePaths(Directory workingDir, List<String> allowedP
     return p.startsWith(prefix) ? p.substring(prefix.length) : p;
   }).toList();
 }
+
+
+
+/// Resolve an optional [workingDir] relative to [projectDir].
+///
+/// Returns [projectDir] itself when [workingDir] is null or empty.
+/// Rejects absolute paths, `..`, hidden segments (via [validateRelativePath]),
+/// paths that escape [projectDir] after normalization, non-existent paths,
+/// and paths that are not directories.
+///
+/// Returns a record with either a resolved [Directory] or an error message.
+({Directory? directory, String? error}) resolveWorkingDir(
+    Directory projectDir, String? workingDir) {
+  if (workingDir == null || workingDir.trim().isEmpty) {
+    return (directory: projectDir, error: null);
+  }
+
+  final trimmed = workingDir.trim();
+
+  // Reuse existing relative-path validation (absolute, hidden, ..)
+  final validationError = validateRelativePath(trimmed);
+  if (validationError != null) {
+    return (directory: null, error: 'working_dir: $validationError');
+  }
+
+  final projectAbs = normalize(projectDir.absolute.path);
+  final resolvedAbs = normalize('$projectAbs/$trimmed');
+
+  // Defence-in-depth: ensure resolved path is inside project dir
+  if (resolvedAbs != projectAbs &&
+      !resolvedAbs.startsWith('$projectAbs$separator')) {
+    return (
+      directory: null,
+      error: 'working_dir must resolve inside project_dir',
+    );
+  }
+
+  // Check the resolved path exists and is a directory
+  final stat = FileStat.statSync(resolvedAbs);
+  if (stat.type == FileSystemEntityType.notFound) {
+    return (directory: null, error: 'working_dir does not exist: $trimmed');
+  }
+  if (stat.type != FileSystemEntityType.directory) {
+    return (
+      directory: null,
+      error: 'working_dir is not a directory: $trimmed',
+    );
+  }
+
+  return (directory: Directory(resolvedAbs), error: null);
+}

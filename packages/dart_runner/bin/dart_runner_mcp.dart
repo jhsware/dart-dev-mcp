@@ -96,13 +96,24 @@ Operations:
 - cancel: Cancel a running session
 
 For long-running operations (analyze, test, run), a session_id is returned.
-Use get_output with the session_id to poll for output.''',
+Use get_output with the session_id to poll for output.
+
+Use 'working_dir' (optional) to run commands from a sub-directory of project_dir —
+useful for monorepo packages (e.g. working_dir='packages/foo' for code generation).''',
+
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
           description:
               'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
         ),
+        'working_dir': JsonSchema.string(
+          description:
+              'Optional sub-directory within project_dir to run the command from. '
+              'Relative path only (no absolute, no "..", no hidden segments). '
+              'Example: working_dir="packages/foo" for monorepo code generation.',
+        ),
+
         'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: [
@@ -201,8 +212,16 @@ Future<CallToolResult> _handleDartRunner(
     return error;
   }
 
-  final workingDir = Directory(projectDir!);
+  final projectRoot = Directory(projectDir!);
   final allowFallback = serverArgs.allowToolchainFallback;
+
+  // Resolve optional working_dir for command-executing operations
+  final workingDirArg = args['working_dir'] as String?;
+  final resolved = resolveWorkingDir(projectRoot, workingDirArg);
+  if (resolved.error != null) {
+    return validationError('working_dir', resolved.error!);
+  }
+  final workingDir = resolved.directory!;
 
   try {
     switch (operation) {
@@ -210,6 +229,7 @@ Future<CallToolResult> _handleDartRunner(
         final target = args['target'] as String?;
         return _startDartCommandWithProgress(
           extra,
+          projectRoot,
           workingDir,
           sessionManager,
           'analyze',
@@ -221,6 +241,7 @@ Future<CallToolResult> _handleDartRunner(
         final target = args['target'] as String?;
         return _startDartCommandWithProgress(
           extra,
+          projectRoot,
           workingDir,
           sessionManager,
           'test',
@@ -236,6 +257,7 @@ Future<CallToolResult> _handleDartRunner(
         final target = args['target'] as String?;
         return _startDartCommandWithProgress(
           extra,
+          projectRoot,
           workingDir,
           sessionManager,
           'run',
@@ -249,12 +271,14 @@ Future<CallToolResult> _handleDartRunner(
       case 'format':
         final target = args['target'] as String? ?? '.';
         return await _runDartCommandSync(
+          projectRoot,
           workingDir,
           ['format', target, ...?_getExtraArgs(args)],
           allowFallback: allowFallback,
         );
       case 'pub-get':
         return await _runDartCommandSync(
+          projectRoot,
           workingDir,
           ['pub', 'get', ...?_getExtraArgs(args)],
           allowFallback: allowFallback,
@@ -267,12 +291,14 @@ Future<CallToolResult> _handleDartRunner(
         }
         return _startDartCommandWithProgress(
           extra,
+          projectRoot,
           workingDir,
           sessionManager,
           'pub-run',
           ['pub', 'run', target!, ...?_getExtraArgs(args)],
           allowFallback: allowFallback,
         );
+
 
       case 'get_output':
         final sessionId = args['session_id'] as String?;
@@ -401,18 +427,18 @@ final Set<String> _fallbackWarned = {};
 /// - flake.nix → `nix develop --command dart <args>` (no escaping needed).
 /// - otherwise → `dart <args>` unchanged.
 _ResolvedCommand _getDartCommand(
-  Directory workingDir,
+  Directory projectRoot,
   List<String> dartArgs, {
   required bool allowFallback,
 }) {
-  final kind = _detectNixKind(workingDir);
+  final kind = _detectNixKind(projectRoot);
   switch (kind) {
     case _NixKind.none:
       return _ResolvedCommand('dart', dartArgs, kind);
     case _NixKind.shellNix:
       if (!_nixShellAvailable()) {
         return _handleMissingNixBinary(
-          workingDir: workingDir,
+          projectRoot: projectRoot,
           dartArgs: dartArgs,
           kind: kind,
           binary: 'nix-shell',
@@ -424,13 +450,13 @@ _ResolvedCommand _getDartCommand(
           ['dart', ...dartArgs].map(_posixSingleQuoteEscape).join(' ');
       return _ResolvedCommand(
         'nix-shell',
-        ['--run', runCmd, 'shell.nix'],
+        ['--run', runCmd, '${projectRoot.path}/shell.nix'],
         kind,
       );
     case _NixKind.flakeNix:
       if (!_nixAvailable()) {
         return _handleMissingNixBinary(
-          workingDir: workingDir,
+          projectRoot: projectRoot,
           dartArgs: dartArgs,
           kind: kind,
           binary: 'nix',
@@ -447,7 +473,7 @@ _ResolvedCommand _getDartCommand(
 }
 
 _ResolvedCommand _handleMissingNixBinary({
-  required Directory workingDir,
+  required Directory projectRoot,
   required List<String> dartArgs,
   required _NixKind kind,
   required String binary,
@@ -455,10 +481,10 @@ _ResolvedCommand _handleMissingNixBinary({
   required bool allowFallback,
 }) {
   if (allowFallback) {
-    if (_fallbackWarned.add(workingDir.path)) {
+    if (_fallbackWarned.add(projectRoot.path)) {
       logWarning(
         'dart-runner',
-        "Project ${workingDir.path} declares $declared but '$binary' is "
+        "Project ${projectRoot.path} declares $declared but '$binary' is "
             "not on PATH. --allow-toolchain-fallback is set; falling back "
             "to the system dart. The pinned toolchain is NOT being used.",
       );
@@ -481,16 +507,18 @@ _ResolvedCommand _handleMissingNixBinary({
 }
 
 
+
 /// Start a long-running Dart command with progress notifications
 Future<CallToolResult> _startDartCommandWithProgress(
   RequestHandlerExtra extra,
+  Directory projectRoot,
   Directory workingDir,
   SessionManager sessionManager,
   String operation,
   List<String> dartArgs, {
   required bool allowFallback,
 }) async {
-  final cmd = _getDartCommand(workingDir, dartArgs,
+  final cmd = _getDartCommand(projectRoot, dartArgs,
       allowFallback: allowFallback);
   if (cmd.error != null) return cmd.error!;
 
@@ -524,24 +552,28 @@ Future<CallToolResult> _startDartCommandWithProgress(
   session.isComplete = true;
 
   // Return final complete result
-  final response = {
+  final response = <String, dynamic>{
     'status': 'completed',
     'session_id': sessionId,
     'operation': operation,
     'command': cmd.display,
+    if (workingDir.path != projectRoot.path)
+      'working_dir': workingDir.path,
     'output': allOutput.toString(),
   };
 
   return textResult(jsonEncode(response));
 }
 
+
 /// Run a short Dart command synchronously
 Future<CallToolResult> _runDartCommandSync(
+  Directory projectRoot,
   Directory workingDir,
   List<String> dartArgs, {
   required bool allowFallback,
 }) async {
-  final cmd = _getDartCommand(workingDir, dartArgs,
+  final cmd = _getDartCommand(projectRoot, dartArgs,
       allowFallback: allowFallback);
   if (cmd.error != null) return cmd.error!;
 
@@ -550,6 +582,9 @@ Future<CallToolResult> _runDartCommandSync(
 
     final output = StringBuffer();
     output.writeln('Command: ${cmd.display}');
+    if (workingDir.path != projectRoot.path) {
+      output.writeln('Working directory: ${workingDir.path}');
+    }
     output.writeln('Exit code: ${result.exitCode}');
     output.writeln('');
 
@@ -570,6 +605,7 @@ Future<CallToolResult> _runDartCommandSync(
     });
   }
 }
+
 
 
 

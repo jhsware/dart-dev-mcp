@@ -97,13 +97,24 @@ Operations:
 - cancel: Cancel a running session
 
 For long-running operations, a session_id is returned.
-Use get_output with the session_id to poll for output.''',
+Use get_output with the session_id to poll for output.
+
+Use 'working_dir' (optional) to run commands from a sub-directory of project_dir —
+useful for monorepo packages (e.g. working_dir='packages/app_core' for code generation).''',
+
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
           description:
               'Project directory path. Must match one of the registered --project-dir values. REQUIRED for all operations.',
         ),
+        'working_dir': JsonSchema.string(
+          description:
+              'Optional sub-directory within project_dir to run the command from. '
+              'Relative path only (no absolute, no "..", no hidden segments). '
+              'Example: working_dir="packages/app_core" for monorepo code generation.',
+        ),
+
         'operation': JsonSchema.string(
           description: 'The operation to perform',
           enumValues: [
@@ -214,13 +225,18 @@ Future<CallToolResult> _handleFlutterRunner(
     return error;
   }
 
-  final workingDir = Directory(projectDir!);
-  // Resolve per-project FVM usage (cached). If the project pins a Flutter
-  // version via .fvm but the fvm binary is missing, fail fast with a clear
-  // message rather than silently running the wrong SDK — unless the
-  // operator opted into soft-fallback via --allow-toolchain-fallback, in
-  // which case FvmResolver already downgraded the resolution and logged a
-  // warning.
+  final projectRoot = Directory(projectDir!);
+
+  // Resolve optional working_dir for command-executing operations
+  final workingDirArg = args['working_dir'] as String?;
+  final resolved = resolveWorkingDir(projectRoot, workingDirArg);
+  if (resolved.error != null) {
+    return validationError('working_dir', resolved.error!);
+  }
+  final workingDir = resolved.directory!;
+
+  // Resolve per-project FVM usage (cached). FVM detection anchors at
+  // project root, not working_dir.
   final fvmResolution = await fvmResolver.resolve(projectDir);
   if (fvmResolution.fvmBinaryMissing) {
     return validationError(
@@ -332,6 +348,7 @@ Future<CallToolResult> _handleFlutterRunner(
           useFvm,
           ['doctor', ...?_getExtraArgs(args)],
         );
+
 
       case 'get_output':
         final sessionId = args['session_id'] as String?;
