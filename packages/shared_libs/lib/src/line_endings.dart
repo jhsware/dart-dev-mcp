@@ -104,3 +104,19 @@ String stripLineNumbers(String content) {
 
   return strippedLines.join('\n');
 }
+
+/// Split content into logical lines for *insertion* into another file's
+/// lines list.
+///
+/// Unlike a plain `content.split('\n')`, this drops the trailing empty
+/// string that `split('\n')` produces when [content] ends with `\n`.
+/// That trailing empty is an artifact of `split` — it represents the line
+/// terminator, not an additional blank line.
+List<String> splitContentLines(String content) {
+  if (content.isEmpty) return <String>[];
+  final lines = content.split('\n');
+  if (lines.length > 1 && lines.last.isEmpty) {
+    return lines.sublist(0, lines.length - 1);
+  }
+  return lines;
+}

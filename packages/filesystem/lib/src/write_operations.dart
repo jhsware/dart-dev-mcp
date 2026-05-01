@@ -11,14 +11,13 @@ class FileWriteOperations {
   final Directory workingDir;
   final List<String> allowedPaths;
 
-  FileWriteOperations({
-    required this.workingDir,
-    required this.allowedPaths,
-  });
+  FileWriteOperations({required this.workingDir, required this.allowedPaths});
 
   /// Allowed paths formatted as relative paths for error messages.
-  late final String _allowedPathsHint =
-      formatAllowedPathsHint(workingDir, allowedPaths);
+  late final String _allowedPathsHint = formatAllowedPathsHint(
+    workingDir,
+    allowedPaths,
+  );
 
   /// Create a new directory.
   Future<CallToolResult> createDirectory(String path) async {
@@ -29,7 +28,10 @@ class FileWriteOperations {
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
+      return validationError(
+        'path',
+        'Not allowed for: $path. $_allowedPathsHint',
+      );
     }
 
     final directory = Directory(dirPath);
@@ -50,7 +52,10 @@ class FileWriteOperations {
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
+      return validationError(
+        'path',
+        'Not allowed for: $path. $_allowedPathsHint',
+      );
     }
 
     final file = File(filePath);
@@ -82,7 +87,10 @@ class FileWriteOperations {
 
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
-      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
+      return validationError(
+        'path',
+        'Not allowed for: $path. $_allowedPathsHint',
+      );
     }
 
     final file = File(filePath);
@@ -119,7 +127,7 @@ class FileWriteOperations {
 
     final cleanContent = stripLineNumbers(content!);
     final normalizedNew = normalizeLineEndings(cleanContent);
-    final newLines = normalizedNew.split('\n');
+    final newLines = splitContentLines(normalizedNew);
 
     String resultContent;
     String operationDesc;
@@ -152,8 +160,9 @@ class FileWriteOperations {
         );
       }
 
-      final actualEndIndex =
-          endIndex > existingLines.length ? existingLines.length : endIndex;
+      final actualEndIndex = endIndex > existingLines.length
+          ? existingLines.length
+          : endIndex;
 
       existingLines.removeRange(startIndex, actualEndIndex);
       existingLines.insertAll(startIndex, newLines);
@@ -213,20 +222,25 @@ class FileWriteOperations {
     final absSourcePath = getAbsolutePath(workingDir, sourcePath);
     if (!isAllowedPath(allowedPaths, absSourcePath)) {
       return validationError(
-          'path', 'Not allowed for: $sourcePath. $_allowedPathsHint');
+        'path',
+        'Not allowed for: $sourcePath. $_allowedPathsHint',
+      );
     }
 
     // 3. Validate destination path
     final destPathError = validateRelativePath(destinationPath!);
     if (destPathError != null) {
       return validationError(
-          'destination', '$destPathError. $_allowedPathsHint');
+        'destination',
+        '$destPathError. $_allowedPathsHint',
+      );
     }
     final absDestPath = getAbsolutePath(workingDir, destinationPath);
     if (!isAllowedPath(allowedPaths, absDestPath)) {
       return validationError(
-          'destination',
-          'Not allowed for: $destinationPath. $_allowedPathsHint');
+        'destination',
+        'Not allowed for: $destinationPath. $_allowedPathsHint',
+      );
     }
 
     // 4. Read source file
@@ -243,18 +257,22 @@ class FileWriteOperations {
     final sourceLines = normalizedSource.split('\n');
 
     // 5. Validate line range against source
-    if (startLine > sourceLines.length) {
+    // Logical length excludes the trailing empty from split('\n') on files
+    // ending with a newline — that empty is a round-trip marker, not a line.
+    final sourceLogicalLength =
+        sourceLines.length - (normalizedSource.endsWith('\n') ? 1 : 0);
+    if (startLine > sourceLogicalLength) {
       return validationError(
         'startLine',
-        'startLine ($startLine) exceeds file length (${sourceLines.length} lines)',
+        'startLine ($startLine) exceeds file length ($sourceLogicalLength lines)',
       );
     }
-    final actualEndLine =
-        endLine > sourceLines.length ? sourceLines.length : endLine;
+    final actualEndLine = endLine > sourceLogicalLength
+        ? sourceLogicalLength
+        : endLine;
 
     // 6. Extract lines (1-indexed to 0-indexed)
-    final extractedLines =
-        sourceLines.sublist(startLine - 1, actualEndLine);
+    final extractedLines = sourceLines.sublist(startLine - 1, actualEndLine);
     final extractedCount = extractedLines.length;
 
     // 7. Handle destination file
@@ -280,17 +298,20 @@ class FileWriteOperations {
       final insertIndex = insertAt - 1;
       if (insertIndex > destLines.length) {
         // Pad with empty lines if needed
-        final padding =
-            List.filled(insertIndex - destLines.length, '');
+        final padding = List.filled(insertIndex - destLines.length, '');
         destLines.addAll(padding);
       }
       destLines.insertAll(insertIndex, extractedLines);
     } else if (destExists) {
-      // Append to existing file
-      destLines.addAll(extractedLines);
+      // Append to existing file — insert before the trailing-empty marker
+      // so the file keeps exactly one trailing newline.
+      final insertIndex = destLines.isNotEmpty && destLines.last.isEmpty
+          ? destLines.length - 1
+          : destLines.length;
+      destLines.insertAll(insertIndex, extractedLines);
     } else {
-      // New file — just use extracted lines
-      destLines = extractedLines;
+      // New file — use extracted lines + trailing-empty marker for newline
+      destLines = [...extractedLines, ''];
     }
 
     // Write destination file (create parent dirs if needed)
@@ -298,23 +319,21 @@ class FileWriteOperations {
       await destFile.create(recursive: true);
     }
     final destResult = destLines.join('\n');
-    await destFile.writeAsString(
-        applyLineEndings(destResult, destLineEnding));
+    await destFile.writeAsString(applyLineEndings(destResult, destLineEnding));
 
     // 8. Remove from source if requested
     if (removeFromSource) {
       sourceLines.removeRange(startLine - 1, actualEndLine);
       final sourceResult = sourceLines.join('\n');
       await sourceFile.writeAsString(
-          applyLineEndings(sourceResult, sourceLineEnding));
+        applyLineEndings(sourceResult, sourceLineEnding),
+      );
     }
 
     // 9. Return summary
     final action = removeFromSource ? 'removed from source' : 'kept in source';
     final destAction = destExists
-        ? (insertAt != null
-            ? 'inserted at line $insertAt'
-            : 'appended')
+        ? (insertAt != null ? 'inserted at line $insertAt' : 'appended')
         : 'new file created';
     return textResult(
       'Extracted lines $startLine-$actualEndLine from $sourcePath → '

@@ -148,4 +148,38 @@ void main() {
       expect(stripLineNumbers('L1: key: value'), 'key: value');
     });
   });
+
+  group('splitContentLines', () {
+    test('empty content returns empty list', () {
+      expect(splitContentLines(''), <String>[]);
+    });
+
+    test('single line, no trailing newline', () {
+      expect(splitContentLines('abc'), ['abc']);
+    });
+
+    test('single line, trailing newline', () {
+      expect(splitContentLines('abc\n'), ['abc']);
+    });
+
+    test('two lines, no trailing newline', () {
+      expect(splitContentLines('a\nb'), ['a', 'b']);
+    });
+
+    test('two lines, trailing newline', () {
+      expect(splitContentLines('a\nb\n'), ['a', 'b']);
+    });
+
+    test('intentional blank line in middle preserved', () {
+      expect(splitContentLines('a\n\nb\n'), ['a', '', 'b']);
+    });
+
+    test('single newline yields one blank line', () {
+      expect(splitContentLines('\n'), ['']);
+    });
+
+    test('two newlines yields blank line plus content line', () {
+      expect(splitContentLines('\n\n'), ['', '']);
+    });
+  });
 }
