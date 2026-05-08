@@ -479,7 +479,7 @@ else
 fi
 
 echo ""
-echo "Previous configuration restored at: $PATH_TO_CLAUDE/claude_desktop_config.json"
+echo "Previous configuration restored at: '$PATH_TO_CLAUDE/claude_desktop_config.json'"
 echo ""
 # cat "$PATH_TO_CLAUDE/claude_desktop_config.json"
 
