@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+# Enable job control (required for 'fg' in scripts)
+set -m
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLANNER_DATA_ROOT=${SSH_KEY:-"$HOME/Library/Application Support/se.urbantalk.planner-app"}
 
@@ -476,6 +479,11 @@ else
 fi
 
 echo ""
-echo "Configuration restored:"
+echo "Previous configuration restored at: $PATH_TO_CLAUDE/claude_desktop_config.json"
 echo ""
-cat "$PATH_TO_CLAUDE/claude_desktop_config.json"
+# cat "$PATH_TO_CLAUDE/claude_desktop_config.json"
+
+# Bring Claude to the foreground
+# Using '|| true' prevents 'set -e' from killing the script 
+# if the process finishes right as you foreground it.
+fg %1 || true
