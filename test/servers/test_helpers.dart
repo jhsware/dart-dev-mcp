@@ -14,16 +14,29 @@ const serverScripts = [
 
 /// Compiles a Dart script to kernel format (.dill) for faster execution.
 /// The .dill files are cached on disk and reused across test runs.
+///
+/// Cache invalidation uses two signals:
+///   1) source mtime — recompile if the .dart source is newer than the .dill.
+///   2) Dart SDK version — recompile if the SDK has changed since the .dill
+///      was generated. The SDK version is recorded in a sidecar file
+///      `<script>.dill.sdk`. This prevents "Invalid SDK hash" failures after
+///      a Dart SDK upgrade.
 Future<String> compileToKernel(String scriptPath) async {
   final dillPath = scriptPath.replaceAll('.dart', '.dill');
+  final sdkSidecarPath = '$dillPath.sdk';
   final dillFile = File(dillPath);
   final sourceFile = File(scriptPath);
+  final sdkSidecarFile = File(sdkSidecarPath);
 
-  // Skip compilation if .dill exists and is newer than source
-  if (await dillFile.exists()) {
+  final currentSdk = Platform.version;
+
+  // Skip compilation if .dill exists, is newer than source, AND was built
+  // against the current SDK.
+  if (await dillFile.exists() && await sdkSidecarFile.exists()) {
     final dillMod = await dillFile.lastModified();
     final sourceMod = await sourceFile.lastModified();
-    if (dillMod.isAfter(sourceMod)) {
+    final cachedSdk = await sdkSidecarFile.readAsString();
+    if (dillMod.isAfter(sourceMod) && cachedSdk == currentSdk) {
       return dillPath;
     }
   }
@@ -37,6 +50,9 @@ Future<String> compileToKernel(String scriptPath) async {
   if (result.exitCode != 0) {
     throw Exception('Failed to compile $scriptPath: ${result.stderr}');
   }
+
+  // Record the SDK version this .dill was compiled against.
+  await sdkSidecarFile.writeAsString(currentSdk);
 
   return dillPath;
 }

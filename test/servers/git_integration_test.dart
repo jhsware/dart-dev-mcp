@@ -135,7 +135,7 @@ void main() {
         } else {
           gitSupportsSSH = false;
         }
-        print('Git version: $versionStr (SSH signing: ${gitSupportsSSH ? "supported" : "not supported"})');
+        printOnFailure('Git version: $versionStr (SSH signing: ${gitSupportsSSH ? "supported" : "not supported"})');
       } else {
         gitSupportsSSH = false;
       }
@@ -158,11 +158,11 @@ void main() {
       );
       
       if (keygenResult.exitCode != 0) {
-        print('Failed to generate SSH key: ${keygenResult.stderr}');
+        printOnFailure('Failed to generate SSH key: ${keygenResult.stderr}');
         return;
       }
       
-      print('Generated test SSH key: $sshKeyPath');
+      printOnFailure('Generated test SSH key: $sshKeyPath');
       
       // Initialize git repo
       await Process.run('git', ['init'], workingDirectory: repoDir.path);
@@ -228,8 +228,8 @@ void main() {
         environment: Platform.environment,
       );
       
-      print('SSH commit stdout: ${result.stdout}');
-      print('SSH commit stderr: ${result.stderr}');
+      printOnFailure('SSH commit stdout: ${result.stdout}');
+      printOnFailure('SSH commit stderr: ${result.stderr}');
       
       expect(result.exitCode, 0, reason: 'SSH-signed commit failed: ${result.stderr}');
       
@@ -245,7 +245,7 @@ void main() {
         'git', ['log', '--show-signature', '-1'],
         workingDirectory: repoDir.path,
       );
-      print('Commit with signature info:\n${result.stdout}${result.stderr}');
+      printOnFailure('Commit with signature info:\n${result.stdout}${result.stderr}');
     });
 
     test('can configure allowed_signers for SSH signature verification', () async {
@@ -292,7 +292,7 @@ void main() {
         workingDirectory: repoDir.path,
       );
       
-      print('Signature verification:\n${result.stdout}${result.stderr}');
+      printOnFailure('Signature verification:\n${result.stdout}${result.stderr}');
       
       // Should show "Good signature" when allowed_signers is configured
       // Note: git shows 'Good "git" signature' for SSH signatures
@@ -333,7 +333,7 @@ void main() {
         environment: Platform.environment,
       );
       
-      print('Expected failure stderr: ${result.stderr}');
+      printOnFailure('Expected failure stderr: ${result.stderr}');
       
       expect(result.exitCode, isNot(0), reason: 'Commit should fail with invalid key');
     });
@@ -364,7 +364,7 @@ void main() {
         } else {
           gitSupportsSSH = false;
         }
-        print('Git version: $versionStr (SSH signing: ${gitSupportsSSH ? "supported" : "not supported"})');
+        printOnFailure('Git version: $versionStr (SSH signing: ${gitSupportsSSH ? "supported" : "not supported"})');
       } else {
         gitSupportsSSH = false;
       }
@@ -389,16 +389,16 @@ void main() {
       );
       
       if (keygenResult.exitCode != 0) {
-        print('Failed to generate SSH key with passphrase: ${keygenResult.stderr}');
+        printOnFailure('Failed to generate SSH key with passphrase: ${keygenResult.stderr}');
         return;
       }
       
-      print('Generated passphrase-protected SSH key: $sshKeyPath');
+      printOnFailure('Generated passphrase-protected SSH key: $sshKeyPath');
       
       // Start a temporary ssh-agent
       final agentResult = await Process.run('ssh-agent', ['-s']);
       if (agentResult.exitCode != 0) {
-        print('Failed to start ssh-agent: ${agentResult.stderr}');
+        printOnFailure('Failed to start ssh-agent: ${agentResult.stderr}');
         return;
       }
       
@@ -410,7 +410,7 @@ void main() {
       final pidMatch = RegExp(r'SSH_AGENT_PID=(\d+)').firstMatch(agentOutput);
       
       if (sockMatch == null || pidMatch == null) {
-        print('Failed to parse ssh-agent output: $agentOutput');
+        printOnFailure('Failed to parse ssh-agent output: $agentOutput');
         return;
       }
       
@@ -418,7 +418,7 @@ void main() {
       sshAgentPid = int.parse(pidMatch.group(1)!);
       sshAgentStarted = true;
       
-      print('Started ssh-agent (PID: $sshAgentPid, socket: $sshAgentSocket)');
+      printOnFailure('Started ssh-agent (PID: $sshAgentPid, socket: $sshAgentSocket)');
       
       // Add the key to the agent using SSH_ASKPASS
       // Create a temporary script that echoes the passphrase
@@ -440,11 +440,11 @@ void main() {
       );
       
       if (addResult.exitCode != 0) {
-        print('Failed to add key to agent: ${addResult.stderr}');
+        printOnFailure('Failed to add key to agent: ${addResult.stderr}');
         // Try alternative method using expect-like approach
-        print('Trying alternative method...');
+        printOnFailure('Trying alternative method...');
       } else {
-        print('Added key to ssh-agent');
+        printOnFailure('Added key to ssh-agent');
       }
       
       // Verify key was added
@@ -455,7 +455,7 @@ void main() {
           'SSH_AUTH_SOCK': sshAgentSocket,
         },
       );
-      print('Keys in agent: ${listResult.stdout}');
+      printOnFailure('Keys in agent: ${listResult.stdout}');
       
       // Initialize git repo
       await Process.run('git', ['init'], workingDirectory: repoDir.path);
@@ -474,9 +474,9 @@ void main() {
       if (sshAgentStarted) {
         try {
           await Process.run('kill', [sshAgentPid.toString()]);
-          print('Killed ssh-agent (PID: $sshAgentPid)');
+          printOnFailure('Killed ssh-agent (PID: $sshAgentPid)');
         } catch (e) {
-          print('Failed to kill ssh-agent: $e');
+          printOnFailure('Failed to kill ssh-agent: $e');
         }
       }
       
@@ -507,9 +507,9 @@ void main() {
         },
       );
       
-      print('ssh-add -l exit code: ${listResult.exitCode}');
-      print('ssh-add -l stdout: ${listResult.stdout}');
-      print('ssh-add -l stderr: ${listResult.stderr}');
+      printOnFailure('ssh-add -l exit code: ${listResult.exitCode}');
+      printOnFailure('ssh-add -l stdout: ${listResult.stdout}');
+      printOnFailure('ssh-add -l stderr: ${listResult.stderr}');
       
       expect(listResult.exitCode, 0, reason: 'ssh-agent should have keys loaded');
       expect(listResult.stdout, contains('ED25519'), reason: 'Our test key should be in agent');
@@ -537,7 +537,7 @@ void main() {
       
       if (listResult.exitCode != 0) {
         // Key not in agent - try to add it using expect
-        print('Key not in agent, trying to add via expect...');
+        printOnFailure('Key not in agent, trying to add via expect...');
         
         // Check if expect is available
         final expectCheck = await Process.run('which', ['expect']);
@@ -567,9 +567,9 @@ expect eof
           },
         );
         
-        print('expect script result: ${addResult.exitCode}');
-        print('expect stdout: ${addResult.stdout}');
-        print('expect stderr: ${addResult.stderr}');
+        printOnFailure('expect script result: ${addResult.exitCode}');
+        printOnFailure('expect stdout: ${addResult.stdout}');
+        printOnFailure('expect stderr: ${addResult.stderr}');
         
         // Verify key was added
         final verifyResult = await Process.run(
@@ -614,8 +614,8 @@ expect eof
         },
       );
       
-      print('SSH agent commit stdout: ${result.stdout}');
-      print('SSH agent commit stderr: ${result.stderr}');
+      printOnFailure('SSH agent commit stdout: ${result.stdout}');
+      printOnFailure('SSH agent commit stderr: ${result.stderr}');
       
       expect(result.exitCode, 0, reason: 'SSH-signed commit via agent failed: ${result.stderr}');
       
@@ -634,7 +634,7 @@ expect eof
           'SSH_AUTH_SOCK': sshAgentSocket,
         },
       );
-      print('Commit signature info:\n${result.stdout}${result.stderr}');
+      printOnFailure('Commit signature info:\n${result.stdout}${result.stderr}');
     });
 
     test('SSH signing fails without agent for passphrase-protected key', () async {
@@ -678,7 +678,7 @@ expect eof
         },
       );
       
-      print('Expected failure (no agent) stderr: ${result.stderr}');
+      printOnFailure('Expected failure (no agent) stderr: ${result.stderr}');
       
       // Should fail because key requires passphrase but no agent
       expect(result.exitCode, isNot(0), 
@@ -718,7 +718,7 @@ expect eof
         'ssh-add', ['-l'],
         environment: envWithAgent,
       );
-      print('With SSH_AUTH_SOCK: exit=${result.exitCode}, keys=${result.stdout}');
+      printOnFailure('With SSH_AUTH_SOCK: exit=${result.exitCode}, keys=${result.stdout}');
       expect(result.exitCode, anyOf(0, 1)); // 0 = keys, 1 = no keys, both OK
       
       // Without agent socket - should fail to connect
@@ -727,7 +727,7 @@ expect eof
         includeParentEnvironment: false,
         environment: envWithoutAgent,
       );
-      print('Without SSH_AUTH_SOCK: exit=${result.exitCode}, stderr=${result.stderr}');
+      printOnFailure('Without SSH_AUTH_SOCK: exit=${result.exitCode}, stderr=${result.stderr}');
       expect(result.exitCode, 2, reason: 'Should fail to connect without SSH_AUTH_SOCK');
     });
   });
@@ -745,9 +745,9 @@ expect eof
       
       if (gpgAvailable) {
         final versionResult = await Process.run('gpg', ['--version']);
-        print('GPG version: ${(versionResult.stdout as String).split('\n').first}');
+        printOnFailure('GPG version: ${(versionResult.stdout as String).split('\n').first}');
       } else {
-        print('GPG not available - GPG signing tests will be skipped');
+        printOnFailure('GPG not available - GPG signing tests will be skipped');
       }
     });
 
@@ -790,7 +790,7 @@ Expire-Date: 0
       );
       
       if (genResult.exitCode != 0) {
-        print('Failed to generate test GPG key: ${genResult.stderr}');
+        printOnFailure('Failed to generate test GPG key: ${genResult.stderr}');
         testKeyId = null;
         return;
       }
@@ -808,7 +808,7 @@ Expire-Date: 0
         final output = listResult.stdout as String;
         final match = RegExp(r'sec\s+rsa\d+/([A-F0-9]+)').firstMatch(output);
         testKeyId = match?.group(1);
-        print('Test GPG key created: $testKeyId');
+        printOnFailure('Test GPG key created: $testKeyId');
       }
       
       // Initialize git repo
@@ -878,8 +878,8 @@ Expire-Date: 0
         environment: gpgEnv,
       );
       
-      print('GPG commit stdout: ${result.stdout}');
-      print('GPG commit stderr: ${result.stderr}');
+      printOnFailure('GPG commit stdout: ${result.stdout}');
+      printOnFailure('GPG commit stderr: ${result.stderr}');
       
       expect(result.exitCode, 0, reason: 'GPG-signed commit failed: ${result.stderr}');
       
@@ -899,7 +899,7 @@ Expire-Date: 0
       expect(gitVersion.exitCode, 0);
       
       final versionStr = (gitVersion.stdout as String).trim();
-      print('Git version string: $versionStr');
+      printOnFailure('Git version string: $versionStr');
       
       final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(versionStr);
       expect(match, isNotNull);
@@ -908,10 +908,10 @@ Expire-Date: 0
       final minor = int.parse(match.group(2)!);
       final patch = int.parse(match.group(3)!);
       
-      print('Parsed version: $major.$minor.$patch');
+      printOnFailure('Parsed version: $major.$minor.$patch');
       
       final supportsSSH = major > 2 || (major == 2 && minor >= 34);
-      print('SSH signing supported: $supportsSSH');
+      printOnFailure('SSH signing supported: $supportsSSH');
     });
 
     test('can find SSH keys', () async {
@@ -924,18 +924,18 @@ Expire-Date: 0
         '$home/.ssh/id_rsa.pub',
       ];
       
-      print('Checking for SSH keys:');
+      printOnFailure('Checking for SSH keys:');
       bool foundKey = false;
       for (final path in sshKeyPaths) {
         final exists = await File(path).exists();
-        print('  $path: ${exists ? "found" : "not found"}');
+        printOnFailure('  $path: ${exists ? "found" : "not found"}');
         if (exists) foundKey = true;
       }
       
       if (foundKey) {
-        print('SSH signing is available');
+        printOnFailure('SSH signing is available');
       } else {
-        print('No SSH keys found - SSH signing not available');
+        printOnFailure('No SSH keys found - SSH signing not available');
       }
     });
 
@@ -946,15 +946,15 @@ Expire-Date: 0
           final output = gpgCheck.stdout as String;
           if (output.trim().isNotEmpty) {
             final keyCount = RegExp(r'sec\s+').allMatches(output).length;
-            print('GPG available with $keyCount secret key(s)');
+            printOnFailure('GPG available with $keyCount secret key(s)');
           } else {
-            print('GPG available but no secret keys');
+            printOnFailure('GPG available but no secret keys');
           }
         } else {
-          print('GPG command failed: ${gpgCheck.stderr}');
+          printOnFailure('GPG command failed: ${gpgCheck.stderr}');
         }
       } catch (e) {
-        print('GPG not available: $e');
+        printOnFailure('GPG not available: $e');
       }
     });
   });
@@ -1066,8 +1066,8 @@ Expire-Date: 0
         environment: Platform.environment,
       );
       
-      print('SSH simulation stdout: ${result.stdout}');
-      print('SSH simulation stderr: ${result.stderr}');
+      printOnFailure('SSH simulation stdout: ${result.stdout}');
+      printOnFailure('SSH simulation stderr: ${result.stderr}');
       
       expect(result.exitCode, 0, reason: 'SSH-signed commit failed: ${result.stderr}');
 

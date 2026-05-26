@@ -503,7 +503,7 @@ CallToolResult _injectProjectDirJson(
 
 /// Injects project_dir into a text response.
 ///
-/// Prepends "Project dir: <projectDir>" to the text content.
+/// Prepends `Project dir: <projectDir>` to the text content.
 /// If the text starts with "Error:", it's returned as-is.
 CallToolResult _injectProjectDirText(
     CallToolResult result, String projectDir) {

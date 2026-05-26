@@ -127,7 +127,8 @@ class DartParser {
       if (name.startsWith('_')) return;
       exports.add(_entry(name, 'mixin'));
       _processMembers(decl.members, exports, name);
-    } else if (decl is ExtensionTypeDeclaration) {
+    } else if (decl
+        is ExtensionTypeDeclaration) { // ignore: experimental_member_use
       final name = decl.name.lexeme;
       if (name.startsWith('_')) return;
       exports.add(_entry(name, 'extension'));
