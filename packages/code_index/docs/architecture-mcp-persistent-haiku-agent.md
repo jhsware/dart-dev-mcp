@@ -24,9 +24,9 @@ The proposal is to make the **MCP the source of truth and the controller**, and 
 1. **MCP is the durable layer.** All persistent state lives in the per-project SQLite database. Nothing important lives in the agent's context window.
 2. **The agent is stateless and disposable.** Each invocation of `code-index-agent` starts with a fresh context. The MCP tells it exactly which files to look at and which layers to produce.
 3. **Layered storage, layered retrieval.** Every file has multiple precomputed views. Consumers ask for the cheapest layer that answers their question.
-4. **Stale-on-read is automatic.** The MCP compares hashes during query operations, not just `diff`. If the file on disk has changed, the MCP either returns the stale data with a `stale: true` flag or transparently dispatches the agent to refresh it (configurable per call).
+4. **Stale-on-read is automatic.** The MCP compares hashes during query operations, not just `diff`. If the file on disk has changed, the MCP returns the stored data alongside a `needs_reindex` batch so the caller can decide whether to spawn the agent. (The original proposal allowed a per-call `on_stale` mode to refresh inline; the implementation collapsed this to a single batch-hint behavior — see §7.2.)
 5. **Out-of-bounds is loud.** Any operation that touches a path outside the `jhsware-code.yaml` allowed paths returns a structured `out_of_scope` response, never silently fails. The consumer can then run its own analysis on that file.
-6. **Backward compatibility.** Existing operations (`index-file`, `auto-index`, `search`, `show-file`, `diff`, `overview`, `file-summary`, `dependents`, `dependencies`, `search-annotations`, `stats`) keep working. New layers are additive.
+6. **Clean break, no legacy ops.** The rewrite drops the older `index-file`, `show-file`, and `file-summary` operations rather than keeping them as thin wrappers. The new operation surface is: `auto-scan`, `auto-index`, `get-file`, `get-files`, `usages`, `search`, `overview`, `dependents`, `dependencies`, `search-annotations`, `stats`, `diff`, `is-allowed`. The on-disk SQLite database is a disposable cache — if the schema version doesn't match, the database is rebuilt from scratch.
 
 ---
 
@@ -365,24 +365,17 @@ This is the same dependency that the Dart SDK and Flutter tooling already pull i
   }
   ```
 
-- **`get-file`** — Replaces ad-hoc combinations of `show-file` / `file-summary`. Takes `path` and `layers`, returns only what was asked for, plus the `stale` flag.
+- **`get-file`** — Replaces the older ad-hoc `show-file` / `file-summary` combinations entirely (those operations were dropped, not kept as wrappers). Takes `path` and `layers`, returns only what was asked for, plus a `needs_reindex` array for stale detection.
 
 - **`get-files`** — Batched version of `get-file` for cross-file queries.
 
 - **`is-allowed`** — Returns whether a path is inside the `code-index` allowed paths.
 
-- **`mark-stale`** — Force-mark a file as stale (used by external file watchers if a project ever wires one up).
-
 ### Modified
 
-- **`auto-index`** — Continues to be the write path. Extended to accept `layers` (which layers to compute) and to populate `short_summary`, `size_bytes`, `line_count`, `mtime`, `layers_present`, `analysis_status`, `last_analyzed_at`. Still callable directly by an agent batch.
+- **`auto-index`** — Continues to be the write path. Extended to accept `layers` (which layers to compute) and to populate `short_summary`, `size_bytes`, `line_count`, `mtime`, `layers_present`, `analysis_status`, `last_analyzed_at`. Still callable directly by an agent batch. For Dart files, layer 0 + 2 are produced deterministically by the MCP itself via `package:analyzer`.
 
-- **`show-file` / `file-summary`** — Keep them for backward compatibility, but internally route through `get-file` with a fixed layer set.
-
-- **Every read operation** (`get-file`, `show-file`, `file-summary`, `search`, `overview`, `dependents`, `dependencies`) — When returning data for a file, recompute the hash (cheap with XXH3) and compare with the stored hash. If they differ, set `stale: true` on the response and update `analysis_status` to `stale` in the database. Behavior on stale is controlled by a per-call parameter:
-  - `on_stale: "return_stale"` (default) — return the stored data with `stale: true`.
-  - `on_stale: "refresh"` — enqueue the file in `scan_queue`, return stored data with `stale: true, refresh_enqueued: true`.
-  - `on_stale: "refresh_and_wait"` — synchronously trigger the agent to re-analyze the file before returning. Only sensible for one-shot consumers that don't mind waiting (this requires the agent integration described in §7).
+- **Every read operation** (`get-file`, `get-files`, `search`, `overview`, `dependents`, `dependencies`, `search-annotations`, `usages`) — When returning data for a file, recompute the hash (cheap with XXH3) and compare with the stored hash. If they differ, update `analysis_status='stale'` in the DB and add the file to the response's top-level `needs_reindex: [{ path, reason }]` array. The caller batches stale paths and feeds them back to `code-index-agent` for re-indexing. The original proposal allowed per-call `on_stale` modes (`return_stale` / `refresh` / `refresh_and_wait`); these were collapsed to the single batch-hint behavior because Model A keeps the agent-spawn decision with the parent.
 
 - **`diff`** — Already does what we want. Used internally by `auto-scan`. Still callable directly.
 
@@ -390,12 +383,13 @@ This is the same dependency that the Dart SDK and Flutter tooling already pull i
 
 | Op | Reads | Writes | Walks tree | Calls Haiku | Allowed-path check |
 |----|:---:|:---:|:---:|:---:|:---:|
-| `auto-scan` | ✓ | — | ✓ | — | ✓ |
+| `auto-scan` | ✓ | rebuild / remove_deleted | ✓ | — | ✓ |
 | `diff` | ✓ | — (except `remove_deleted`) | ✓ | — | ✓ |
-| `get-file` / `get-files` | ✓ | hash-refresh only | — | — (unless `refresh_and_wait`) | ✓ |
-| `show-file` / `file-summary` / `overview` | ✓ | hash-refresh only | — | — | ✓ |
-| `search` / `search-annotations` / `stats` | ✓ | — | — | — | — (querying index only) |
-| `auto-index` / `index-file` | — | ✓ | — | — | ✓ |
+| `get-file` / `get-files` | ✓ | hash-refresh only | — | — | ✓ |
+| `overview` | ✓ | hash-refresh only | — | — | ✓ |
+| `search` / `dependents` / `dependencies` / `usages` / `search-annotations` | ✓ | hash-refresh only | — | — | ✓ (when `path` / `path_pattern` is supplied) |
+| `stats` | ✓ | — | — | — | — (counts only, no hash check) |
+| `auto-index` | — | ✓ | — | — | ✓ |
 | `is-allowed` | — | — | — | — | ✓ |
 
 ---
@@ -406,32 +400,25 @@ Three triggers fire a scan.
 
 ### 7.1 Startup scan
 
-When the MCP process boots, it does *not* block on indexing. Instead, on the first operation against a given project (or on a separate `auto-scan` call), it runs `diff` and stages the results in `scan_queue`. This keeps the MCP responsive.
+When the MCP process boots, it does *not* block on indexing. The parent issues `auto-scan` once at the start of a session, hands the resulting `plan` to `code-index-agent`, and the agent does the heavy work in a forked context.
 
-Two execution models for processing the queue:
+Two execution models were considered:
 
-**Model A — Pull-based (recommended starting point).**
-The MCP exposes the queue. The agent (or the skill) calls `auto-scan` to get the plan, then issues `auto-index` calls in batches. The MCP does not own a worker thread. This is the simplest evolution from where we are today and keeps the MCP single-threaded against SQLite.
+**Model A — Pull-based (chosen).**
+The parent calls `auto-scan` to get the plan, then spawns `code-index-agent`, which issues `auto-index` calls in batches. The MCP does not own a worker thread and stays single-threaded against SQLite. The `scan_queue` table from §5 was not implemented — the plan-based flow makes it unnecessary.
 
-**Model B — Push-based (later, if needed).**
-The MCP forks the `code-index-agent` itself via an internal process spawn or by emitting an MCP notification that the host runtime acts on. This is more invasive (the MCP needs to be able to talk to a Claude API or to the host SDK) and is deferred.
-
-For the initial implementation, choose Model A: the parent invokes the agent once at the start of a session ("bring the index up to date"), and Haiku does the heavy work in a forked context.
+**Model B — Push-based (not built).**
+The MCP forks the `code-index-agent` itself via an internal process spawn or by emitting an MCP notification that the host runtime acts on. More invasive (the MCP needs to be able to talk to a Claude API or to the host SDK). Deferred until a concrete need appears.
 
 ### 7.2 On-read stale detection
 
-Every operation that returns file-scoped data does a hash check (XXH3 is fast — sub-millisecond for typical source files). Three things can happen:
+Every operation that returns file-scoped data does a hash check (XXH3 is fast — sub-millisecond for typical source files). The behavior is uniform: stored data is returned regardless, and stale files surface in a top-level `needs_reindex: [{ path, reason }]` array on the response. `reason` is `"changed"` (hash mismatch) or `"missing_layer"` (the row exists but a requested layer was never populated). When the parent acts on `needs_reindex`, it spawns `code-index-agent` with that batch as input — no per-call mode flag and no separate `invalidate` operation.
 
-1. **Hash matches** → return data, `stale: false`.
-2. **Hash differs**, `on_stale: "return_stale"` → return stored data, `stale: true`, mark `analysis_status='stale'` in the DB.
-3. **Hash differs**, `on_stale: "refresh"` → as above, plus enqueue the file. Next time the agent runs, it will pick it up.
-4. **Hash differs**, `on_stale: "refresh_and_wait"` → MCP signals the host to spawn the agent for this single file, blocks until it completes (with a timeout), then returns fresh data.
-
-Most callers should leave the default (`return_stale`). A parent agent that *cares* about freshness for a particular question can opt in to `refresh` or `refresh_and_wait`.
+The original proposal allowed three per-call modes (`return_stale` / `refresh` / `refresh_and_wait`); these were collapsed because (a) Model A keeps agent spawning with the parent, so `refresh_and_wait` couldn't be implemented inside the MCP, and (b) batch hints across many reads are dramatically less chatty than per-file modal flags.
 
 ### 7.3 Explicit refresh
 
-Callers can always issue `auto-scan` followed by an `code-index-agent` invocation to bring the index fully up to date. This is the workflow the existing skill already encourages.
+Callers can always issue `auto-scan` followed by a `code-index-agent` invocation to bring the index fully up to date. This is the same flow used at session start; nothing special is required to opt in.
 
 ---
 
@@ -554,20 +541,21 @@ Each query is a cheap MCP call against SQLite. Nothing forks Haiku unless someth
 
 ## 12. Implementation Order
 
-A pragmatic sequence that keeps the system working at every step:
+The work shipped as eleven sub-tasks under a parent orchestration task. The pragmatic sequence that kept the system buildable at every step:
 
-1. **Schema migration to v5** — add the new columns and `scan_queue` table. No behavior change yet.
-2. **Allowed-path enforcement across all operations** — extend the `isAllowedPath` check from `DiffOperations` to all read/write ops. Introduce the `out_of_scope` response shape.
-3. **`is-allowed` operation** — small, lets callers ask cheaply.
-4. **Hash-on-read** — compute and compare hashes inside `show-file` / `file-summary` / `overview` / new `get-file`. Add the `stale` flag to responses.
-5. **`get-file` / `get-files` with `layers` parameter** — new read API; existing ops keep working.
-6. **`short_summary` storage and population** — extend `auto-index` to accept and store layer 1; update the agent to produce it.
-7. **`auto-scan` operation** — emits the plan structure. The agent's "Process the scan plan" mode consumes it.
-8. **Skill rewrite** — repoint from "how to index" to "how to query the layered index".
-9. **Agent rewrite** — emphasize plan-driven batches and layer-aware indexing.
-10. **(Later, optional) Model B push-based scanning** — MCP-initiated agent spawning for `refresh_and_wait`.
+1. **Clean v1 schema** — new `files` columns (`size_bytes`, `line_count`, `word_count`, `mtime`, `short_summary`, `layers_present`, `last_analyzed_at`, `analysis_status`, `analysis_error`), `external_symbol_usages` table, and the `external_symbols` FTS column. No migration machinery; mismatched schema versions trigger a full DB rebuild via `rebuildDatabase`.
+2. **Analyzer-based parser** — replace the regex `dart_parser.dart` with `package:analyzer` (syntactic for declarations, resolved for external usages). One `AnalysisContextCollection` per scan, dot-path canonicalization in `DartResolvedParser.parseLibraryUri` / `buildDotPath`.
+3. **Uniform allowed-path enforcement** — extend `isAllowedPath` to every path-taking operation. Introduce `outOfScopeResponse(...)` and add the `is-allowed` operation.
+4. **Layered write path** — rewrite `IndexOperations.autoIndex` to accept `layers`, `short_summary`, and `symbol_summaries`; populate `layers_present`, `analysis_status`, `last_analyzed_at`; persist `external_symbol_usages` and sync the `external_symbols` FTS column. Drop the legacy `index-file` MCP operation. Add the `usages` query operation.
+5. **Layered read path + stale detection** — add `get-file` / `get-files` with a `layers` parameter (default `[0, 1, 4]`). Every read response carries a top-level `needs_reindex: [{ path, reason }]` batch. Introduce `StaleDetector` to combine hash-on-read and missing-layer checks.
+6. **`auto-scan` operation** — emits the plan the agent consumes. Accepts `since` for incremental scans and `rebuild: true` for cache-discard rebuilds. Shares traversal helpers with `diff` via `scan_helpers.dart`.
+7. **MCP wiring** — register the new operation surface in `bin/code_index_mcp.dart`, refresh the input schema and `--help` output, and route `is-allowed` without needing a database.
+8. **Test sweep** — delete tests for removed behavior; add a `fixtures/sample_project` for analyzer tests; add `integration_flows_test.dart` covering the §10 flows end-to-end.
+9. **Agent rewrite** — `code-index-agent.md` consumes `plan` or `needs_reindex` input, batches via `read-files`, and writes via `auto-index`.
+10. **Skill rewrite** — `code-index/SKILL.md` is now a consumer-side query guide rather than an indexing playbook.
+11. **Documentation** — package README, top-level README, CHANGELOG, and this architecture doc updated to match the as-built design.
 
-Steps 1–4 give us correctness (no more silent stale reads, no more silent out-of-scope failures) without any new layer infrastructure. Steps 5–9 unlock the layered, multi-query workflow the parent actually wants.
+Model B (push-based scanning) was not built and is not on the roadmap; the §13 resolutions explain why.
 
 ---
 

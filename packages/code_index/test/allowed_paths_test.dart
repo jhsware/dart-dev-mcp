@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
+import 'test_helpers.dart';
+
 void main() {
   late Database database;
   late Directory tempDir;

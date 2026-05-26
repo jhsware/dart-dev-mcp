@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
+import 'test_helpers.dart';
+
 void main() {
   late Database database;
   late Directory tempDir;
@@ -670,7 +672,7 @@ void main() {
       });
     });
 
-    test('index-file stores annotations and reports count', () {
+    test('indexFile helper stores annotations and reports count', () {
       final result = indexOps.indexFile({
         'path': 'lib/models.dart',
         'name': 'models.dart',
@@ -684,7 +686,7 @@ void main() {
       expect(text, contains('"annotation_count": 1'));
     });
 
-    test('index-file with no annotations reports zero count', () {
+    test('indexFile helper with no annotations reports zero count', () {
       final result = indexOps.indexFile({
         'path': 'lib/models.dart',
         'name': 'models.dart',
