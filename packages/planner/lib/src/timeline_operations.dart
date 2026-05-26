@@ -72,6 +72,7 @@ class TimelineOperations {
       'filters': {
         // ignore: use_null_aware_elements
         if (entityTypeStr != null) 'entity_type': entityTypeStr,
+        // ignore: use_null_aware_elements
         if (beforeStr != null) 'before': beforeStr,
         // ignore: use_null_aware_elements
         if (afterStr != null) 'after': afterStr,

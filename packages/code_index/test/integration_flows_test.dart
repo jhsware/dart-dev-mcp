@@ -75,7 +75,7 @@ void main() {
     tempDir.deleteSync(recursive: true);
   });
 
-  Map<String, dynamic> _parseResult(dynamic result) {
+  Map<String, dynamic> parseResult(dynamic result) {
     final text = result.content.first.toJson()['text'] as String;
     return jsonDecode(text) as Map<String, dynamic>;
   }
@@ -86,7 +86,7 @@ void main() {
         'directories': ['lib'],
         'file_extensions': ['.dart'],
       });
-      final data = _parseResult(result);
+      final data = parseResult(result);
 
       expect(data['added'], isA<List>());
       final added = (data['added'] as List).cast<String>();
@@ -110,7 +110,7 @@ void main() {
         'directories': ['lib'],
         'file_extensions': ['.dart'],
       });
-      final scanData = _parseResult(scanResult);
+      final scanData = parseResult(scanResult);
       final plan = (scanData['plan'] as List).cast<Map<String, dynamic>>();
 
       // Step 2: auto-index each file in the plan (simulates agent batch)
@@ -121,7 +121,7 @@ void main() {
           'layers': [0, 1, 2, 3],
           'short_summary': 'Auto-indexed $path',
         });
-        final data = _parseResult(result);
+        final data = parseResult(result);
         expect(data['success'], isTrue);
         expect(data['file']['layers_present'], contains(0));
         expect(data['file']['layers_present'], contains(1));
@@ -146,7 +146,7 @@ void main() {
       });
 
       // Layer 0 + 1: metadata + summary
-      final r01 = _parseResult(browseOps.getFile({
+      final r01 = parseResult(browseOps.getFile({
         'path': 'lib/greeter.dart',
         'layers': [0, 1],
       }));
@@ -157,7 +157,7 @@ void main() {
       expect(r01['needs_reindex'], isEmpty);
 
       // Layer 0 + 2 + 3: declarations with descriptions
-      final r023 = _parseResult(browseOps.getFile({
+      final r023 = parseResult(browseOps.getFile({
         'path': 'lib/greeter.dart',
         'layers': [0, 2, 3],
       }));
@@ -184,7 +184,7 @@ void main() {
       expect(varNames, contains('defaultLocale'));
 
       // Layer 4: public API only (filters _private)
-      final r04 = _parseResult(browseOps.getFile({
+      final r04 = parseResult(browseOps.getFile({
         'path': 'lib/greeter.dart',
         'layers': [0, 4],
       }));
@@ -204,7 +204,7 @@ void main() {
       });
 
       // Verify fresh
-      final fresh = _parseResult(browseOps.getFile({
+      final fresh = parseResult(browseOps.getFile({
         'path': 'lib/greeter.dart',
         'layers': [0, 1, 2],
       }));
@@ -216,7 +216,7 @@ void main() {
       file.writeAsStringSync('// modified\n${file.readAsStringSync()}');
 
       // Now get-file should report stale
-      final stale = _parseResult(browseOps.getFile({
+      final stale = parseResult(browseOps.getFile({
         'path': 'lib/greeter.dart',
         'layers': [0, 1, 2],
       }));
@@ -245,7 +245,7 @@ void main() {
       final indexResult = await restrictedIndex.autoIndex({
         'path': 'pubspec.yaml',
       });
-      final indexData = _parseResult(indexResult);
+      final indexData = parseResult(indexResult);
       expect(indexData['status'], 'out_of_scope');
       expect(indexData['path'], 'pubspec.yaml');
       expect(indexData['allowed_paths'], isA<List>());
@@ -254,7 +254,7 @@ void main() {
       final browseResult = restrictedBrowse.getFile({
         'path': 'pubspec.yaml',
       });
-      final browseData = _parseResult(browseResult);
+      final browseData = parseResult(browseResult);
       expect(browseData['status'], 'out_of_scope');
     });
 
@@ -266,7 +266,7 @@ void main() {
       });
 
       // Layer 4 should exclude _internalNormalize
-      final result = _parseResult(browseOps.getFile({
+      final result = parseResult(browseOps.getFile({
         'path': 'lib/utils.dart',
         'layers': [0, 4],
       }));
@@ -284,7 +284,7 @@ void main() {
         'directories': ['lib'],
         'file_extensions': ['.dart'],
       });
-      final plan = (_parseResult(scanResult)['plan'] as List)
+      final plan = (parseResult(scanResult)['plan'] as List)
           .cast<Map<String, dynamic>>();
 
       for (final entry in plan) {
@@ -300,7 +300,7 @@ void main() {
         'directories': ['lib'],
         'file_extensions': ['.dart'],
       });
-      final reScanData = _parseResult(reScan);
+      final reScanData = parseResult(reScan);
       expect(reScanData['summary']['files_to_analyze'], 0);
       expect(reScanData['plan'], isEmpty);
     });
