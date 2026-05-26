@@ -2,10 +2,9 @@ import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
-import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
-import 'hash_utils.dart';
+import 'scan_helpers.dart';
 
 /// Diff operations handler for the code-index MCP server.
 class DiffOperations {
@@ -29,79 +28,21 @@ class DiffOperations {
         ?.map((e) => (e as String).toLowerCase())
         .toSet();
 
-    // Collect all files on disk from the specified directories
-    final diskFiles = <String, String>{}; // relative path -> hash
-
-    for (final dir in directories) {
-      final dirPath = dir as String;
-      final absDir = Directory(p.join(workingDir.path, dirPath));
-      if (!absDir.existsSync()) continue;
-
-      for (final entity in absDir.listSync(recursive: true)) {
-        if (entity is! File) continue;
-
-        final relativePath =
-            p.relative(entity.path, from: workingDir.path);
-
-        // Skip hidden files/dirs
-        if (isHiddenPath(relativePath)) continue;
-
-        // Filter by allowed paths if specified
-        if (allowedPaths.isNotEmpty) {
-          if (!isAllowedPath(allowedPaths, entity.path)) continue;
-        }
-
-        // Filter by extension if specified
-        if (extensionSet != null) {
-          final ext = p.extension(entity.path).toLowerCase();
-          if (!extensionSet.contains(ext)) continue;
-        }
-
-        final hash = computeFileHash(entity);
-        diskFiles[relativePath] = hash;
-      }
-    }
-
-    // Get indexed files for the scanned directories
-    final dirPatterns = directories.map((d) => '$d%').toList();
-    final placeholders = dirPatterns.map((_) => 'path LIKE ?').join(' OR ');
-    final indexedFiles = <String, String>{}; // relative path -> hash
-
-    final result = database.select(
-      'SELECT path, file_hash FROM files WHERE $placeholders',
-      dirPatterns,
+    final scan = scanDisk(
+      workingDir: workingDir,
+      directories: directories,
+      allowedPaths: allowedPaths,
+      extensionFilter: extensionSet,
     );
-    for (final row in result) {
-      indexedFiles[row['path'] as String] = row['file_hash'] as String;
-    }
 
-    // Compare
-    final changed = <String>[];
-    final added = <String>[];
-    final deleted = <String>[];
-    var unchangedCount = 0;
+    final indexedFiles = queryIndexedFiles(database, directories);
 
-    for (final entry in diskFiles.entries) {
-      final indexedHash = indexedFiles[entry.key];
-      if (indexedHash == null) {
-        added.add(entry.key);
-      } else if (indexedHash != entry.value) {
-        changed.add(entry.key);
-      } else {
-        unchangedCount++;
-      }
-    }
-
-    for (final path in indexedFiles.keys) {
-      if (!diskFiles.containsKey(path)) {
-        deleted.add(path);
-      }
-    }
+    final diff = compareDiskToIndex(scan: scan, indexedFiles: indexedFiles);
 
     // Remove deleted files from index if requested
-    if (removeDeleted && deleted.isNotEmpty) {
+    if (removeDeleted && diff.deleted.isNotEmpty) {
       withRetryTransactionSync(database, () {
-        for (final path in deleted) {
+        for (final path in diff.deleted) {
           // Delete FTS entry before deleting the file (FTS doesn't cascade)
           database.execute(
             'DELETE FROM code_search_fts WHERE file_id = (SELECT id FROM files WHERE path = ?)',
@@ -112,21 +53,23 @@ class DiffOperations {
       });
     }
 
-    changed.sort();
-    added.sort();
-    deleted.sort();
-
-    return jsonResult({
-      'changed': changed,
-      'added': added,
-      'deleted': deleted,
+    final responseData = <String, dynamic>{
+      'changed': diff.changed,
+      'added': diff.added,
+      'deleted': diff.deleted,
       'summary': {
-        'changed_count': changed.length,
-        'added_count': added.length,
-        'deleted_count': deleted.length,
-        'unchanged_count': unchangedCount,
-        'total_scanned': diskFiles.length,
+        'changed_count': diff.changed.length,
+        'added_count': diff.added.length,
+        'deleted_count': diff.deleted.length,
+        'unchanged_count': diff.unchangedCount,
+        'total_scanned': scan.diskFiles.length,
       },
-    });
+    };
+
+    if (diff.outOfScope.isNotEmpty) {
+      responseData['out_of_scope'] = diff.outOfScope;
+    }
+
+    return jsonResult(responseData);
   }
 }

@@ -93,6 +93,7 @@ void main(List<String> arguments) async {
 
 Operations:
 - auto-index: Layer-aware indexing of a file. Computes filesystem metadata (layer 0), extracts declarations and external usages for Dart files (layer 2), accepts LLM-provided summary (layer 1) and per-symbol descriptions (layer 3). For non-Dart files, accepts structural fields (exports, variables, imports, annotations).
+- auto-scan: Scan directories and produce an indexing plan. Returns added/changed/deleted files and a plan array for the agent. Supports incremental scans via `since` (mtime filter) and full rebuilds via `rebuild: true`.
 - get-file: Get a single file with layered data. Layers: 0=metadata, 1=summary, 2=all declarations, 3=declarations+descriptions, 4=public API only. Default layers: [0,1,4]. Returns needs_reindex array for stale detection.
 - get-files: Get multiple files with layered data. Same layers as get-file. Returns aggregated needs_reindex array.
 - search: Search the index for files matching criteria
@@ -214,28 +215,35 @@ Operations:
           description:
               'Search in annotation messages (for search-annotations)',
         ),
-        // diff parameters
+        // diff / auto-scan parameters
         'directories': JsonSchema.array(
           items: JsonSchema.string(),
           description:
-              'Directories to scan, relative to project root (for diff). Default: ["."]',
+              'Directories to scan, relative to project root (for diff, auto-scan). Default: ["."]',
         ),
         'file_extensions': JsonSchema.array(
           items: JsonSchema.string(),
           description:
-              'File extensions to include e.g. [".dart", ".yaml"] (for diff)',
+              'File extensions to include e.g. [".dart", ".yaml"] (for diff, auto-scan)',
         ),
         'remove_deleted': JsonSchema.boolean(
           description:
-              'Auto-remove deleted files from index (for diff, default true)',
+              'Auto-remove deleted files from index (for diff, auto-scan, default true)',
+        ),
+        'since': JsonSchema.string(
+          description:
+              'ISO 8601 timestamp. Files with mtime older than this are skipped without hashing (for auto-scan). Useful for incremental scans.',
+        ),
+        'rebuild': JsonSchema.boolean(
+          description:
+              'Drop and recreate the database before scanning (for auto-scan, default false). Every file will appear as added.',
         ),
       },
       required: ['project_dir'],
     ),
     callback: (args, extra) =>
-        _handleCodeIndex(args, serverArgs, getDatabase),
+        _handleCodeIndex(args, serverArgs, getDatabase, databases),
   );
-
 
   final transport = StdioServerTransport();
   await server.connect(transport);
@@ -261,6 +269,7 @@ void _printUsage() {
 
 const _validOperations = [
   'auto-index',
+  'auto-scan',
   'get-file',
   'get-files',
   'search',
@@ -278,6 +287,7 @@ Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
   ServerArguments serverArgs,
   Database Function(String projectDir) getDatabase,
+  Map<String, Database> databases,
 ) async {
   // Validate project_dir is present and valid
   final projectDir = args['project_dir'] as String?;
@@ -347,12 +357,24 @@ Future<CallToolResult> _handleCodeIndex(
     workingDir: workingDir,
     allowedPaths: allowedPaths,
   );
+  final autoScanOps = AutoScanOperations(
+    database: database,
+    workingDir: workingDir,
+    dbPath: serverArgs.codeIndexDbPath(projectDir),
+    allowedPaths: allowedPaths,
+    onDatabaseReplaced: (newDb) {
+      databases[projectDir] = newDb;
+    },
+  );
 
   try {
     switch (operation) {
       case 'auto-index':
         return await indexOps.autoIndex(args);
+      case 'auto-scan':
+        return autoScanOps.autoScan(args);
       case 'get-file':
+        return browseOps.getFile(args);
         return browseOps.getFile(args);
       case 'get-files':
         return browseOps.getFiles(args);

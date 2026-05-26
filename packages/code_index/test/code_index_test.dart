@@ -1984,4 +1984,240 @@ void _privateFunc() {}
     });
   });
 
+
+  group('AutoScanOperations', () {
+    late IndexOperations indexOps;
+    late AutoScanOperations autoScanOps;
+    late String dbPath;
+
+    setUp(() {
+      // Use a file-backed DB so rebuildDatabase works
+      dbPath = p.join(tempDir.path, '.db', 'code_index.db');
+      Directory(p.dirname(dbPath)).createSync(recursive: true);
+      database.dispose();
+      database = initializeDatabase(dbPath);
+
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      autoScanOps = AutoScanOperations(
+        database: database,
+        workingDir: workingDir,
+        dbPath: dbPath,
+        onDatabaseReplaced: (newDb) {
+          database = newDb;
+        },
+      );
+    });
+
+    test('returns all files as added when index is empty', () {
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"added"'));
+      expect(text, contains('lib/main.dart'));
+      expect(text, contains('lib/utils.dart'));
+      expect(text, contains('lib/models.dart'));
+      // Plan should include all added files
+      expect(text, contains('"plan"'));
+      expect(text, contains('"needs"'));
+      expect(text, contains('"files_to_analyze": 3'));
+      expect(text, contains('"skipped_by_since": 0'));
+    });
+
+    test('detects changed files and includes them in plan', () {
+      // Index existing files
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'file_type': 'dart',
+      });
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'file_type': 'dart',
+      });
+
+      // Modify one file
+      File(p.join(tempDir.path, 'lib', 'main.dart'))
+          .writeAsStringSync('void main() { print("changed"); }');
+
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"changed"'));
+      expect(text, contains('lib/main.dart'));
+      // models.dart is not indexed, so it's added
+      expect(text, contains('"added"'));
+      expect(text, contains('lib/models.dart'));
+      // Plan should include changed + added
+      expect(text, contains('"files_to_analyze": 2'));
+    });
+
+    test('plan only includes added and changed files', () {
+      // Index all files so none are added
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'file_type': 'dart',
+      });
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'file_type': 'dart',
+      });
+      indexOps.indexFile({
+        'path': 'lib/models.dart',
+        'name': 'models.dart',
+        'file_type': 'dart',
+      });
+
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"files_to_analyze": 0'));
+      expect(text, contains('"plan": []'));
+    });
+
+    test('since parameter skips old files without hashing', () {
+      // Set since to the future so all files are skipped
+      final futureDate = DateTime.now().add(const Duration(hours: 1)).toUtc();
+
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+        'since': futureDate.toIso8601String(),
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"skipped_by_since": 3'));
+      expect(text, contains('"files_to_analyze": 0'));
+      expect(text, contains('"plan": []'));
+    });
+
+    test('since parameter allows recently modified files through', () {
+      // Touch one file so it has a recent mtime
+      final file = File(p.join(tempDir.path, 'lib', 'main.dart'));
+      final beforeTouch = DateTime.now().subtract(const Duration(seconds: 2)).toUtc();
+      file.writeAsStringSync('void main() { /* touched */ }');
+
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+        'since': beforeTouch.toIso8601String(),
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      // At least the touched file should be scanned (others may or may not depending on timing)
+      expect(text, contains('lib/main.dart'));
+      expect(text, contains('"plan"'));
+    });
+
+    test('rebuild flushes DB and treats every file as added', () {
+      // Index some files first
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'file_type': 'dart',
+      });
+      indexOps.indexFile({
+        'path': 'lib/utils.dart',
+        'name': 'utils.dart',
+        'file_type': 'dart',
+      });
+
+      // Verify files are in the index
+      var files = database.select('SELECT * FROM files');
+      expect(files.length, 2);
+
+      // Rebuild — need a new AutoScanOperations since database reference changes
+      autoScanOps = AutoScanOperations(
+        database: database,
+        workingDir: workingDir,
+        dbPath: dbPath,
+        onDatabaseReplaced: (newDb) {
+          database = newDb;
+        },
+      );
+
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+        'rebuild': true,
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      // After rebuild, all files should be added
+      expect(text, contains('lib/main.dart'));
+      expect(text, contains('lib/utils.dart'));
+      expect(text, contains('lib/models.dart'));
+      expect(text, contains('"files_to_analyze": 3'));
+
+      // The old indexed files should be gone (DB was rebuilt)
+      files = database.select('SELECT * FROM files');
+      expect(files.length, 0);
+    });
+
+    test('out_of_scope is populated for files outside allowed paths', () {
+      final allowedDir = p.join(tempDir.path, 'lib');
+      final restrictedOps = AutoScanOperations(
+        database: database,
+        workingDir: workingDir,
+        dbPath: dbPath,
+        allowedPaths: [allowedDir],
+      );
+
+      // Create a file outside allowed paths
+      File(p.join(tempDir.path, 'bin', 'tool.dart'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('void main() {}');
+
+      final result = restrictedOps.autoScan({
+        'directories': ['.'],
+        'file_extensions': ['.dart'],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"out_of_scope"'));
+      expect(text, contains('bin/tool.dart'));
+    });
+
+    test('invalid since returns validation error', () {
+      final result = autoScanOps.autoScan({
+        'directories': ['lib'],
+        'since': 'not-a-date',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('since must be a valid ISO 8601 timestamp'));
+    });
+
+    test('remove_deleted removes deleted files from index', () {
+      indexOps.indexFile({
+        'path': 'lib/main.dart',
+        'name': 'main.dart',
+        'file_type': 'dart',
+      });
+
+      // Delete the file from disk
+      File(p.join(tempDir.path, 'lib', 'main.dart')).deleteSync();
+
+      autoScanOps.autoScan({
+        'directories': ['lib'],
+        'file_extensions': ['.dart'],
+        'remove_deleted': true,
+      });
+
+      final files = database.select(
+          "SELECT * FROM files WHERE path = 'lib/main.dart'");
+      expect(files.length, 0);
+    });
+  });
+
 }
