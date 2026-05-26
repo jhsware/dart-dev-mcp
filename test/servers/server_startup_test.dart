@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:test/test.dart';
 
 import 'test_helpers.dart';
@@ -11,7 +13,7 @@ void main() {
     test('file_edit_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
         'packages/filesystem/bin/file_edit_mcp.dart',
-        ['--project-dir=.', './lib', './bin', './test'],
+        ['--project-dir=.'],
       );
       await stopServer(process);
 
@@ -74,29 +76,44 @@ void main() {
     });
 
     test('planner_mcp starts successfully', () async {
-      final (process, stderrBuffer) = await startServer(
-        'packages/planner/bin/planner_mcp.dart',
-        ['--project-dir=.', '--db-path=:memory:'],
-      );
-      await stopServer(process);
+      final tempDir = await Directory.systemTemp.createTemp('planner_startup_');
+      try {
+        final (process, stderrBuffer) = await startServer(
+          'packages/planner/bin/planner_mcp.dart',
+          ['--project-dir=.', '--planner-data-root=${tempDir.path}'],
+        );
+        await stopServer(process);
 
-      expect(
-        stderrBuffer.toString(),
-        contains('Planner MCP Server running on stdio'),
-      );
+        expect(
+          stderrBuffer.toString(),
+          contains('Planner MCP Server running on stdio'),
+        );
+      } finally {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      }
     });
 
     test('code_index_mcp starts successfully', () async {
-      final (process, stderrBuffer) = await startServer(
-        'packages/code_index/bin/code_index_mcp.dart',
-        ['--project-dir=.', '--db-path=:memory:'],
-      );
-      await stopServer(process);
+      final tempDir =
+          await Directory.systemTemp.createTemp('code_index_startup_');
+      try {
+        final (process, stderrBuffer) = await startServer(
+          'packages/code_index/bin/code_index_mcp.dart',
+          ['--project-dir=.', '--planner-data-root=${tempDir.path}'],
+        );
+        await stopServer(process);
 
-      expect(
-        stderrBuffer.toString(),
-        contains('Code Index MCP Server running on stdio'),
-      );
+        expect(
+          stderrBuffer.toString(),
+          contains('Code Index MCP Server running on stdio'),
+        );
+      } finally {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      }
     });
   });
 }
