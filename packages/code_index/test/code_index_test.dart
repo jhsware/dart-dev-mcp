@@ -389,7 +389,7 @@ void main() {
     });
   });
 
-  group('ShowFile operation', () {
+  group('GetFile operation', () {
     late IndexOperations indexOps;
     late BrowseOperations browseOps;
 
@@ -432,25 +432,22 @@ void main() {
     });
 
     test('returns full file metadata', () {
-      final result = browseOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 1, 2, 3]});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"path": "lib/main.dart"'));
       expect(text, contains('"name": "main.dart"'));
-      expect(text, contains('"description": "Application entry point"'));
       expect(text, contains('"file_type": "dart"'));
       expect(text, contains('"file_hash"'));
-      expect(text, contains('"created_at"'));
-      expect(text, contains('"updated_at"'));
+      expect(text, contains('"needs_reindex"'));
     });
 
     test('returns all exports with full details', () {
-      final result = browseOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 1, 2, 3]});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"main"'));
       expect(text, contains('"function"'));
-      expect(text, contains('"List<String> args"'));
       expect(text, contains('"App"'));
       expect(text, contains('"class"'));
       expect(text, contains('"run"'));
@@ -458,7 +455,7 @@ void main() {
     });
 
     test('returns all variables', () {
-      final result = browseOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 2]});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"appVersion"'));
@@ -466,7 +463,7 @@ void main() {
     });
 
     test('returns all imports', () {
-      final result = browseOps.showFile({'path': 'lib/main.dart'});
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 2]});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('dart:io'));
@@ -474,15 +471,16 @@ void main() {
     });
 
     test('returns not found for unindexed file', () {
-      final result = browseOps.showFile({'path': 'lib/nonexistent.dart'});
+      final result = browseOps.getFile({'path': 'lib/nonexistent.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('not found'));
       expect(text, contains('lib/nonexistent.dart'));
+      expect(text, contains('"needs_reindex"'));
     });
 
     test('returns error when path is missing', () {
-      final result = browseOps.showFile({});
+      final result = browseOps.getFile({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('path is required'));
@@ -697,22 +695,12 @@ void main() {
       expect(text, contains('"annotation_count": 0'));
     });
 
-    test('showFile includes annotations', () {
-      final result = browseOps.showFile({'path': 'lib/main.dart'});
+    test('getFile returns needs_reindex for indexed file with annotations', () {
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 1, 2]});
       final text = result.content.first.toJson()['text'] as String;
 
-      expect(text, contains('"annotations"'));
-      expect(text, contains('"TODO"'));
-      expect(text, contains('"Add error handling"'));
-      expect(text, contains('"FIXME"'));
-      expect(text, contains('"Memory leak in loop"'));
-    });
-
-    test('showFile returns empty annotations for file without annotations', () {
-      final result = browseOps.showFile({'path': 'pubspec.yaml'});
-      final text = result.content.first.toJson()['text'] as String;
-
-      expect(text, contains('"annotations": []'));
+      expect(text, contains('"needs_reindex"'));
+      expect(text, contains('"exports"'));
     });
 
     test('search-annotations returns all annotations', () {
@@ -1170,7 +1158,7 @@ void main() {
     });
   });
 
-  group('File-summary operation', () {
+  group('GetFile with public API layer (layer 4)', () {
     late IndexOperations indexOps;
     late BrowseOperations browseOps;
 
@@ -1221,49 +1209,29 @@ void main() {
       });
     });
 
-    test('returns exports grouped by parent', () {
-      final result = browseOps.fileSummary({'path': 'lib/main.dart'});
+    test('returns public exports (layer 4 filters private symbols)', () {
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 1, 4]});
       final text = result.content.first.toJson()['text'] as String;
 
-      // Top-level exports
-      expect(text, contains('"top_level"'));
+      // Public exports should be present
       expect(text, contains('"main"'));
       expect(text, contains('"function"'));
-      expect(text, contains('"Entry point"'));
-
-      // Class-grouped exports
       expect(text, contains('"App"'));
       expect(text, contains('"run"'));
       expect(text, contains('"stop"'));
       expect(text, contains('"method"'));
     });
 
-    test('returns variables', () {
-      final result = browseOps.fileSummary({'path': 'lib/main.dart'});
+    test('returns variables with layer 4', () {
+      final result = browseOps.getFile({'path': 'lib/main.dart', 'layers': [0, 4]});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"appVersion"'));
-      expect(text, contains('"App version string"'));
       expect(text, contains('"debug"'));
     });
 
-    test('excludes imports and annotations', () {
-      final result = browseOps.fileSummary({'path': 'lib/main.dart'});
-      final text = result.content.first.toJson()['text'] as String;
-
-      // Should NOT contain import or annotation data
-      expect(text, isNot(contains('dart:io')));
-      expect(text, isNot(contains('package:path')));
-      expect(text, isNot(contains('"TODO"')));
-      expect(text, isNot(contains('"Add error handling"')));
-      // Should NOT contain file_hash, created_at, updated_at
-      expect(text, isNot(contains('"file_hash"')));
-      expect(text, isNot(contains('"created_at"')));
-      expect(text, isNot(contains('"updated_at"')));
-    });
-
     test('returns not found for unindexed file', () {
-      final result = browseOps.fileSummary({'path': 'lib/nonexistent.dart'});
+      final result = browseOps.getFile({'path': 'lib/nonexistent.dart'});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('not found'));
@@ -1271,7 +1239,7 @@ void main() {
     });
 
     test('returns error when path is missing', () {
-      final result = browseOps.fileSummary({});
+      final result = browseOps.getFile({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('path is required'));
@@ -1811,6 +1779,208 @@ enum Status { active, inactive, pending }
       final result = searchOps.usages({'symbol': 'NonExistent'});
       final text = result.content.first.toJson()['text'] as String;
       expect(text, contains('"count": 0'));
+    });
+  });
+
+
+  group('Stale detection and layer selection', () {
+    late IndexOperations indexOps;
+    late BrowseOperations browseOps;
+    late SearchOperations searchOps;
+
+    setUp(() {
+      indexOps = IndexOperations(database: database, workingDir: workingDir);
+      browseOps = BrowseOperations(database: database, workingDir: workingDir);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
+    });
+
+    test('fresh file returns empty needs_reindex', () async {
+      // Index the file with layers that will all be populated
+      await indexOps.autoIndex({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Main entry point',
+      });
+
+      // Read it back with matching layers — file unchanged on disk
+      final result = browseOps.getFile({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"needs_reindex": []'));
+      expect(text, contains('"analysis_status": "fresh"'));
+    });
+
+
+    test('changed file returns needs_reindex with reason changed', () async {
+      // Index the file
+      await indexOps.autoIndex({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Main entry point',
+      });
+
+      // Modify the file on disk
+      final file = File(p.join(tempDir.path, 'lib', 'main.dart'));
+      file.writeAsStringSync('// changed\nvoid main() {}');
+
+      // Read it back — hash should mismatch
+      final result = browseOps.getFile({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"needs_reindex"'));
+      expect(text, contains('"reason": "changed"'));
+
+      // Verify DB was marked stale
+      final rows = database.select(
+        "SELECT analysis_status FROM files WHERE path = 'lib/main.dart'",
+      );
+      expect(rows.first['analysis_status'], 'stale');
+    });
+
+    test('missing layer returns needs_reindex with reason missing_layer', () async {
+      // Index with only layers [0, 1]
+      await indexOps.autoIndex({
+        'path': 'lib/main.dart',
+        'layers': [0, 1],
+        'short_summary': 'Main entry point',
+      });
+
+      // Request layers [0, 1, 2, 3] — layers 2 and 3 were never populated
+      final result = browseOps.getFile({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2, 3],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"needs_reindex"'));
+      expect(text, contains('"reason": "missing_layer"'));
+    });
+
+    test('get-files aggregates needs_reindex across files', () async {
+      // Index both files
+      await indexOps.autoIndex({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Main entry point',
+      });
+      await indexOps.autoIndex({
+        'path': 'lib/utils.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Utility functions',
+      });
+
+      // Modify only one file on disk
+      final file = File(p.join(tempDir.path, 'lib', 'main.dart'));
+      file.writeAsStringSync('// modified\nvoid main() {}');
+
+      // get-files should show one stale, one fresh
+      final result = browseOps.getFiles({
+        'paths': ['lib/main.dart', 'lib/utils.dart'],
+        'layers': [0, 1, 2],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"count": 2'));
+      expect(text, contains('"needs_reindex"'));
+      expect(text, contains('"reason": "changed"'));
+      expect(text, contains('lib/main.dart'));
+    });
+
+    test('overview includes needs_reindex for stale files', () async {
+      // Index files
+      await indexOps.autoIndex({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Main entry point',
+      });
+      await indexOps.autoIndex({
+        'path': 'lib/utils.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Utility functions',
+      });
+
+      // Modify one file
+      final file = File(p.join(tempDir.path, 'lib', 'utils.dart'));
+      file.writeAsStringSync('// changed\nString helper() => "world";');
+
+      final result = browseOps.overview({});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"needs_reindex"'));
+      expect(text, contains('"reason": "changed"'));
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('search includes needs_reindex for stale files', () async {
+      await indexOps.autoIndex({
+        'path': 'lib/main.dart',
+        'layers': [0, 1, 2],
+        'short_summary': 'Main entry point',
+      });
+
+      // Modify file
+      final file = File(p.join(tempDir.path, 'lib', 'main.dart'));
+      file.writeAsStringSync('// changed\nvoid main() {}');
+
+      final result = searchOps.search({'path_pattern': 'lib/main.dart'});
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"needs_reindex"'));
+      expect(text, contains('"reason": "changed"'));
+    });
+
+    test('layer 4 filters private symbols', () async {
+      // Create a file with private and public symbols
+      final file = File(p.join(tempDir.path, 'lib', 'mixed.dart'));
+      file.createSync(recursive: true);
+      file.writeAsStringSync('''
+class MyClass {}
+class _PrivateClass {}
+void publicFunc() {}
+void _privateFunc() {}
+''');
+
+      // Index it — use indexFile for explicit control over exports
+      indexOps.indexFile({
+        'path': 'lib/mixed.dart',
+        'name': 'mixed.dart',
+        'file_type': 'dart',
+        'exports': [
+          {'name': 'MyClass', 'kind': 'class'},
+          {'name': '_PrivateClass', 'kind': 'class'},
+          {'name': 'publicFunc', 'kind': 'function'},
+          {'name': '_privateFunc', 'kind': 'function'},
+        ],
+        'variables': [
+          {'name': 'publicVar'},
+          {'name': '_privateVar'},
+        ],
+      });
+
+      // Update layers_present to include layer 2
+      database.execute(
+        "UPDATE files SET layers_present = '[0,2]' WHERE path = 'lib/mixed.dart'",
+      );
+
+      // Layer 4 (public API) should filter out _ prefixed symbols
+      final result = browseOps.getFile({
+        'path': 'lib/mixed.dart',
+        'layers': [0, 4],
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"MyClass"'));
+      expect(text, contains('"publicFunc"'));
+      expect(text, contains('"publicVar"'));
+      expect(text, isNot(contains('"_PrivateClass"')));
+      expect(text, isNot(contains('"_privateFunc"')));
+      expect(text, isNot(contains('"_privateVar"')));
     });
   });
 

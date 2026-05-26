@@ -15,3 +15,4 @@ export 'diff_operations.dart';
 export 'hash_utils.dart';
 export 'index_operations.dart';
 export 'search_operations.dart';
+export 'stale_detection.dart';

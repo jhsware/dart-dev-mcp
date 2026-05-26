@@ -87,15 +87,15 @@ void main(List<String> arguments) async {
   );
 
   // Register the code-index tool
-  // Register the code-index tool
   server.registerTool(
     'code-index',
     description: '''Maintains a searchable index of code files in a project.
 
 Operations:
 - auto-index: Layer-aware indexing of a file. Computes filesystem metadata (layer 0), extracts declarations and external usages for Dart files (layer 2), accepts LLM-provided summary (layer 1) and per-symbol descriptions (layer 3). For non-Dart files, accepts structural fields (exports, variables, imports, annotations).
+- get-file: Get a single file with layered data. Layers: 0=metadata, 1=summary, 2=all declarations, 3=declarations+descriptions, 4=public API only. Default layers: [0,1,4]. Returns needs_reindex array for stale detection.
+- get-files: Get multiple files with layered data. Same layers as get-file. Returns aggregated needs_reindex array.
 - search: Search the index for files matching criteria
-- show-file: Show full indexed information for a specific file
 - dependents: Find all files that import a given path
 - dependencies: Get all imports for a file with internal/external classification
 - usages: Search external symbol usages by symbol, module, source_path, dot_path_pattern, kind, path_pattern
@@ -103,7 +103,6 @@ Operations:
 - stats: Get aggregate statistics about the code index (files, exports, imports, annotations)
 - diff: Scan directories and report changed/added/deleted files
 - overview: Get a compact overview of all indexed files with descriptions and export names
-- file-summary: Show a file's exports grouped by class and variables, without heavy metadata
 - is-allowed: Check if a path is within the allowed paths for this project''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -115,15 +114,20 @@ Operations:
           description: 'The operation to perform',
           enumValues: _validOperations,
         ),
-        // auto-index parameters
+        // auto-index / get-file parameters
         'path': JsonSchema.string(
           description:
-              'Relative path from project root (for auto-index, show-file, dependents, dependencies)',
+              'Relative path from project root (for auto-index, get-file, dependents, dependencies)',
+        ),
+        'paths': JsonSchema.array(
+          items: JsonSchema.string(),
+          description:
+              'List of relative paths from project root (for get-files)',
         ),
         'layers': JsonSchema.array(
           items: JsonSchema.integer(),
           description:
-              'Which layers to produce (for auto-index, default [0,1,2,3]). 0=filesystem metadata, 1=short_summary, 2=declarations+usages, 3=per-symbol descriptions',
+              'Which layers to produce/read. For auto-index default [0,1,2,3]. For get-file/get-files default [0,1,4]. 0=filesystem metadata, 1=short_summary, 2=all declarations+usages, 3=declarations+descriptions, 4=public API only (filters out _ prefixed symbols)',
         ),
         'short_summary': JsonSchema.string(
           description:
@@ -232,6 +236,7 @@ Operations:
         _handleCodeIndex(args, serverArgs, getDatabase),
   );
 
+
   final transport = StdioServerTransport();
   await server.connect(transport);
   logInfo('code-index', 'Code Index MCP Server running on stdio');
@@ -256,8 +261,9 @@ void _printUsage() {
 
 const _validOperations = [
   'auto-index',
+  'get-file',
+  'get-files',
   'search',
-  'show-file',
   'dependents',
   'dependencies',
   'usages',
@@ -265,7 +271,6 @@ const _validOperations = [
   'stats',
   'diff',
   'overview',
-  'file-summary',
   'is-allowed',
 ];
 
@@ -347,10 +352,12 @@ Future<CallToolResult> _handleCodeIndex(
     switch (operation) {
       case 'auto-index':
         return await indexOps.autoIndex(args);
+      case 'get-file':
+        return browseOps.getFile(args);
+      case 'get-files':
+        return browseOps.getFiles(args);
       case 'search':
         return searchOps.search(args);
-      case 'show-file':
-        return browseOps.showFile(args);
       case 'dependents':
         return searchOps.dependents(args);
       case 'dependencies':
@@ -365,8 +372,6 @@ Future<CallToolResult> _handleCodeIndex(
         return diffOps.diff(args);
       case 'overview':
         return browseOps.overview(args);
-      case 'file-summary':
-        return browseOps.fileSummary(args);
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
