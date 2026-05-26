@@ -9,6 +9,7 @@ environment:
 resolution: workspace
 
 dependencies:
+  analyzer: ^7.0.0
   jhsware_code_shared_libs:
     path: ../shared_libs
   mcp_dart: ^1.2.2

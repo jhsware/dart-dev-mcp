@@ -1,9 +1,15 @@
-/// Dart source code parser for automated metadata extraction.
+/// Dart source code parser using package:analyzer.
 ///
-/// Extracts imports, exports (classes, enums, mixins, extensions, typedefs,
-/// functions, methods, class members), variables, and annotations from
-/// Dart source code using regex and brace-counting — no analyzer dependency.
+/// Provides syntactic (fast, unresolved) and resolved (slower, with external
+/// symbol tracking) parsing modes.
 library;
+
+import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
+import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 
 /// Result of parsing a Dart source file.
 class DartParseResult {
@@ -20,191 +26,75 @@ class DartParseResult {
   });
 }
 
-/// Parses Dart source code and extracts structural metadata.
+/// An external symbol usage with dot-path notation.
+class ExternalSymbolUsage {
+  final String module;
+  final String sourcePath;
+  final String symbol;
+  final String? symbolKind;
+  final String dotPath;
+  final int referenceCount;
+
+  const ExternalSymbolUsage({
+    required this.module,
+    required this.sourcePath,
+    required this.symbol,
+    this.symbolKind,
+    required this.dotPath,
+    this.referenceCount = 1,
+  });
+}
+
+/// Result of resolved analysis for a single file.
+class ResolvedFileResult {
+  final String filePath;
+  final List<ExternalSymbolUsage> externalUsages;
+
+  const ResolvedFileResult({
+    required this.filePath,
+    required this.externalUsages,
+  });
+}
+
+// ── Comment annotation regexes (kept from original parser) ──────────────
+final _commentAnnotationRegex = RegExp(
+  r'//\s*(TODO|FIXME|HACK|NOTE)(?:\([^)]*\))?\s*:\s*(.*)',
+  caseSensitive: false,
+);
+final _deprecatedRegex = RegExp(r'@[Dd]eprecated|@Deprecated\s*\(');
+
+/// Parses Dart source code using package:analyzer for structural extraction.
 ///
-/// Uses regex matching and brace-depth tracking to identify declarations
-/// at the top level and within class bodies. Private members (names
-/// starting with `_`) are excluded.
+/// [parse] provides a syntactic (unresolved) mode that is a drop-in
+/// replacement for the previous regex-based parser.
 class DartParser {
-  // ── Import regex ──────────────────────────────────────────────────────
-  static final _importRegex =
-      RegExp(r'''^\s*import\s+['"]([^'"]+)['"]\s*[^;]*;''', multiLine: true);
-
-  // ── Annotation regexes ────────────────────────────────────────────────
-  static final _commentAnnotationRegex = RegExp(
-    r'//\s*(TODO|FIXME|HACK|NOTE)(?:\([^)]*\))?\s*:\s*(.*)',
-    caseSensitive: false,
-  );
-  static final _deprecatedRegex = RegExp(
-    r'@[Dd]eprecated|@Deprecated\s*\(',
-  );
-
-  // ── Declaration regexes (applied to trimmed lines) ────────────────────
-  static final _classRegex = RegExp(
-    r'^(?:abstract\s+|sealed\s+|base\s+|final\s+|interface\s+)*class\s+(\w+)',
-  );
-  static final _enumRegex = RegExp(r'^enum\s+(\w+)');
-  static final _mixinRegex = RegExp(r'^(?:base\s+)?mixin\s+(?:class\s+)?(\w+)');
-  static final _extensionRegex =
-      RegExp(r'^extension\s+(\w+)\s+on\s+');
-  static final _extensionTypeRegex =
-      RegExp(r'^(?:final\s+|base\s+|interface\s+)*extension\s+type\s+(\w+)');
-  // New-style: typedef Name = ...; Old-style: typedef ReturnType Name(...)
-  static final _typedefNewRegex = RegExp(r'^typedef\s+(\w+)\s*[<=]');
-  static final _typedefOldRegex = RegExp(r'^typedef\s+\w[\w<>,?\s]*\s+(\w+)\s*\(');
-
-  // Top-level variable patterns
-  static final _constFinalVarRegex = RegExp(
-    r'^(?:late\s+)?(?:const|final|var)\s+(?:[\w<>,\s?]+\s+)?(\w+)\s*[=;]',
-  );
-  static final _typedVarRegex = RegExp(
-    r'^([\w<>,?]+)\s+(\w+)\s*=',
-  );
-
-  // Getter / setter
-  static final _getterRegex = RegExp(
-    r'^(?:static\s+)?(?:[\w<>,?\s]+\s+)?get\s+(\w+)',
-  );
-  static final _setterRegex = RegExp(
-    r'^(?:static\s+)?set\s+(\w+)\s*\(',
-  );
-
-  // Function / method (careful to exclude keywords)
-  static final _controlKeywords = {
-    'if', 'for', 'while', 'switch', 'catch', 'return', 'else', 'do', 'try',
-    'throw', 'assert', 'await', 'yield', 'break', 'continue', 'new', 'super',
-    'this',
-  };
-
-  // Factory / named constructor
-  static final _factoryRegex = RegExp(
-    r'^factory\s+([\w.]+)\s*[<(]',
-  );
-  static final _namedConstructorRegex = RegExp(
-    r'^(\w+)\.(\w+)\s*\(',
-  );
-
-  // Operator overload
-  static final _operatorRegex = RegExp(
-    r'^(?:[\w<>,?\s]+\s+)?operator\s+(\S+)\s*\(',
-  );
-
-  // General function/method: return-type name(
-  static final _functionRegex = RegExp(
-    r'^(?:static\s+)?(?:[\w<>,?\s]+\s+)(\w+)\s*[<(]',
-  );
-
-  // Field declaration inside a class body
-  static final _fieldRegex = RegExp(
-    r'^(?:static\s+)?(?:late\s+)?(?:final\s+|const\s+|var\s+)?(?:[\w<>,?]+\s+)(\w+)\s*[=;]',
-  );
-
-  /// Parse Dart [source] code and return structured metadata.
+  /// Parse Dart [source] code syntactically and return structured metadata.
+  ///
+  /// Uses [parseString] from package:analyzer for a robust AST-based
+  /// extraction of imports, declarations, class members, and annotations.
   static DartParseResult parse(String source) {
-    final imports = _extractImports(source);
-    final annotations = <Map<String, dynamic>>[];
+    final result = parseString(content: source, throwIfDiagnostics: false);
+    final unit = result.unit;
+
+    final imports = <String>[];
     final exports = <Map<String, String?>>[];
     final variables = <Map<String, String?>>[];
 
-    final lines = source.split('\n');
-    var braceDepth = 0;
-    String? currentClassName;
-    var inBlockComment = false;
-
-    for (var i = 0; i < lines.length; i++) {
-      final lineNumber = i + 1;
-      final rawLine = lines[i];
-      final trimmed = rawLine.trimLeft();
-
-      // ── Annotations (scan regardless of depth) ──────────────────────
-      _extractAnnotations(trimmed, lineNumber, annotations);
-
-      // ── Record starting depth for this line ─────────────────────────
-      final startingDepth = braceDepth;
-
-      // ── Count braces on this line (handling strings/comments) ───────
-      var j = 0;
-      while (j < rawLine.length) {
-        final ch = rawLine[j];
-
-        // Handle block comments
-        if (inBlockComment) {
-          if (ch == '*' && j + 1 < rawLine.length && rawLine[j + 1] == '/') {
-            inBlockComment = false;
-            j += 2;
-            continue;
-          }
-          j++;
-          continue;
-        }
-
-        // Start of block comment
-        if (ch == '/' && j + 1 < rawLine.length && rawLine[j + 1] == '*') {
-          inBlockComment = true;
-          j += 2;
-          continue;
-        }
-
-        // Line comment — skip rest of line
-        if (ch == '/' && j + 1 < rawLine.length && rawLine[j + 1] == '/') {
-          break;
-        }
-
-        // String literals — skip contents
-        if (ch == "'" || ch == '"') {
-          // Check for triple quotes
-          final isTriple = j + 2 < rawLine.length &&
-              rawLine[j + 1] == ch &&
-              rawLine[j + 2] == ch;
-          if (isTriple) {
-            final endIdx = rawLine.indexOf(ch * 3, j + 3);
-            if (endIdx >= 0) {
-              j = endIdx + 3;
-            } else {
-              break; // Multi-line string, skip rest
-            }
-            continue;
-          }
-          // Single-line string
-          j++;
-          while (j < rawLine.length) {
-            if (rawLine[j] == '\\') {
-              j += 2;
-              continue;
-            }
-            if (rawLine[j] == ch) {
-              j++;
-              break;
-            }
-            j++;
-          }
-          continue;
-        }
-
-        // Brace counting
-        if (ch == '{') {
-          braceDepth++;
-        } else if (ch == '}') {
-          braceDepth--;
-          if (braceDepth == 0) {
-            currentClassName = null;
-          }
-        }
-        j++;
-      }
-
-      // ── Process declarations based on STARTING depth ────────────────
-      if (startingDepth == 0) {
-        _processTopLevelDeclaration(trimmed, exports, variables);
-        // Track class-like declarations that open a body
-        final className = _matchClassName(trimmed);
-        if (className != null) {
-          currentClassName = className;
-        }
-      } else if (startingDepth == 1 && currentClassName != null) {
-        _processClassMember(trimmed, exports, currentClassName);
+    // Extract imports from directives
+    for (final directive in unit.directives) {
+      if (directive is ImportDirective) {
+        final uri = directive.uri.stringValue;
+        if (uri != null) imports.add(uri);
       }
     }
+
+    // Extract declarations
+    for (final declaration in unit.declarations) {
+      _processDeclaration(declaration, exports, variables);
+    }
+
+    // Extract annotations via regex (TODO/FIXME/HACK/NOTE + @deprecated)
+    final annotations = _extractAnnotations(source);
 
     return DartParseResult(
       imports: imports,
@@ -214,375 +104,356 @@ class DartParser {
     );
   }
 
-  /// Extract all import paths from source.
-  static List<String> _extractImports(String source) {
-    return _importRegex
-        .allMatches(source)
-        .map((m) => m.group(1)!)
-        .toList();
-  }
+  // ── Declaration processing ──────────────────────────────────────────
 
-  /// Extract annotations from a single line.
-  static void _extractAnnotations(
-    String trimmedLine,
-    int lineNumber,
-    List<Map<String, dynamic>> annotations,
-  ) {
-    // Comment-style annotations
-    final commentMatch = _commentAnnotationRegex.firstMatch(trimmedLine);
-    if (commentMatch != null) {
-      annotations.add({
-        'kind': commentMatch.group(1)!.toUpperCase(),
-        'message': commentMatch.group(2)!.trim(),
-        'line': lineNumber,
-      });
-      return;
-    }
-
-    // @deprecated / @Deprecated
-    if (_deprecatedRegex.hasMatch(trimmedLine)) {
-      annotations.add({
-        'kind': 'DEPRECATED',
-        'message': null,
-        'line': lineNumber,
-      });
-    }
-  }
-
-  /// Check if a trimmed line starts a class-like declaration and return the name.
-  static String? _matchClassName(String trimmed) {
-    // Extension type before extension (more specific first)
-    var m = _extensionTypeRegex.firstMatch(trimmed);
-    if (m != null) return m.group(1);
-
-    m = _classRegex.firstMatch(trimmed);
-    if (m != null) return m.group(1);
-
-    m = _enumRegex.firstMatch(trimmed);
-    if (m != null) return m.group(1);
-
-    m = _mixinRegex.firstMatch(trimmed);
-    if (m != null) return m.group(1);
-
-    m = _extensionRegex.firstMatch(trimmed);
-    if (m != null) return m.group(1);
-
-    return null;
-  }
-
-  /// Process a top-level line (braceDepth == 0).
-  static void _processTopLevelDeclaration(
-    String trimmed,
+  static void _processDeclaration(
+    Declaration decl,
     List<Map<String, String?>> exports,
     List<Map<String, String?>> variables,
   ) {
-    if (trimmed.isEmpty || trimmed.startsWith('//') || trimmed.startsWith('/*')
-        || trimmed.startsWith('*') || trimmed.startsWith('import ')
-        || trimmed.startsWith('export ') || trimmed.startsWith('part ')
-        || trimmed.startsWith('library ') || trimmed.startsWith('}')) {
-      return;
-    }
-
-    // Class declarations
-    final classMatch = _classRegex.firstMatch(trimmed);
-    if (classMatch != null) {
-      final name = classMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'class', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-
-    // Enum declarations
-    final enumMatch = _enumRegex.firstMatch(trimmed);
-    if (enumMatch != null) {
-      final name = enumMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'enum', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-
-    // Extension type (must check before extension)
-    final extTypeMatch = _extensionTypeRegex.firstMatch(trimmed);
-    if (extTypeMatch != null) {
-      final name = extTypeMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'extension', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-
-    // Mixin declarations (check before extension since "mixin class" contains "class")
-    final mixinMatch = _mixinRegex.firstMatch(trimmed);
-    if (mixinMatch != null && !_classRegex.hasMatch(trimmed)) {
-      final name = mixinMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'mixin', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-
-    // Extension declarations
-    final extMatch = _extensionRegex.firstMatch(trimmed);
-    if (extMatch != null) {
-      final name = extMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'extension', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-
-    // Typedef declarations (new-style first, then old-style)
-    final typedefNewMatch = _typedefNewRegex.firstMatch(trimmed);
-    if (typedefNewMatch != null) {
-      final name = typedefNewMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'typedef', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-    final typedefOldMatch = _typedefOldRegex.firstMatch(trimmed);
-    if (typedefOldMatch != null) {
-      final name = typedefOldMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({'name': name, 'kind': 'typedef', 'parameters': null, 'description': null, 'parent_name': null});
-      }
-      return;
-    }
-
-    // Top-level functions
-    if (_tryMatchFunction(trimmed, exports, null)) return;
-
-    // Top-level getters
-    final getterMatch = _getterRegex.firstMatch(trimmed);
-    if (getterMatch != null) {
-      final name = getterMatch.group(1)!;
-      if (!name.startsWith('_') && !_controlKeywords.contains(name)) {
+    if (decl is ClassDeclaration) {
+      final name = decl.name.lexeme;
+      if (name.startsWith('_')) return;
+      final kind = decl.mixinKeyword != null ? 'mixin' : 'class';
+      exports.add(_entry(name, kind));
+      _processMembers(decl.members, exports, name);
+    } else if (decl is EnumDeclaration) {
+      final name = decl.name.lexeme;
+      if (name.startsWith('_')) return;
+      exports.add(_entry(name, 'enum'));
+      _processMembers(decl.members, exports, name);
+    } else if (decl is MixinDeclaration) {
+      final name = decl.name.lexeme;
+      if (name.startsWith('_')) return;
+      exports.add(_entry(name, 'mixin'));
+      _processMembers(decl.members, exports, name);
+    } else if (decl is ExtensionTypeDeclaration) {
+      final name = decl.name.lexeme;
+      if (name.startsWith('_')) return;
+      exports.add(_entry(name, 'extension'));
+      _processMembers(decl.members, exports, name);
+    } else if (decl is ExtensionDeclaration) {
+      final nameToken = decl.name;
+      if (nameToken == null) return;
+      final name = nameToken.lexeme;
+      if (name.startsWith('_')) return;
+      exports.add(_entry(name, 'extension'));
+      _processMembers(decl.members, exports, name);
+    } else if (decl is GenericTypeAlias) {
+      final name = decl.name.lexeme;
+      if (!name.startsWith('_')) exports.add(_entry(name, 'typedef'));
+    } else if (decl is FunctionTypeAlias) {
+      final name = decl.name.lexeme;
+      if (!name.startsWith('_')) exports.add(_entry(name, 'typedef'));
+    } else if (decl is FunctionDeclaration) {
+      final name = decl.name.lexeme;
+      if (name.startsWith('_')) return;
+      if (decl.isGetter) {
         variables.add({'name': name, 'description': null});
+      } else if (!decl.isSetter) {
+        final params = _paramsText(decl.functionExpression.parameters);
+        exports.add(_entry(name, 'function', parameters: params));
       }
-      return;
-    }
-
-    // Top-level variables/constants
-    if (_tryMatchVariable(trimmed, variables)) return;
-  }
-
-  /// Process a class member (braceDepth == 1).
-  static void _processClassMember(
-    String trimmed,
-    List<Map<String, String?>> exports,
-    String className,
-  ) {
-    if (trimmed.isEmpty || trimmed.startsWith('//') || trimmed.startsWith('/*')
-        || trimmed.startsWith('*') || trimmed.startsWith('}')
-        || trimmed.startsWith('@')) {
-      return;
-    }
-
-    // Operator overloads
-    final opMatch = _operatorRegex.firstMatch(trimmed);
-    if (opMatch != null) {
-      final op = 'operator ${opMatch.group(1)!}';
-      final params = _extractParams(trimmed);
-      exports.add({
-        'name': op,
-        'kind': 'method',
-        'parameters': params,
-        'description': null,
-        'parent_name': className,
-      });
-      return;
-    }
-
-    // Factory constructors
-    final factoryMatch = _factoryRegex.firstMatch(trimmed);
-    if (factoryMatch != null) {
-      final fullName = factoryMatch.group(1)!;
-      final params = _extractParams(trimmed);
-      exports.add({
-        'name': fullName,
-        'kind': 'method',
-        'parameters': params,
-        'description': null,
-        'parent_name': className,
-      });
-      return;
-    }
-
-    // Named constructors: ClassName.name(
-    final namedCtorMatch = _namedConstructorRegex.firstMatch(trimmed);
-    if (namedCtorMatch != null) {
-      final ctorClassName = namedCtorMatch.group(1)!;
-      final ctorName = namedCtorMatch.group(2)!;
-      if (ctorClassName == className && !ctorName.startsWith('_')) {
-        final params = _extractParams(trimmed);
-        exports.add({
-          'name': '$className.$ctorName',
-          'kind': 'method',
-          'parameters': params,
-          'description': null,
-          'parent_name': className,
-        });
-        return;
-      }
-    }
-
-    // Getters
-    final getterMatch = _getterRegex.firstMatch(trimmed);
-    if (getterMatch != null) {
-      final name = getterMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({
-          'name': name,
-          'kind': 'class_member',
-          'parameters': null,
-          'description': null,
-          'parent_name': className,
-        });
-      }
-      return;
-    }
-
-    // Setters
-    final setterMatch = _setterRegex.firstMatch(trimmed);
-    if (setterMatch != null) {
-      final name = setterMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        exports.add({
-          'name': name,
-          'kind': 'class_member',
-          'parameters': null,
-          'description': null,
-          'parent_name': className,
-        });
-      }
-      return;
-    }
-
-    // Methods (including regular constructors matching className)
-    if (_tryMatchFunction(trimmed, exports, className)) return;
-
-    // Fields
-    _tryMatchField(trimmed, exports, className);
-  }
-
-  /// Try to match a function/method declaration. Returns true if matched.
-  static bool _tryMatchFunction(
-    String trimmed,
-    List<Map<String, String?>> exports,
-    String? className,
-  ) {
-    // Check for constructor (className followed by parenthesis)
-    if (className != null) {
-      final ctorPattern = RegExp('^$className\\s*\\(');
-      if (ctorPattern.hasMatch(trimmed)) {
-        final params = _extractParams(trimmed);
-        exports.add({
-          'name': className,
-          'kind': 'method',
-          'parameters': params,
-          'description': null,
-          'parent_name': className,
-        });
-        return true;
-      }
-    }
-
-    final match = _functionRegex.firstMatch(trimmed);
-    if (match != null) {
-      final name = match.group(1)!;
-      if (name.startsWith('_') || _controlKeywords.contains(name)) {
-        return false;
-      }
-
-      final params = _extractParams(trimmed);
-      final kind = className != null ? 'method' : 'function';
-      exports.add({
-        'name': name,
-        'kind': kind,
-        'parameters': params,
-        'description': null,
-        'parent_name': className,
-      });
-      return true;
-    }
-    return false;
-  }
-
-  /// Try to match a top-level variable declaration. Returns true if matched.
-  static bool _tryMatchVariable(
-    String trimmed,
-    List<Map<String, String?>> variables,
-  ) {
-    final constFinalMatch = _constFinalVarRegex.firstMatch(trimmed);
-    if (constFinalMatch != null) {
-      final name = constFinalMatch.group(1)!;
-      if (!name.startsWith('_')) {
-        variables.add({'name': name, 'description': null});
-        return true;
-      }
-    }
-
-    // Typed variable: `Type name =`
-    final typedMatch = _typedVarRegex.firstMatch(trimmed);
-    if (typedMatch != null) {
-      final typeName = typedMatch.group(1)!;
-      final name = typedMatch.group(2)!;
-      // Exclude if the "type" looks like a keyword or function call
-      if (!name.startsWith('_') &&
-          !_controlKeywords.contains(typeName) &&
-          !_controlKeywords.contains(name) &&
-          typeName[0] == typeName[0].toUpperCase()) {
-        variables.add({'name': name, 'description': null});
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// Try to match a field declaration inside a class. Returns true if matched.
-  static bool _tryMatchField(
-    String trimmed,
-    List<Map<String, String?>> exports,
-    String className,
-  ) {
-    final match = _fieldRegex.firstMatch(trimmed);
-    if (match != null) {
-      final name = match.group(1)!;
-      if (!name.startsWith('_') && !_controlKeywords.contains(name)) {
-        exports.add({
-          'name': name,
-          'kind': 'class_member',
-          'parameters': null,
-          'description': null,
-          'parent_name': className,
-        });
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// Extract parameter string from a line containing parentheses.
-  static String? _extractParams(String line) {
-    final openIdx = line.indexOf('(');
-    if (openIdx < 0) return null;
-
-    var depth = 0;
-    var i = openIdx;
-    while (i < line.length) {
-      if (line[i] == '(') {
-        depth++;
-      } else if (line[i] == ')') {
-        depth--;
-        if (depth == 0) {
-          return line.substring(openIdx + 1, i).trim();
+    } else if (decl is TopLevelVariableDeclaration) {
+      for (final v in decl.variables.variables) {
+        final name = v.name.lexeme;
+        if (!name.startsWith('_')) {
+          variables.add({'name': name, 'description': null});
         }
       }
-      i++;
     }
-    // If closing paren not found on this line, return what we have
-    return line.substring(openIdx + 1).trim();
+  }
+
+  // ── Class / enum / mixin member processing ──────────────────────────
+
+  static void _processMembers(
+    NodeList<ClassMember> members,
+    List<Map<String, String?>> exports,
+    String className,
+  ) {
+    for (final member in members) {
+      if (member is ConstructorDeclaration) {
+        final nameToken = member.name;
+        if (nameToken != null && nameToken.lexeme.startsWith('_')) continue;
+        final ctorName =
+            nameToken != null ? '$className.${nameToken.lexeme}' : className;
+        final params = _paramsText(member.parameters);
+        exports.add(
+            _entry(ctorName, 'method', parameters: params, parent: className));
+      } else if (member is MethodDeclaration) {
+        final name = member.name.lexeme;
+        if (name.startsWith('_')) continue;
+        if (member.isOperator) {
+          final params = _paramsText(member.parameters);
+          exports.add(_entry('operator $name', 'method',
+              parameters: params, parent: className));
+        } else if (member.isGetter || member.isSetter) {
+          exports.add(_entry(name, 'class_member', parent: className));
+        } else {
+          final params = _paramsText(member.parameters);
+          exports.add(
+              _entry(name, 'method', parameters: params, parent: className));
+        }
+      } else if (member is FieldDeclaration) {
+        for (final v in member.fields.variables) {
+          final name = v.name.lexeme;
+          if (!name.startsWith('_')) {
+            exports.add(_entry(name, 'class_member', parent: className));
+          }
+        }
+      }
+    }
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+
+  static Map<String, String?> _entry(
+    String name,
+    String kind, {
+    String? parameters,
+    String? parent,
+  }) =>
+      {
+        'name': name,
+        'kind': kind,
+        'parameters': parameters,
+        'description': null,
+        'parent_name': parent,
+      };
+
+  static String? _paramsText(FormalParameterList? params) {
+    if (params == null) return null;
+    final src = params.toSource();
+    return src.substring(1, src.length - 1).trim();
+  }
+
+  /// Extract comment annotations (TODO/FIXME/HACK/NOTE) and @deprecated.
+  static List<Map<String, dynamic>> _extractAnnotations(String source) {
+    final annotations = <Map<String, dynamic>>[];
+    final lines = source.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trimLeft();
+      final lineNumber = i + 1;
+
+      final commentMatch = _commentAnnotationRegex.firstMatch(line);
+      if (commentMatch != null) {
+        annotations.add({
+          'kind': commentMatch.group(1)!.toUpperCase(),
+          'message': commentMatch.group(2)!.trim(),
+          'line': lineNumber,
+        });
+        continue;
+      }
+
+      if (_deprecatedRegex.hasMatch(line)) {
+        annotations.add({
+          'kind': 'DEPRECATED',
+          'message': null,
+          'line': lineNumber,
+        });
+      }
+    }
+    return annotations;
+  }
+}
+
+// ── Resolved mode: external symbol usages ─────────────────────────────
+
+/// Resolved-mode parser for extracting external symbol usages with dot paths.
+///
+/// Uses [AnalysisContextCollection] to perform full name resolution, building
+/// one context per project and reusing it across files.
+class DartResolvedParser {
+  /// Resolve external symbol usages for a batch of Dart files.
+  ///
+  /// [projectPath] is the absolute path to the project root (must contain
+  /// `pubspec.yaml` and `.dart_tool/package_config.json`).
+  /// [filePaths] are absolute paths to the Dart files to analyze.
+  ///
+  /// A single [AnalysisContextCollection] is built once; per-file resolution
+  /// is cheap after that.
+  static Future<List<ResolvedFileResult>> resolveExternalUsages({
+    required String projectPath,
+    required List<String> filePaths,
+  }) async {
+    final collection = AnalysisContextCollection(
+      includedPaths: [projectPath],
+    );
+
+    final results = <ResolvedFileResult>[];
+    for (final filePath in filePaths) {
+      final context = collection.contextFor(filePath);
+      final unitResult =
+          await context.currentSession.getResolvedUnit(filePath);
+      if (unitResult is! ResolvedUnitResult) continue;
+
+      final currentLibrary = unitResult.libraryElement;
+      final usageMap = <String, _UsageAccumulator>{};
+
+      unitResult.unit.accept(_ExternalUsageVisitor(
+        currentLibrary: currentLibrary,
+        usageMap: usageMap,
+      ));
+
+      results.add(ResolvedFileResult(
+        filePath: filePath,
+        externalUsages: usageMap.values
+            .map((a) => ExternalSymbolUsage(
+                  module: a.module,
+                  sourcePath: a.sourcePath,
+                  symbol: a.symbol,
+                  symbolKind: a.symbolKind,
+                  dotPath: a.dotPath,
+                  referenceCount: a.count,
+                ))
+            .toList(),
+      ));
+    }
+    return results;
+  }
+
+  /// Parse a library URI into (module, sourcePath) components.
+  ///
+  /// Rules per §5a.3:
+  /// - `package:foo/bar/baz.dart` → `('foo', 'bar.baz')`
+  /// - `dart:io` → `('dart', 'io')`
+  /// - `file:` or other → `('unknown', dotted-path)`
+  static (String module, String sourcePath) parseLibraryUri(Uri uri) {
+    final scheme = uri.scheme;
+    if (scheme == 'package') {
+      final path = uri.path; // foo/bar/baz.dart
+      final slashIdx = path.indexOf('/');
+      final module = path.substring(0, slashIdx);
+      final rest = path.substring(slashIdx + 1);
+      return (module, _pathToDotted(rest));
+    } else if (scheme == 'dart') {
+      return ('dart', uri.path);
+    } else {
+      return ('unknown', _pathToDotted(uri.path));
+    }
+  }
+
+  /// Build a dot-path from module, source path, and symbol.
+  static String buildDotPath(
+          String module, String sourcePath, String symbol) =>
+      '$module.$sourcePath.$symbol';
+
+  static String _pathToDotted(String path) {
+    var result = path;
+    if (result.endsWith('.dart')) {
+      result = result.substring(0, result.length - 5);
+    }
+    return result.replaceAll('/', '.');
+  }
+}
+
+class _UsageAccumulator {
+  final String module;
+  final String sourcePath;
+  final String symbol;
+  final String? symbolKind;
+  final String dotPath;
+  int count = 1;
+
+  _UsageAccumulator({
+    required this.module,
+    required this.sourcePath,
+    required this.symbol,
+    this.symbolKind,
+    required this.dotPath,
+  });
+}
+// ignore_for_file: deprecated_member_use
+class _ExternalUsageVisitor extends RecursiveAstVisitor<void> {
+  final LibraryElement currentLibrary;
+  final Map<String, _UsageAccumulator> usageMap;
+
+  _ExternalUsageVisitor({
+    required this.currentLibrary,
+    required this.usageMap,
+  });
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    super.visitSimpleIdentifier(node);
+    if (node.inDeclarationContext()) return;
+
+    final element = node.staticElement;
+    if (element == null) return;
+
+    _recordIfExternal(element);
+  }
+
+  @override
+  void visitNamedType(NamedType node) {
+    super.visitNamedType(node);
+    final element = node.element;
+    if (element == null) return;
+
+    _recordIfExternal(element);
+  }
+
+  void _recordIfExternal(Element element) {
+    // For constructors, record the enclosing class instead
+    var target = element;
+    if (target is ConstructorElement) {
+      target = target.enclosingElement3;
+    }
+
+    final lib = target.library;
+    if (lib == null || lib == currentLibrary) return;
+
+    var symbol = target.displayName;
+    if (symbol.endsWith('=')) symbol = symbol.substring(0, symbol.length - 1);
+    if (symbol.isEmpty) return;
+
+    final uri = lib.source.uri;
+    final (module, sourcePath) = DartResolvedParser.parseLibraryUri(uri);
+    final dotPath =
+        DartResolvedParser.buildDotPath(module, sourcePath, symbol);
+    final kind = _elementKindString(target);
+
+    usageMap.update(
+      dotPath,
+      (a) {
+        a.count++;
+        return a;
+      },
+      ifAbsent: () => _UsageAccumulator(
+        module: module,
+        sourcePath: sourcePath,
+        symbol: symbol,
+        symbolKind: kind,
+        dotPath: dotPath,
+      ),
+    );
+  }
+
+  static String _elementKindString(Element e) {
+    switch (e.kind) {
+      case ElementKind.CLASS:
+        return 'class';
+      case ElementKind.FUNCTION:
+        return 'function';
+      case ElementKind.METHOD:
+        return 'method';
+      case ElementKind.ENUM:
+        return 'enum';
+      case ElementKind.MIXIN:
+        return 'mixin';
+      case ElementKind.EXTENSION:
+        return 'extension';
+      case ElementKind.TYPE_ALIAS:
+        return 'typedef';
+      case ElementKind.TOP_LEVEL_VARIABLE:
+      case ElementKind.FIELD:
+      case ElementKind.GETTER:
+      case ElementKind.SETTER:
+        return 'variable';
+      case ElementKind.CONSTRUCTOR:
+        return 'method';
+      default:
+        return 'unknown';
+    }
   }
 }
