@@ -56,12 +56,18 @@ Task and step management for AI-assisted development:
 - Parent task pattern with sub-task references
 
 ### 4. Code Index MCP (`packages/code_index/bin/code_index_mcp.dart`)
-Code indexing for quick and token efficient exploration:
-- `index` - Index code files
-- `search` - Search indexed code
-- `browse` - Browse code structure
-- `diff` - Show changes since last index
-
+Layered code indexing for token-efficient codebase exploration. Maintains a persistent SQLite index with five information layers (metadata → short summary → symbols → per-symbol descriptions → public API). Uses `package:analyzer` for Dart files; delegates to Haiku for LLM-generated summaries. Stale detection on every read via XXH3 hashing.
+- `auto-scan` - Scan project tree and produce an indexing plan
+- `auto-index` - Layer-aware indexing of a file
+- `get-file` / `get-files` - Retrieve layered file data (selectable layers 0–4)
+- `search` - Full-text search across names, descriptions, exports, and external symbols
+- `usages` - Search external symbol usages by symbol, module, or dot-path
+- `dependents` / `dependencies` - Import graph queries
+- `search-annotations` - Search TODO/FIXME/HACK/NOTE/DEPRECATED annotations
+- `overview` - Compact listing of all indexed files
+- `stats` - Aggregate index statistics
+- `diff` - Report changed/added/deleted files
+- `is-allowed` - Check if a path is within allowed paths
 ### 5. Dart Runner MCP (`packages/dart_runner/bin/dart_runner_mcp.dart`)
 Run Dart programs with polling for long-running processes:
 - `analyze` - Run `dart analyze`

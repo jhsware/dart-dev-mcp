@@ -141,6 +141,8 @@ If `layers` is omitted, the operation defaults to `[0, 1, 4]` — enough to make
 
 ## 5. Database Schema Additions
 
+> **Implementation note (2026-05-26):** The `currentSchemaVersion` migration plan described below was replaced by **clean-rebuild semantics**. The database stores a `schema_version` stamp; if the on-disk version differs from the code's expected version, the entire database file is deleted and recreated with the current schema. This eliminates migration complexity at the cost of a one-time re-index when the schema changes.
+
 Bump `currentSchemaVersion` from 4 to 5 and add via migration:
 
 ```sql
@@ -571,10 +573,19 @@ Steps 1–4 give us correctness (no more silent stale reads, no more silent out-
 
 ## 13. Open Questions
 
+> All questions below were resolved during the code-index rewrite (2026-05-26).
+
 - Should layer 3 (per-symbol summaries) be stored on `exports.description` (already there) or on a separate `export_summaries` table to allow versioning of summary style? Starting with the existing column keeps the change small.
+  > **Resolved: `exports.description` is the storage for layer 3.** The existing column is used directly. No separate table was added — keeping the change small and avoiding schema complexity.
+
 - How should the MCP know when the host runtime has spawned `code-index-agent` so it can clear the `scan_queue` rows? For Model A this is moot (the agent writes through `auto-index`, which clears its own queue entry as a side effect); for Model B it needs explicit signaling.
+  > **Resolved: Model A (pull-based) was chosen.** The parent agent calls `auto-scan` to get the plan, then issues `auto-index` calls in batches. The MCP does not own a worker thread. The `scan_queue` table was not implemented — the plan-based flow makes it unnecessary.
+
 - Should `auto-scan` accept a `since` timestamp so we can avoid hashing files that haven't been touched at all (using `mtime` as a fast pre-filter before hashing)? Probably yes — cheap optimization.
+  > **Resolved: Yes.** `auto-scan` accepts a `since` parameter (ISO 8601 timestamp). Files with mtime older than the threshold are skipped without hashing.
+
 - Do we want a `code-index: invalidate path=...` for the case where the consumer knows it just edited a file and wants the index to reflect that immediately, without waiting for the next read? Probably yes — small operation.
+  > **Resolved: No dedicated `invalidate` operation.** Instead, `get-file` / `get-files` return a `needs_reindex` array listing stale files detected via hash comparison. The caller batches these into `auto-index` calls. This avoids a separate invalidation path and keeps the flow unified.
 
 ---
 
