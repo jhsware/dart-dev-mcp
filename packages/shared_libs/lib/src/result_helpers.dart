@@ -106,4 +106,24 @@ CallToolResult validationError(String field, String message) {
 /// ```
 CallToolResult notFoundError(String resourceType, String resourceId) {
   return textResult('Error: $resourceType not found: $resourceId');
+  return textResult('Error: $resourceType not found: $resourceId');
+}
+
+/// Creates a structured out-of-scope response for path restriction violations.
+///
+/// Returns a JSON result with `status: "out_of_scope"` instead of a generic
+/// validation error, so callers can distinguish scope violations from other errors.
+///
+/// [allowedPaths] should be relative paths (use [getAllowedRelativePaths] to convert).
+CallToolResult outOfScopeResponse({
+  required String path,
+  required List<String> allowedPaths,
+  String? message,
+}) {
+  return jsonResult({
+    'status': 'out_of_scope',
+    'path': path,
+    'allowed_paths': allowedPaths,
+    'message': message ?? "Path '$path' is outside allowed paths: ${allowedPaths.join(', ')}",
+  });
 }

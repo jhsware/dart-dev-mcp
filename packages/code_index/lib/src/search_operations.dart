@@ -1,16 +1,38 @@
+import 'dart:io';
+
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
+
+import 'stale_detection.dart';
 
 /// Search operations handler for the code-index MCP server.
 class SearchOperations {
   final Database database;
+  final Directory workingDir;
+  final List<String> allowedPaths;
+  late final StaleDetector _staleDetector;
 
-  SearchOperations({required this.database});
+  SearchOperations({
+    required this.database,
+    required this.workingDir,
+    this.allowedPaths = const [],
+  }) {
+    _staleDetector = StaleDetector(database: database, workingDir: workingDir);
+  }
+
+  CallToolResult? _checkAllowed(String relativePath) {
+    if (allowedPaths.isEmpty) return null;
+    final absolutePath = p.normalize(p.join(workingDir.path, relativePath));
+    if (isAllowedPath(allowedPaths, absolutePath)) return null;
+    return outOfScopeResponse(
+      path: relativePath,
+      allowedPaths: getAllowedRelativePaths(workingDir, allowedPaths),
+    );
+  }
 
   /// Search the code index for files matching given criteria.
-  ///
-  /// Returns rich results including file metadata and exports summary.
   CallToolResult search(Map<String, dynamic>? args) {
     final query = args?['query'] as String?;
     final fileType = args?['file_type'] as String?;
@@ -22,15 +44,19 @@ class SearchOperations {
     final descriptionPattern = args?['description_pattern'] as String?;
     final limit = args?['limit'] as int? ?? 50;
 
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      if (_checkAllowed(pathPattern) case final error?) {
+        return error;
+      }
+    }
+
     final joins = <String>{};
     final conditions = <String>[];
     final values = <Object?>[];
     final filters = <String, dynamic>{};
     var useFts = false;
 
-    // General text search — use FTS5 for ranked results
     if (query != null && query.isNotEmpty) {
-      // Escape FTS5 special characters and wrap each token with *
       final ftsQuery = _buildFtsQuery(query);
       joins.add('JOIN code_search_fts fts ON fts.file_id = f.id');
       conditions.add('code_search_fts MATCH ?');
@@ -39,21 +65,18 @@ class SearchOperations {
       filters['query'] = query;
     }
 
-    // Exact file type filter
     if (fileType != null && fileType.isNotEmpty) {
       conditions.add('f.file_type = ?');
       values.add(fileType);
       filters['file_type'] = fileType;
     }
 
-    // File name pattern
     if (namePattern != null && namePattern.isNotEmpty) {
       conditions.add('f.name LIKE ?');
       values.add('%$namePattern%');
       filters['name_pattern'] = namePattern;
     }
 
-    // Export name search
     if (exportName != null && exportName.isNotEmpty) {
       joins.add('LEFT JOIN exports e ON e.file_id = f.id');
       conditions.add('e.name LIKE ?');
@@ -61,7 +84,6 @@ class SearchOperations {
       filters['export_name'] = exportName;
     }
 
-    // Export kind filter
     if (exportKind != null && exportKind.isNotEmpty) {
       joins.add('LEFT JOIN exports e ON e.file_id = f.id');
       conditions.add('e.kind = ?');
@@ -69,7 +91,6 @@ class SearchOperations {
       filters['export_kind'] = exportKind;
     }
 
-    // Import path search
     if (importPattern != null && importPattern.isNotEmpty) {
       joins.add('LEFT JOIN imports i ON i.file_id = f.id');
       conditions.add('i.import_path LIKE ?');
@@ -77,21 +98,18 @@ class SearchOperations {
       filters['import_pattern'] = importPattern;
     }
 
-    // File path pattern
     if (pathPattern != null && pathPattern.isNotEmpty) {
       conditions.add('f.path LIKE ?');
       values.add('%$pathPattern%');
       filters['path_pattern'] = pathPattern;
     }
 
-    // Description pattern
     if (descriptionPattern != null && descriptionPattern.isNotEmpty) {
       conditions.add('f.description LIKE ?');
       values.add('%$descriptionPattern%');
       filters['description_pattern'] = descriptionPattern;
     }
 
-    // Build the query — use BM25 ranking when FTS is active
     final joinClause = joins.join('\n');
     final whereClause =
         conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
@@ -111,32 +129,24 @@ class SearchOperations {
     try {
       result = database.select(sql, values);
     } on SqliteException {
-      // FTS syntax error — fall back to LIKE search
       return _fallbackLikeSearch(query!, filters, limit);
     }
 
     return _buildRichResults(result, filters);
   }
 
-  /// Build FTS5 query string from user input.
-  ///
-  /// Escapes special FTS5 characters and adds prefix matching (*).
   String _buildFtsQuery(String query) {
-    // Split on whitespace, escape each token, add prefix wildcard
     final tokens = query.split(RegExp(r'\s+'));
     final escaped = tokens
         .where((t) => t.isNotEmpty)
         .map((t) {
-          // Escape double quotes in the token
           final safe = t.replaceAll('"', '""');
-          // Wrap in quotes for safety, add * for prefix matching
           return '"$safe"*';
         })
         .join(' OR ');
     return escaped;
   }
 
-  /// Fallback LIKE-based search when FTS query fails.
   CallToolResult _fallbackLikeSearch(
     String query,
     Map<String, dynamic> filters,
@@ -162,22 +172,24 @@ class SearchOperations {
     return _buildRichResults(result, filters);
   }
 
-  /// Build rich results with exports summary from a result set.
   CallToolResult _buildRichResults(
     ResultSet result,
     Map<String, dynamic> filters,
   ) {
     final files = <Map<String, dynamic>>[];
+    final filePaths = <String>[];
     for (final row in result) {
       final fileId = row['id'] as String;
+      final filePath = row['path'] as String;
+      filePaths.add(filePath);
+
       final fileEntry = <String, dynamic>{
-        'path': row['path'] as String,
+        'path': filePath,
         'name': row['name'] as String,
         'description': row['description'],
         'file_type': row['file_type'],
       };
 
-      // Get exports summary for this file
       final exports = database.select(
         'SELECT name, kind FROM exports WHERE file_id = ?',
         [fileId],
@@ -192,18 +204,17 @@ class SearchOperations {
       files.add(fileEntry);
     }
 
+    final needsReindex = _staleDetector.checkPaths(filePaths);
+
     return jsonResult({
       'files': files,
       'count': files.length,
       'filters': filters,
+      'needs_reindex': needsReindex,
     });
   }
 
   /// Find all files that import a given path.
-  ///
-
-  /// Given an import path (or pattern), returns all indexed files whose
-  /// imports match. Results include file metadata and exports summary.
   CallToolResult dependents(Map<String, dynamic>? args) {
     final importPath = args?['path'] as String?;
 
@@ -211,7 +222,10 @@ class SearchOperations {
       return error;
     }
 
-    // Search for files that have a matching import
+    if (_checkAllowed(importPath!) case final error?) {
+      return error;
+    }
+
     final result = database.select('''
       SELECT DISTINCT f.id, f.path, f.name, f.description, f.file_type
       FROM files f
@@ -221,16 +235,19 @@ class SearchOperations {
     ''', ['%$importPath%']);
 
     final files = <Map<String, dynamic>>[];
+    final filePaths = <String>[];
     for (final row in result) {
       final fileId = row['id'] as String;
+      final filePath = row['path'] as String;
+      filePaths.add(filePath);
+
       final fileEntry = <String, dynamic>{
-        'path': row['path'] as String,
+        'path': filePath,
         'name': row['name'] as String,
         'description': row['description'],
         'file_type': row['file_type'],
       };
 
-      // Get the specific matching imports
       final matchingImports = database.select(
         'SELECT import_path FROM imports WHERE file_id = ? AND import_path LIKE ?',
         [fileId, '%$importPath%'],
@@ -238,7 +255,6 @@ class SearchOperations {
       fileEntry['matching_imports'] =
           matchingImports.map((i) => i['import_path'] as String).toList();
 
-      // Get exports summary
       final exports = database.select(
         'SELECT name, kind FROM exports WHERE file_id = ?',
         [fileId],
@@ -253,17 +269,17 @@ class SearchOperations {
       files.add(fileEntry);
     }
 
+    final needsReindex = _staleDetector.checkPaths(filePaths);
+
     return jsonResult({
       'dependents': files,
       'count': files.length,
       'import_path_query': importPath,
+      'needs_reindex': needsReindex,
     });
   }
 
   /// Get all dependencies (imports) for a specific file.
-  ///
-  /// Returns the file's imports with an indication of whether each
-  /// import is indexed (internal) or external.
   CallToolResult dependencies(Map<String, dynamic>? args) {
     final path = args?['path'] as String?;
 
@@ -271,20 +287,22 @@ class SearchOperations {
       return error;
     }
 
-    // Look up the file
+    if (_checkAllowed(path!) case final error?) {
+      return error;
+    }
+
     final fileResult = database.select(
       'SELECT id, path, name, description, file_type FROM files WHERE path = ?',
       [path],
     );
 
     if (fileResult.isEmpty) {
-      return notFoundError('File', path!);
+      return notFoundError('File', path);
     }
 
     final file = fileResult.first;
     final fileId = file['id'] as String;
 
-    // Get all imports for this file
     final imports = database.select(
       'SELECT import_path FROM imports WHERE file_id = ? ORDER BY import_path',
       [fileId],
@@ -294,7 +312,6 @@ class SearchOperations {
     for (final imp in imports) {
       final importPath = imp['import_path'] as String;
 
-      // Check if the imported file is indexed (try exact match and common variations)
       final indexed = database.select(
         'SELECT path, name, description, file_type FROM files WHERE path = ? OR path LIKE ?',
         [importPath, '%$importPath'],
@@ -321,6 +338,8 @@ class SearchOperations {
     final internal = deps.where((d) => d['is_indexed'] == true).length;
     final external = deps.where((d) => d['is_indexed'] == false).length;
 
+    final needsReindex = _staleDetector.checkPaths([path]);
+
     return jsonResult({
       'file': {
         'path': file['path'],
@@ -332,18 +351,23 @@ class SearchOperations {
       'count': deps.length,
       'internal_count': internal,
       'external_count': external,
+      'needs_reindex': needsReindex,
     });
   }
 
   /// Search annotations (TODO, FIXME, HACK, etc.) across the codebase.
-  ///
-  /// Supports filtering by kind, message pattern, file path pattern, and file type.
   CallToolResult searchAnnotations(Map<String, dynamic>? args) {
     final kind = args?['kind'] as String?;
     final messagePattern = args?['message_pattern'] as String?;
     final pathPattern = args?['path_pattern'] as String?;
     final fileType = args?['file_type'] as String?;
     final limit = args?['limit'] as int? ?? 100;
+
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      if (_checkAllowed(pathPattern) case final error?) {
+        return error;
+      }
+    }
 
     final conditions = <String>[];
     final values = <Object?>[];
@@ -388,57 +412,140 @@ class SearchOperations {
 
     final result = database.select(sql, values);
 
-    final annotations = result
-        .map((row) => {
-              'kind': row['kind'] as String,
-              'message': row['message'],
-              'line': row['line'],
-              'file_path': row['path'] as String,
-              'file_name': row['name'] as String,
-              'file_type': row['file_type'],
-            })
-        .toList();
+    final annotations = <Map<String, dynamic>>[];
+    final filePaths = <String>{};
+    for (final row in result) {
+      filePaths.add(row['path'] as String);
+      annotations.add({
+        'kind': row['kind'] as String,
+        'message': row['message'],
+        'line': row['line'],
+        'file_path': row['path'] as String,
+        'file_name': row['name'] as String,
+        'file_type': row['file_type'],
+      });
+    }
 
-    // Summary by kind
     final kindCounts = <String, int>{};
     for (final a in annotations) {
       final k = a['kind'] as String;
       kindCounts[k] = (kindCounts[k] ?? 0) + 1;
     }
 
+    final needsReindex = _staleDetector.checkPaths(filePaths);
+
     return jsonResult({
       'annotations': annotations,
       'count': annotations.length,
       'by_kind': kindCounts,
       'filters': filters,
+      'needs_reindex': needsReindex,
     });
   }
+
+  /// Search external symbol usages across the codebase.
+  CallToolResult usages(Map<String, dynamic>? args) {
+    final symbol = args?['symbol'] as String?;
+    final module = args?['module'] as String?;
+    final sourcePath = args?['source_path'] as String?;
+    final dotPathPattern = args?['dot_path_pattern'] as String?;
+    final kind = args?['kind'] as String?;
+    final pathPattern = args?['path_pattern'] as String?;
+
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      if (_checkAllowed(pathPattern) case final error?) {
+        return error;
+      }
+    }
+
+    final conditions = <String>[];
+    final values = <Object?>[];
+
+    if (symbol != null && symbol.isNotEmpty) {
+      conditions.add('u.symbol = ?');
+      values.add(symbol);
+    }
+    if (module != null && module.isNotEmpty) {
+      conditions.add('u.module = ?');
+      values.add(module);
+    }
+    if (sourcePath != null && sourcePath.isNotEmpty) {
+      conditions.add('u.source_path = ?');
+      values.add(sourcePath);
+    }
+    if (dotPathPattern != null && dotPathPattern.isNotEmpty) {
+      conditions.add('u.dot_path LIKE ?');
+      values.add('%$dotPathPattern%');
+    }
+    if (kind != null && kind.isNotEmpty) {
+      conditions.add('u.symbol_kind = ?');
+      values.add(kind);
+    }
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      conditions.add('f.path LIKE ?');
+      values.add('%$pathPattern%');
+    }
+
+    final whereClause =
+        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+
+    final sql = '''
+      SELECT f.path, u.dot_path, u.symbol, u.module, u.source_path,
+             u.symbol_kind as kind, u.reference_count
+      FROM external_symbol_usages u
+      JOIN files f ON u.file_id = f.id
+      $whereClause
+      ORDER BY u.reference_count DESC, f.path
+    ''';
+
+    final result = database.select(sql, values);
+
+    final filePaths = <String>{};
+    final matches = result
+        .map((row) {
+          filePaths.add(row['path'] as String);
+          return {
+            'path': row['path'] as String,
+            'dot_path': row['dot_path'] as String,
+            'symbol': row['symbol'] as String,
+            'module': row['module'] as String,
+            'source_path': row['source_path'] as String,
+            'kind': row['kind'],
+            'reference_count': row['reference_count'] as int,
+          };
+        })
+        .toList();
+
+    final needsReindex = _staleDetector.checkPaths(filePaths);
+
+    return jsonResult({
+      'matches': matches,
+      'count': matches.length,
+      'needs_reindex': needsReindex,
+    });
+  }
+
   /// Get aggregate statistics about the code index.
   ///
-  /// Returns counts for files (by type), exports (by kind), variables,
-  /// imports (with top-imported paths), and annotations (by kind).
+  /// Does NOT hash-check files — returns counts only.
   CallToolResult stats(Map<String, dynamic>? args) {
     final topN = args?['limit'] as int? ?? 10;
 
-    // Files
     final totalFiles =
         database.select('SELECT COUNT(*) as cnt FROM files').first['cnt'] as int;
     final filesByType = database.select(
       'SELECT file_type, COUNT(*) as cnt FROM files GROUP BY file_type ORDER BY cnt DESC',
     );
 
-    // Exports
     final totalExports =
         database.select('SELECT COUNT(*) as cnt FROM exports').first['cnt'] as int;
     final exportsByKind = database.select(
       'SELECT kind, COUNT(*) as cnt FROM exports GROUP BY kind ORDER BY cnt DESC',
     );
 
-    // Variables
     final totalVars =
         database.select('SELECT COUNT(*) as cnt FROM variables').first['cnt'] as int;
 
-    // Imports
     final totalImports =
         database.select('SELECT COUNT(*) as cnt FROM imports').first['cnt'] as int;
     final topImported = database.select('''
@@ -446,7 +553,6 @@ class SearchOperations {
       GROUP BY import_path ORDER BY cnt DESC LIMIT ?
     ''', [topN]);
 
-    // Annotations
     final totalAnnotations =
         database.select('SELECT COUNT(*) as cnt FROM annotations').first['cnt'] as int;
     final annotationsByKind = database.select(

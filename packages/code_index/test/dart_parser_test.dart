@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:code_index_mcp/code_index_mcp.dart';
 import 'package:test/test.dart';
 
@@ -560,6 +562,192 @@ String _privateHelper() => '';
       final fixme = result.annotations
           .firstWhere((a) => a['kind'] == 'FIXME');
       expect(fixme['message'], 'handle errors');
+    });
+  });
+
+
+  group('Dot-path canonicalization', () {
+    test('package: URI → module.source_path', () {
+      final uri = Uri.parse('package:flutter/material.dart');
+      final (module, sourcePath) = DartResolvedParser.parseLibraryUri(uri);
+      expect(module, 'flutter');
+      expect(sourcePath, 'material');
+      expect(
+        DartResolvedParser.buildDotPath(module, sourcePath, 'Widget'),
+        'flutter.material.Widget',
+      );
+    });
+
+    test('package: URI with nested path', () {
+      final uri = Uri.parse('package:flutter/src/widgets/framework.dart');
+      final (module, sourcePath) = DartResolvedParser.parseLibraryUri(uri);
+      expect(module, 'flutter');
+      expect(sourcePath, 'src.widgets.framework');
+      expect(
+        DartResolvedParser.buildDotPath(module, sourcePath, 'Widget'),
+        'flutter.src.widgets.framework.Widget',
+      );
+    });
+
+    test('dart: URI', () {
+      final uri = Uri.parse('dart:io');
+      final (module, sourcePath) = DartResolvedParser.parseLibraryUri(uri);
+      expect(module, 'dart');
+      expect(sourcePath, 'io');
+      expect(
+        DartResolvedParser.buildDotPath(module, sourcePath, 'File'),
+        'dart.io.File',
+      );
+    });
+
+    test('dart:core URI', () {
+      final uri = Uri.parse('dart:core');
+      final (module, sourcePath) = DartResolvedParser.parseLibraryUri(uri);
+      expect(module, 'dart');
+      expect(sourcePath, 'core');
+    });
+
+    test('intra-project package URI', () {
+      final uri = Uri.parse('package:myapp/lib/services/my_service.dart');
+      final (module, sourcePath) = DartResolvedParser.parseLibraryUri(uri);
+      expect(module, 'myapp');
+      expect(sourcePath, 'lib.services.my_service');
+      expect(
+        DartResolvedParser.buildDotPath(module, sourcePath, 'MyService'),
+        'myapp.lib.services.my_service.MyService',
+      );
+    });
+  });
+
+  group('Resolved mode: external usages', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('dart_parser_test_');
+      // Create pubspec.yaml
+      await File('${tempDir.path}/pubspec.yaml').writeAsString('''
+name: test_app
+environment:
+  sdk: ^3.9.3
+''');
+      // Create lib directory
+      await Directory('${tempDir.path}/lib').create();
+    });
+
+    tearDown(() async {
+      await tempDir.delete(recursive: true);
+    });
+
+    test('extracts dart:io File usage', () async {
+      await File('${tempDir.path}/lib/main.dart').writeAsString('''
+import 'dart:io';
+
+void main() {
+  final file = File('test.txt');
+  print(file.path);
+}
+''');
+      // Run dart pub get to create package_config.json
+      final pubGet = await Process.run(
+        'dart', ['pub', 'get'],
+        workingDirectory: tempDir.path,
+      );
+      expect(pubGet.exitCode, 0, reason: 'dart pub get failed: ${pubGet.stderr}');
+
+      final results = await DartResolvedParser.resolveExternalUsages(
+        projectPath: tempDir.path,
+        filePaths: ['${tempDir.path}/lib/main.dart'],
+      );
+      expect(results, hasLength(1));
+      final usages = results.first.externalUsages;
+      final fileUsage = usages.where((u) => u.symbol == 'File').toList();
+      expect(fileUsage, isNotEmpty, reason: 'Expected File usage. Got: ${usages.map((u) => u.dotPath).join(", ")}');
+      expect(fileUsage.first.module, 'dart');
+      expect(fileUsage.first.sourcePath, 'io');
+      expect(fileUsage.first.dotPath, 'dart.io.File');
+    });
+
+    test('extracts intra-project usages', () async {
+      await File('${tempDir.path}/lib/helper.dart').writeAsString('''
+class Helper {
+  static String greet() => 'hello';
+}
+''');
+      await File('${tempDir.path}/lib/main.dart').writeAsString('''
+import 'package:test_app/helper.dart';
+
+void main() {
+  Helper.greet();
+}
+''');
+      final pubGet = await Process.run(
+        'dart', ['pub', 'get'],
+        workingDirectory: tempDir.path,
+      );
+      expect(pubGet.exitCode, 0, reason: 'dart pub get failed: ${pubGet.stderr}');
+
+      final results = await DartResolvedParser.resolveExternalUsages(
+        projectPath: tempDir.path,
+        filePaths: ['${tempDir.path}/lib/main.dart'],
+      );
+      expect(results, hasLength(1));
+      final usages = results.first.externalUsages;
+      final helperUsage = usages.where((u) => u.symbol == 'Helper').toList();
+      expect(helperUsage, isNotEmpty, reason: 'Expected Helper usage. Got: ${usages.map((u) => u.dotPath).join(", ")}');
+      expect(helperUsage.first.module, 'test_app');
+      expect(helperUsage.first.dotPath, 'test_app.helper.Helper');
+    });
+
+    test('counts multiple references', () async {
+      await File('${tempDir.path}/lib/main.dart').writeAsString('''
+import 'dart:io';
+
+void main() {
+  final a = File('a.txt');
+  final b = File('b.txt');
+  final c = File('c.txt');
+}
+''');
+      final pubGet = await Process.run(
+        'dart', ['pub', 'get'],
+        workingDirectory: tempDir.path,
+      );
+      expect(pubGet.exitCode, 0);
+
+      final results = await DartResolvedParser.resolveExternalUsages(
+        projectPath: tempDir.path,
+        filePaths: ['${tempDir.path}/lib/main.dart'],
+      );
+      final usages = results.first.externalUsages;
+      final fileUsage = usages.firstWhere((u) => u.symbol == 'File');
+      expect(fileUsage.referenceCount, greaterThanOrEqualTo(3));
+    });
+
+    test('reuses context across multiple files', () async {
+      await File('${tempDir.path}/lib/a.dart').writeAsString('''
+import 'dart:io';
+void a() { File('a'); }
+''');
+      await File('${tempDir.path}/lib/b.dart').writeAsString('''
+import 'dart:io';
+void b() { File('b'); }
+''');
+      final pubGet = await Process.run(
+        'dart', ['pub', 'get'],
+        workingDirectory: tempDir.path,
+      );
+      expect(pubGet.exitCode, 0);
+
+      final results = await DartResolvedParser.resolveExternalUsages(
+        projectPath: tempDir.path,
+        filePaths: [
+          '${tempDir.path}/lib/a.dart',
+          '${tempDir.path}/lib/b.dart',
+        ],
+      );
+      expect(results, hasLength(2));
+      expect(results[0].externalUsages.any((u) => u.symbol == 'File'), isTrue);
+      expect(results[1].externalUsages.any((u) => u.symbol == 'File'), isTrue);
     });
   });
 }

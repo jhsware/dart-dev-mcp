@@ -8,10 +8,13 @@
 /// ```
 library;
 
+export 'auto_scan_operations.dart';
 export 'browse_operations.dart';
 export 'dart_parser.dart';
 export 'database.dart';
 export 'diff_operations.dart';
 export 'hash_utils.dart';
 export 'index_operations.dart';
+export 'scan_helpers.dart';
 export 'search_operations.dart';
+export 'stale_detection.dart';

@@ -1,0 +1,10 @@
+name: sample_project
+description: A minimal fixture project for code-index integration tests.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.9.3
+
+dependencies:
+  path: ^1.9.0
