@@ -161,7 +161,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
 
       // Index test files
       indexOps.indexFile({
@@ -276,7 +276,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
 
       // Index files with varied descriptions for ranking tests
       indexOps.indexFile({
@@ -395,7 +395,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      browseOps = BrowseOperations(database: database);
+      browseOps = BrowseOperations(database: database, workingDir: workingDir);
 
 
       // Index a file with full metadata
@@ -495,7 +495,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
 
       // Index files with import relationships
       // main.dart imports utils.dart and models.dart
@@ -634,8 +634,8 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
-      browseOps = BrowseOperations(database: database);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
+      browseOps = BrowseOperations(database: database, workingDir: workingDir);
 
 
       // Index files with annotations
@@ -828,7 +828,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
 
       // Index files with varied metadata
       indexOps.indexFile({
@@ -932,7 +932,7 @@ void main() {
     test('returns zero counts for empty index', () {
       // Use a fresh database
       final freshDb = initializeDatabase(':memory:');
-      final freshSearchOps = SearchOperations(database: freshDb);
+      final freshSearchOps = SearchOperations(database: freshDb, workingDir: workingDir);
 
       final result = freshSearchOps.stats({});
       final text = result.content.first.toJson()['text'] as String;
@@ -1071,7 +1071,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      browseOps = BrowseOperations(database: database);
+      browseOps = BrowseOperations(database: database, workingDir: workingDir);
 
 
       // Index test files with varied metadata
@@ -1160,7 +1160,7 @@ void main() {
 
     test('returns empty for empty index', () {
       final freshDb = initializeDatabase(':memory:');
-      final freshBrowseOps = BrowseOperations(database: freshDb);
+      final freshBrowseOps = BrowseOperations(database: freshDb, workingDir: workingDir);
 
       final result = freshBrowseOps.overview({});
       final text = result.content.first.toJson()['text'] as String;
@@ -1176,7 +1176,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      browseOps = BrowseOperations(database: database);
+      browseOps = BrowseOperations(database: database, workingDir: workingDir);
 
       // Index a file with classes, methods, variables, imports, and annotations
       indexOps.indexFile({
@@ -1297,7 +1297,7 @@ void main() {
       });
       final text = result.content.first.toJson()['text'] as String;
 
-      expect(text, contains('not allowed'));
+      expect(text, contains('outside allowed paths'));
       expect(text, contains('pubspec.yaml'));
     });
 
@@ -1360,8 +1360,9 @@ void main() {
       });
       final text = result.content.first.toJson()['text'] as String;
 
-      // pubspec.yaml should NOT appear (outside allowed paths)
-      expect(text, isNot(contains('pubspec.yaml')));
+      // pubspec.yaml should not appear in the added list (outside allowed paths)
+      // It may appear in an out_of_scope section, which is fine.
+      expect(text, contains('"added_count": 3'));
 
       // lib/models.dart should appear as added (inside allowed paths, not indexed)
       expect(text, contains('lib/models.dart'));
@@ -1389,7 +1390,7 @@ void main() {
 
     setUp(() {
       indexOps = IndexOperations(database: database, workingDir: workingDir);
-      searchOps = SearchOperations(database: database);
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
 
       // Create a Dart file with rich content for auto-indexing
       File(p.join(tempDir.path, 'lib', 'sample.dart'))
@@ -1431,8 +1432,8 @@ enum Status { active, inactive, pending }
         ..writeAsStringSync('name: test_project\nversion: 1.0.0');
     });
 
-    test('auto-indexes a Dart file with full metadata', () {
-      final result = indexOps.autoIndex({
+    test('auto-indexes a Dart file with full metadata', () async {
+      final result = await indexOps.autoIndex({
         'path': 'lib/sample.dart',
       });
       final text = result.content.first.toJson()['text'] as String;
@@ -1447,14 +1448,21 @@ enum Status { active, inactive, pending }
       expect(files.first['name'], 'sample.dart');
       expect(files.first['file_type'], 'dart');
 
+      // Verify layer 0 fields
+      expect(files.first['size_bytes'], isNotNull);
+      expect(files.first['line_count'], isNotNull);
+      expect(files.first['word_count'], isNotNull);
+      expect(files.first['mtime'], isNotNull);
+      expect(files.first['file_hash'], isNotEmpty);
+      expect(files.first['analysis_status'], 'fresh');
+      expect(files.first['last_analyzed_at'], isNotNull);
+      expect(files.first['layers_present'], isNotNull);
+
       // Verify exports were extracted
       final fileId = files.first['id'] as String;
       final exports = database.select(
           'SELECT * FROM exports WHERE file_id = ? ORDER BY name', [fileId]);
 
-      // Should have: SampleService (class), Status (enum),
-      //   isActive (class_member), process (method), runService (function),
-      //   SampleService constructor (method)
       final exportNames = exports.map((e) => e['name'] as String).toList();
       expect(exportNames, contains('SampleService'));
       expect(exportNames, contains('Status'));
@@ -1502,32 +1510,39 @@ enum Status { active, inactive, pending }
       expect(annotations.first['message'], contains('Add error handling'));
     });
 
-    test('auto-indexes with LLM-provided description', () {
-      final result = indexOps.autoIndex({
+    test('auto-indexes with LLM-provided short_summary', () async {
+      final result = await indexOps.autoIndex({
         'path': 'lib/sample.dart',
-        'description': 'A sample service module for processing data',
+        'short_summary': 'A sample service module for processing data',
       });
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('"success": true'));
 
-      // Verify description is stored
+      // Verify short_summary is stored
       final files = database.select(
           "SELECT * FROM files WHERE path = 'lib/sample.dart'");
+      expect(files.first['short_summary'],
+          'A sample service module for processing data');
+      // description also gets short_summary for backward compat
       expect(files.first['description'],
           'A sample service module for processing data');
 
-      // Verify exports were still extracted (not affected by description)
+      // Verify exports were still extracted
       final fileId = files.first['id'] as String;
       final exports = database.select(
           'SELECT * FROM exports WHERE file_id = ?', [fileId]);
       expect(exports.length, greaterThan(0));
     });
 
-    test('auto-indexes a non-Dart file with basic metadata', () {
-      final result = indexOps.autoIndex({
+    test('auto-indexes a non-Dart file with manual structural fields', () async {
+      final result = await indexOps.autoIndex({
         'path': 'lib/config.yaml',
-        'description': 'Project configuration',
+        'short_summary': 'Project configuration',
+        'exports': [
+          {'name': 'name', 'kind': 'variable'},
+          {'name': 'version', 'kind': 'variable'},
+        ],
       });
       final text = result.content.first.toJson()['text'] as String;
 
@@ -1539,36 +1554,43 @@ enum Status { active, inactive, pending }
           "SELECT * FROM files WHERE path = 'lib/config.yaml'");
       expect(files.length, 1);
       expect(files.first['file_type'], 'yaml');
-      expect(files.first['description'], 'Project configuration');
+      expect(files.first['short_summary'], 'Project configuration');
+      expect(files.first['analysis_status'], 'fresh');
 
-      // Non-Dart files should have no exports, imports, variables, annotations
+      // Verify exports from manual structural fields
       final fileId = files.first['id'] as String;
       final exports = database.select(
           'SELECT * FROM exports WHERE file_id = ?', [fileId]);
-      expect(exports.length, 0);
-
-      final imports = database.select(
-          'SELECT * FROM imports WHERE file_id = ?', [fileId]);
-      expect(imports.length, 0);
-
-      final variables = database.select(
-          'SELECT * FROM variables WHERE file_id = ?', [fileId]);
-      expect(variables.length, 0);
-
-      final annotations = database.select(
-          'SELECT * FROM annotations WHERE file_id = ?', [fileId]);
-      expect(annotations.length, 0);
+      expect(exports.length, 2);
     });
 
-    test('returns error for missing path', () {
-      final result = indexOps.autoIndex({});
+    test('auto-indexes non-Dart file with no structural fields', () async {
+      final result = await indexOps.autoIndex({
+        'path': 'lib/config.yaml',
+        'short_summary': 'Project configuration',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+
+      expect(text, contains('"success": true'));
+
+      // Non-Dart files without manual fields should have no child rows
+      final fileId = database.select(
+          "SELECT id FROM files WHERE path = 'lib/config.yaml'").first['id'] as String;
+      expect(database.select('SELECT * FROM exports WHERE file_id = ?', [fileId]).length, 0);
+      expect(database.select('SELECT * FROM imports WHERE file_id = ?', [fileId]).length, 0);
+      expect(database.select('SELECT * FROM variables WHERE file_id = ?', [fileId]).length, 0);
+      expect(database.select('SELECT * FROM annotations WHERE file_id = ?', [fileId]).length, 0);
+    });
+
+    test('returns error for missing path', () async {
+      final result = await indexOps.autoIndex({});
       final text = result.content.first.toJson()['text'] as String;
 
       expect(text, contains('path is required'));
     });
 
-    test('returns error for non-existent file', () {
-      final result = indexOps.autoIndex({
+    test('returns error for non-existent file', () async {
+      final result = await indexOps.autoIndex({
         'path': 'lib/nonexistent.dart',
       });
       final text = result.content.first.toJson()['text'] as String;
@@ -1576,11 +1598,11 @@ enum Status { active, inactive, pending }
       expect(text, contains('File not found'));
     });
 
-    test('updates existing entry on re-index', () {
+    test('updates existing entry on re-index', () async {
       // First auto-index
-      indexOps.autoIndex({
+      await indexOps.autoIndex({
         'path': 'lib/sample.dart',
-        'description': 'Original description',
+        'short_summary': 'Original description',
       });
 
       // Verify initial state
@@ -1589,10 +1611,10 @@ enum Status { active, inactive, pending }
       expect(filesBefore.length, 1);
       final originalId = filesBefore.first['id'] as String;
 
-      // Re-index with different description
-      final result = indexOps.autoIndex({
+      // Re-index with different short_summary
+      final result = await indexOps.autoIndex({
         'path': 'lib/sample.dart',
-        'description': 'Updated description',
+        'short_summary': 'Updated description',
       });
       final text = result.content.first.toJson()['text'] as String;
 
@@ -1603,10 +1625,10 @@ enum Status { active, inactive, pending }
           "SELECT * FROM files WHERE path = 'lib/sample.dart'");
       expect(filesAfter.length, 1);
       expect(filesAfter.first['id'], originalId);
-      expect(filesAfter.first['description'], 'Updated description');
+      expect(filesAfter.first['short_summary'], 'Updated description');
     });
 
-    test('auto-index respects allowed paths', () {
+    test('auto-index respects allowed paths', () async {
       final restrictedOps = IndexOperations(
         database: database,
         workingDir: workingDir,
@@ -1614,24 +1636,24 @@ enum Status { active, inactive, pending }
       );
 
       // File inside allowed path should work
-      final result = restrictedOps.autoIndex({
+      final result = await restrictedOps.autoIndex({
         'path': 'lib/sample.dart',
       });
       final text = result.content.first.toJson()['text'] as String;
       expect(text, contains('"success": true'));
 
       // File outside allowed path should fail
-      final result2 = restrictedOps.autoIndex({
+      final result2 = await restrictedOps.autoIndex({
         'path': 'pubspec.yaml',
       });
       final text2 = result2.content.first.toJson()['text'] as String;
-      expect(text2, contains('not allowed'));
+      expect(text2, contains('outside allowed paths'));
     });
 
-    test('auto-indexed file is searchable via FTS', () {
-      indexOps.autoIndex({
+    test('auto-indexed file is searchable via FTS', () async {
+      await indexOps.autoIndex({
         'path': 'lib/sample.dart',
-        'description': 'Sample service module',
+        'short_summary': 'Sample service module',
       });
 
       // Search by export name
@@ -1639,10 +1661,156 @@ enum Status { active, inactive, pending }
       final text = result.content.first.toJson()['text'] as String;
       expect(text, contains('lib/sample.dart'));
 
-      // Search by description
+      // Search by short_summary (written to FTS description column)
       final result2 = searchOps.search({'query': 'Sample service'});
       final text2 = result2.content.first.toJson()['text'] as String;
       expect(text2, contains('lib/sample.dart'));
+    });
+
+    test('layer 3 symbol_summaries are applied to exports', () async {
+      final result = await indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+        'symbol_summaries': {
+          'SampleService': 'A service that processes samples',
+          'runService': 'Runs the given service',
+        },
+      });
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"success": true'));
+
+      // Verify descriptions were applied
+      final fileId = database.select(
+          "SELECT id FROM files WHERE path = 'lib/sample.dart'").first['id'] as String;
+      final sampleExport = database.select(
+          "SELECT description FROM exports WHERE file_id = ? AND name = 'SampleService' AND kind = 'class'",
+          [fileId]).first;
+      expect(sampleExport['description'], 'A service that processes samples');
+
+      final runExport = database.select(
+          "SELECT description FROM exports WHERE file_id = ? AND name = 'runService'",
+          [fileId]).first;
+      expect(runExport['description'], 'Runs the given service');
+    });
+
+    test('layers_present reflects which layers were populated', () async {
+      // Only layer 0 and 2 (no short_summary, no symbol_summaries)
+      await indexOps.autoIndex({
+        'path': 'lib/sample.dart',
+        'layers': [0, 2],
+      });
+      final files = database.select(
+          "SELECT layers_present FROM files WHERE path = 'lib/sample.dart'");
+      expect(files.first['layers_present'], '[0,2]');
+    });
+  });
+
+  group('Usages operation', () {
+    late SearchOperations searchOps;
+
+    setUp(() {
+      searchOps = SearchOperations(database: database, workingDir: workingDir);
+
+      // Create a file and insert external_symbol_usages manually for testing
+      final now = DateTime.now().toUtc().toIso8601String();
+      database.execute('''
+        INSERT INTO files (id, path, name, file_type, file_hash, analysis_status, created_at, updated_at)
+        VALUES ('file1', 'lib/main.dart', 'main.dart', 'dart', 'abc123', 'fresh', ?, ?)
+      ''', [now, now]);
+
+      database.execute('''
+        INSERT INTO external_symbol_usages (id, file_id, module, source_path, symbol, symbol_kind, dot_path, reference_count, created_at, updated_at)
+        VALUES ('u1', 'file1', 'path', 'path', 'join', 'function', 'path.path.join', 3, ?, ?)
+      ''', [now, now]);
+
+      database.execute('''
+        INSERT INTO external_symbol_usages (id, file_id, module, source_path, symbol, symbol_kind, dot_path, reference_count, created_at, updated_at)
+        VALUES ('u2', 'file1', 'dart', 'io', 'File', 'class', 'dart.io.File', 5, ?, ?)
+      ''', [now, now]);
+
+      // Second file
+      database.execute('''
+        INSERT INTO files (id, path, name, file_type, file_hash, analysis_status, created_at, updated_at)
+        VALUES ('file2', 'lib/utils.dart', 'utils.dart', 'dart', 'def456', 'fresh', ?, ?)
+      ''', [now, now]);
+
+      database.execute('''
+        INSERT INTO external_symbol_usages (id, file_id, module, source_path, symbol, symbol_kind, dot_path, reference_count, created_at, updated_at)
+        VALUES ('u3', 'file2', 'dart', 'io', 'File', 'class', 'dart.io.File', 2, ?, ?)
+      ''', [now, now]);
+    });
+
+    test('returns all usages when no filters', () {
+      final result = searchOps.usages({});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 3'));
+    });
+
+    test('filters by symbol', () {
+      final result = searchOps.usages({'symbol': 'File'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 2'));
+      expect(text, contains('dart.io.File'));
+    });
+
+    test('filters by module', () {
+      final result = searchOps.usages({'module': 'path'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 1'));
+      expect(text, contains('path.path.join'));
+    });
+
+    test('filters by source_path', () {
+      final result = searchOps.usages({'source_path': 'io'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 2'));
+    });
+
+    test('filters by dot_path_pattern', () {
+      final result = searchOps.usages({'dot_path_pattern': 'dart.io'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 2'));
+    });
+
+    test('filters by kind', () {
+      final result = searchOps.usages({'kind': 'function'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 1'));
+      expect(text, contains('join'));
+    });
+
+    test('filters by path_pattern', () {
+      final result = searchOps.usages({'path_pattern': 'utils'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 1'));
+      expect(text, contains('lib/utils.dart'));
+    });
+
+    test('returns expected row shape', () {
+      final result = searchOps.usages({'symbol': 'join'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"path": "lib/main.dart"'));
+      expect(text, contains('"dot_path": "path.path.join"'));
+      expect(text, contains('"symbol": "join"'));
+      expect(text, contains('"module": "path"'));
+      expect(text, contains('"source_path": "path"'));
+      expect(text, contains('"kind": "function"'));
+      expect(text, contains('"reference_count": 3'));
+    });
+
+    test('combines multiple filters', () {
+      final result = searchOps.usages({
+        'symbol': 'File',
+        'path_pattern': 'main',
+      });
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 1'));
+      expect(text, contains('lib/main.dart'));
+    });
+
+    test('returns empty for no matches', () {
+      final result = searchOps.usages({'symbol': 'NonExistent'});
+      final text = result.content.first.toJson()['text'] as String;
+      expect(text, contains('"count": 0'));
     });
   });
 

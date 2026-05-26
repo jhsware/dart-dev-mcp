@@ -1,12 +1,28 @@
+import 'dart:io';
+
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 /// Search operations handler for the code-index MCP server.
 class SearchOperations {
   final Database database;
+  final Directory workingDir;
+  final List<String> allowedPaths;
 
-  SearchOperations({required this.database});
+  SearchOperations({required this.database, required this.workingDir, this.allowedPaths = const []});
+
+  /// Check if a relative path is allowed. Returns an out-of-scope response if not.
+  CallToolResult? _checkAllowed(String relativePath) {
+    if (allowedPaths.isEmpty) return null;
+    final absolutePath = p.normalize(p.join(workingDir.path, relativePath));
+    if (isAllowedPath(allowedPaths, absolutePath)) return null;
+    return outOfScopeResponse(
+      path: relativePath,
+      allowedPaths: getAllowedRelativePaths(workingDir, allowedPaths),
+    );
+  }
 
   /// Search the code index for files matching given criteria.
   ///
@@ -21,6 +37,13 @@ class SearchOperations {
     final pathPattern = args?['path_pattern'] as String?;
     final descriptionPattern = args?['description_pattern'] as String?;
     final limit = args?['limit'] as int? ?? 50;
+
+    // If path_pattern looks like a specific path, check allowed
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      if (_checkAllowed(pathPattern) case final error?) {
+        return error;
+      }
+    }
 
     final joins = <String>{};
     final conditions = <String>[];
@@ -201,13 +224,16 @@ class SearchOperations {
 
   /// Find all files that import a given path.
   ///
-
   /// Given an import path (or pattern), returns all indexed files whose
   /// imports match. Results include file metadata and exports summary.
   CallToolResult dependents(Map<String, dynamic>? args) {
     final importPath = args?['path'] as String?;
 
     if (requireString(importPath, 'path') case final error?) {
+      return error;
+    }
+
+    if (_checkAllowed(importPath!) case final error?) {
       return error;
     }
 
@@ -271,6 +297,10 @@ class SearchOperations {
       return error;
     }
 
+    if (_checkAllowed(path!) case final error?) {
+      return error;
+    }
+
     // Look up the file
     final fileResult = database.select(
       'SELECT id, path, name, description, file_type FROM files WHERE path = ?',
@@ -278,7 +308,7 @@ class SearchOperations {
     );
 
     if (fileResult.isEmpty) {
-      return notFoundError('File', path!);
+      return notFoundError('File', path);
     }
 
     final file = fileResult.first;
@@ -344,6 +374,13 @@ class SearchOperations {
     final pathPattern = args?['path_pattern'] as String?;
     final fileType = args?['file_type'] as String?;
     final limit = args?['limit'] as int? ?? 100;
+
+    // If path_pattern looks like a specific path, check allowed
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      if (_checkAllowed(pathPattern) case final error?) {
+        return error;
+      }
+    }
 
     final conditions = <String>[];
     final values = <Object?>[];
@@ -413,6 +450,85 @@ class SearchOperations {
       'filters': filters,
     });
   }
+
+  /// Search external symbol usages across the codebase.
+  ///
+  /// Supports filtering by symbol, module, source_path, dot_path_pattern,
+  /// kind, and path_pattern.
+  CallToolResult usages(Map<String, dynamic>? args) {
+    final symbol = args?['symbol'] as String?;
+    final module = args?['module'] as String?;
+    final sourcePath = args?['source_path'] as String?;
+    final dotPathPattern = args?['dot_path_pattern'] as String?;
+    final kind = args?['kind'] as String?;
+    final pathPattern = args?['path_pattern'] as String?;
+
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      if (_checkAllowed(pathPattern) case final error?) {
+        return error;
+      }
+    }
+
+    final conditions = <String>[];
+    final values = <Object?>[];
+
+    if (symbol != null && symbol.isNotEmpty) {
+      conditions.add('u.symbol = ?');
+      values.add(symbol);
+    }
+    if (module != null && module.isNotEmpty) {
+      conditions.add('u.module = ?');
+      values.add(module);
+    }
+    if (sourcePath != null && sourcePath.isNotEmpty) {
+      conditions.add('u.source_path = ?');
+      values.add(sourcePath);
+    }
+    if (dotPathPattern != null && dotPathPattern.isNotEmpty) {
+      conditions.add('u.dot_path LIKE ?');
+      values.add('%$dotPathPattern%');
+    }
+    if (kind != null && kind.isNotEmpty) {
+      conditions.add('u.symbol_kind = ?');
+      values.add(kind);
+    }
+    if (pathPattern != null && pathPattern.isNotEmpty) {
+      conditions.add('f.path LIKE ?');
+      values.add('%$pathPattern%');
+    }
+
+    final whereClause =
+        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+
+    final sql = '''
+      SELECT f.path, u.dot_path, u.symbol, u.module, u.source_path,
+             u.symbol_kind as kind, u.reference_count
+      FROM external_symbol_usages u
+      JOIN files f ON u.file_id = f.id
+      $whereClause
+      ORDER BY u.reference_count DESC, f.path
+    ''';
+
+    final result = database.select(sql, values);
+
+    final matches = result
+        .map((row) => {
+              'path': row['path'] as String,
+              'dot_path': row['dot_path'] as String,
+              'symbol': row['symbol'] as String,
+              'module': row['module'] as String,
+              'source_path': row['source_path'] as String,
+              'kind': row['kind'],
+              'reference_count': row['reference_count'] as int,
+            })
+        .toList();
+
+    return jsonResult({
+      'matches': matches,
+      'count': matches.length,
+    });
+  }
+
   /// Get aggregate statistics about the code index.
   ///
   /// Returns counts for files (by type), exports (by kind), variables,

@@ -87,22 +87,24 @@ void main(List<String> arguments) async {
   );
 
   // Register the code-index tool
+  // Register the code-index tool
   server.registerTool(
     'code-index',
     description: '''Maintains a searchable index of code files in a project.
 
 Operations:
-- index-file: Add or update a file entry in the code index
-- auto-index: Automatically read and index a file, extracting all metadata (imports, exports, variables, annotations) programmatically for Dart files
+- auto-index: Layer-aware indexing of a file. Computes filesystem metadata (layer 0), extracts declarations and external usages for Dart files (layer 2), accepts LLM-provided summary (layer 1) and per-symbol descriptions (layer 3). For non-Dart files, accepts structural fields (exports, variables, imports, annotations).
 - search: Search the index for files matching criteria
 - show-file: Show full indexed information for a specific file
 - dependents: Find all files that import a given path
 - dependencies: Get all imports for a file with internal/external classification
+- usages: Search external symbol usages by symbol, module, source_path, dot_path_pattern, kind, path_pattern
 - search-annotations: Search TODO/FIXME/HACK annotations across the codebase
 - stats: Get aggregate statistics about the code index (files, exports, imports, annotations)
 - diff: Scan directories and report changed/added/deleted files
 - overview: Get a compact overview of all indexed files with descriptions and export names
-- file-summary: Show a file's exports grouped by class and variables, without heavy metadata''',
+- file-summary: Show a file's exports grouped by class and variables, without heavy metadata
+- is-allowed: Check if a path is within the allowed paths for this project''',
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
@@ -113,44 +115,54 @@ Operations:
           description: 'The operation to perform',
           enumValues: _validOperations,
         ),
-        // index-file parameters
+        // auto-index parameters
         'path': JsonSchema.string(
           description:
-              'Relative path from project root (for index-file, show-file, dependents, dependencies)',
+              'Relative path from project root (for auto-index, show-file, dependents, dependencies)',
         ),
-        'name': JsonSchema.string(
-          description: 'File name (for index-file)',
+        'layers': JsonSchema.array(
+          items: JsonSchema.integer(),
+          description:
+              'Which layers to produce (for auto-index, default [0,1,2,3]). 0=filesystem metadata, 1=short_summary, 2=declarations+usages, 3=per-symbol descriptions',
+        ),
+        'short_summary': JsonSchema.string(
+          description:
+              'LLM-provided file summary (for auto-index, layer 1)',
+        ),
+        'symbol_summaries': JsonSchema.object(
+          description:
+              'Map of symbol_name → description (for auto-index, layer 3). Applied to matching exports.',
         ),
         'description': JsonSchema.string(
-          description: 'Description of what the file does (for index-file)',
+          description: 'Description of what the file does (for auto-index non-Dart files)',
         ),
         'file_type': JsonSchema.string(
           description:
-              'File type e.g. "dart", "yaml", "json" (for index-file, search)',
+              'File type e.g. "dart", "yaml", "json" (for search)',
         ),
         'exports': JsonSchema.array(
           items: JsonSchema.object(),
           description:
-              'Exported symbols (for index-file). Each item: {name, kind, parameters?, description?, parent_name?}',
+              'Exported symbols (for auto-index, non-Dart files). Each item: {name, kind, parameters?, description?, parent_name?}',
         ),
         'variables': JsonSchema.array(
           items: JsonSchema.object(),
           description:
-              'Exported variables (for index-file). Each item: {name, description?}',
+              'Exported variables (for auto-index, non-Dart files). Each item: {name, description?}',
         ),
         'imports': JsonSchema.array(
           items: JsonSchema.string(),
-          description: 'Import paths (for index-file)',
+          description: 'Import paths (for auto-index, non-Dart files)',
         ),
         'annotations': JsonSchema.array(
           items: JsonSchema.object(),
           description:
-              'Code annotations (for index-file). Each item: {kind, message?, line?}. Kinds: TODO, FIXME, HACK, NOTE, DEPRECATED',
+              'Code annotations (for auto-index, non-Dart files). Each item: {kind, message?, line?}. Kinds: TODO, FIXME, HACK, NOTE, DEPRECATED',
         ),
         // search parameters
         'query': JsonSchema.string(
           description:
-              'General text search across file names, descriptions, export names, export descriptions, variable names (for search). Multiple keywords are joined with OR — files matching more keywords rank higher via BM25. Each keyword uses prefix matching (e.g. "add" matches "addTask"). For AND semantics, run separate searches or use other filters.',
+              'General text search across file names, descriptions, export names, export descriptions, variable names, external symbols (for search). Multiple keywords are joined with OR — files matching more keywords rank higher via BM25. Each keyword uses prefix matching (e.g. "add" matches "addTask"). For AND semantics, run separate searches or use other filters.',
         ),
         'name_pattern': JsonSchema.string(
           description: 'Filter by file name pattern (for search)',
@@ -167,7 +179,7 @@ Operations:
           description: 'Search by import path pattern (for search)',
         ),
         'path_pattern': JsonSchema.string(
-          description: 'Filter by file path pattern (for search)',
+          description: 'Filter by file path pattern (for search, usages)',
         ),
         'description_pattern': JsonSchema.string(
           description: 'Search in file descriptions (for search)',
@@ -176,10 +188,23 @@ Operations:
           description:
               'Max results (for search, search-annotations, default 50)',
         ),
+        // usages parameters
+        'symbol': JsonSchema.string(
+          description: 'Exact symbol name to search for (for usages)',
+        ),
+        'module': JsonSchema.string(
+          description: 'Package/module name filter (for usages)',
+        ),
+        'source_path': JsonSchema.string(
+          description: 'Dot-notation source path filter (for usages)',
+        ),
+        'dot_path_pattern': JsonSchema.string(
+          description: 'LIKE pattern for full dot_path (for usages)',
+        ),
         // search-annotations parameters
         'kind': JsonSchema.string(
           description:
-              'Annotation kind filter: TODO, FIXME, HACK, NOTE, DEPRECATED (for search-annotations)',
+              'Annotation kind filter: TODO, FIXME, HACK, NOTE, DEPRECATED (for search-annotations). Symbol kind filter (for usages): class, function, method, enum, etc.',
         ),
         'message_pattern': JsonSchema.string(
           description:
@@ -230,17 +255,18 @@ void _printUsage() {
 }
 
 const _validOperations = [
-  'index-file',
   'auto-index',
   'search',
   'show-file',
   'dependents',
   'dependencies',
+  'usages',
   'search-annotations',
   'stats',
   'diff',
   'overview',
-  'file-summary'
+  'file-summary',
+  'is-allowed',
 ];
 
 Future<CallToolResult> _handleCodeIndex(
@@ -264,13 +290,36 @@ Future<CallToolResult> _handleCodeIndex(
     return error;
   }
 
-  // Get or create database for this project
-  final database = getDatabase(projectDir!);
-  final workingDir = Directory(projectDir);
+  final workingDir = Directory(projectDir!);
 
   // Resolve allowed paths from ProjectConfigService
   final allowedPaths =
       ProjectConfigService.getAllowedPaths(projectDir, 'code-index');
+
+  // Handle is-allowed without needing a database
+  if (operation == 'is-allowed') {
+    final path = args['path'] as String?;
+    if (requireString(path, 'path') case final error?) {
+      return error;
+    }
+    final relativePaths = getAllowedRelativePaths(workingDir, allowedPaths);
+    if (allowedPaths.isEmpty) {
+      return jsonResult({
+        'allowed': true,
+        'path': path,
+        'allowed_paths': relativePaths,
+      });
+    }
+    final absolutePath = p.normalize(p.join(workingDir.path, path!));
+    return jsonResult({
+      'allowed': isAllowedPath(allowedPaths, absolutePath),
+      'path': path,
+      'allowed_paths': relativePaths,
+    });
+  }
+
+  // Get or create database for this project
+  final database = getDatabase(projectDir);
 
   // Create operation handlers for this project
   final indexOps = IndexOperations(
@@ -278,8 +327,16 @@ Future<CallToolResult> _handleCodeIndex(
     workingDir: workingDir,
     allowedPaths: allowedPaths,
   );
-  final searchOps = SearchOperations(database: database);
-  final browseOps = BrowseOperations(database: database);
+  final searchOps = SearchOperations(
+    database: database,
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
+  final browseOps = BrowseOperations(
+    database: database,
+    workingDir: workingDir,
+    allowedPaths: allowedPaths,
+  );
   final diffOps = DiffOperations(
     database: database,
     workingDir: workingDir,
@@ -288,10 +345,8 @@ Future<CallToolResult> _handleCodeIndex(
 
   try {
     switch (operation) {
-      case 'index-file':
-        return indexOps.indexFile(args);
       case 'auto-index':
-        return indexOps.autoIndex(args);
+        return await indexOps.autoIndex(args);
       case 'search':
         return searchOps.search(args);
       case 'show-file':
@@ -300,6 +355,8 @@ Future<CallToolResult> _handleCodeIndex(
         return searchOps.dependents(args);
       case 'dependencies':
         return searchOps.dependencies(args);
+      case 'usages':
+        return searchOps.usages(args);
       case 'search-annotations':
         return searchOps.searchAnnotations(args);
       case 'stats':
