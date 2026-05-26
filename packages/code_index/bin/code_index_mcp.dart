@@ -261,6 +261,21 @@ void _printUsage() {
       '  --planner-data-root=PATH  Root directory for planner data (required)');
   stderr.writeln('  --help, -h                Show this help message');
   stderr.writeln('');
+  stderr.writeln('Operations:');
+  stderr.writeln('  auto-index          Layer-aware indexing of a file');
+  stderr.writeln('  auto-scan           Scan directories and produce an indexing plan');
+  stderr.writeln('  get-file            Get a single file with layered data');
+  stderr.writeln('  get-files           Get multiple files with layered data');
+  stderr.writeln('  search              Search the index for files matching criteria');
+  stderr.writeln('  dependents          Find all files that import a given path');
+  stderr.writeln('  dependencies        Get all imports for a file');
+  stderr.writeln('  usages              Search external symbol usages');
+  stderr.writeln('  search-annotations  Search TODO/FIXME/HACK annotations');
+  stderr.writeln('  stats               Get aggregate statistics about the code index');
+  stderr.writeln('  diff                Scan directories and report changed/added/deleted files');
+  stderr.writeln('  overview            Get a compact overview of all indexed files');
+  stderr.writeln('  is-allowed          Check if a path is within the allowed paths');
+  stderr.writeln('');
   stderr.writeln(
       'DB paths are inferred as: [planner-data-root]/projects/[project-dir-name]/db/code_index.db');
   stderr.writeln(
@@ -374,7 +389,6 @@ Future<CallToolResult> _handleCodeIndex(
       case 'auto-scan':
         return autoScanOps.autoScan(args);
       case 'get-file':
-        return browseOps.getFile(args);
         return browseOps.getFile(args);
       case 'get-files':
         return browseOps.getFiles(args);
