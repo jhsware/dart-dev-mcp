@@ -1,6 +1,6 @@
 ---
 name: code-index
-description: Index code files for quick and token efficient exploration and search in code base.
+description: Query the layered code index for token-efficient codebase exploration and search.
 allowed-tools: filesystem, code-index
 model: haiku
 context: fork
@@ -9,146 +9,123 @@ agent: code-index-agent
 
 ## Purpose
 
-The code-index maintains a searchable database of file metadata (exports, imports, variables, annotations) so that agents can explore and search the codebase without reading full source files. This saves significant context tokens — `show-file` returns ~100-200 tokens vs ~500-5000+ tokens for reading source.
+The code-index is a persistent, layered database of file metadata so you can explore and search the codebase without reading full source files. Querying the index costs ~30–400 tokens per file vs ~500–5000+ tokens for reading source.
 
-## Indexing Workflow
+This skill is the **consumer-side** guide — it teaches you how to **query** the index. The indexing workflow (how to *write* to the index) lives in `code-index-agent`.
 
-> **IMPORTANT: Always start with `diff`**
-> Before any exploration or search, always run `code-index diff` first to detect changed/new files. Then index/re-index those files. This ensures the index is fresh for subsequent operations.
+## Layered Information Model
 
-### Step 1 — Detect files that need indexing
+Every indexed file stores five layers. Always start with the cheapest layer that answers your question.
 
-Use `code-index diff` to compare the filesystem against the index:
+| Layer | Name | Tokens | What it tells you |
+|------:|------|-------:|-------------------|
+| 0 | Metadata | ~30–60 | Path, file type, size, hash, staleness |
+| 1 | Short summary | ~20–40 | One-sentence description of what the file does |
+| 2 | Declarations & usages | ~100–400 | All exports, imports, variables, annotations with signatures |
+| 3 | Per-symbol summaries | ~200–800 | One-sentence description per public symbol |
+| 4 | Public API | ~50–200 | Layer 2 filtered to public symbols only |
 
-```
-code-index: diff
-# → Scans entire project from root. Returns: changed: [...], added: [...], deleted: [...]
+**Cheap before expensive:** start with `overview` (layer 0+1 across files), then drill into `get-file` with layer 2/3 only when needed.
 
-# Or filter to specific directories:
-code-index: diff (directories: ["lib", "test"], file_extensions: [".dart"])
-```
+## Layer Selection
 
-Parameters:
-- `directories` (optional, default: ["."]): Array of directories to scan relative to project root. When omitted, scans the entire project from root.
-- `file_extensions` (optional): Array of extensions to include, e.g. `[".dart", ".yaml"]`
-- `remove_deleted` (optional, default true): Automatically remove deleted files from the index
-
-### Step 2 — Read and analyze files
-
-For each file that needs indexing (changed + added from diff), read the source:
+`get-file` accepts a `layers` parameter and defaults to `[0, 1, 4]` — enough for most decisions without pulling in every symbol description.
 
 ```
-filesystem: read-file (path: "lib/src/my_class.dart")
+code-index: get-file
+  path: "lib/src/database.dart"
+  layers: [0, 1]           # just metadata + summary
 ```
 
-For Dart files, you only need to understand the file well enough to write a one-line description. All structural metadata (exports, imports, variables, annotations) is extracted automatically by `auto-index`. For non-Dart files, you still need to extract all metadata manually.
-
-For large batches (>10 files), spawn code-index-agent sub-agents with batches of 5-10 file paths each to avoid exhausting context.
-
-### Step 3 — Index each file
-
-**Dart files (recommended: use `auto-index`):**
+To get full detail including per-symbol summaries:
 
 ```
-code-index: auto-index
-  path: "lib/src/models/user.dart"
-  description: "User model with authentication and profile data"
+code-index: get-file
+  path: "lib/src/database.dart"
+  layers: [0, 1, 2, 3]
 ```
 
-The `auto-index` operation reads the file, programmatically extracts all structural metadata (imports, exports, variables, annotations), and stores everything in the index. You only need to provide the `path` and an optional `description`.
+## Handling `needs_reindex`
 
-**Non-Dart files (use `index-file` with manual extraction):**
+Every read response can include a `needs_reindex` array of files whose on-disk content has changed since they were last indexed:
 
-```
-code-index: index-file
-  path: "pubspec.yaml"
-  name: "pubspec.yaml"
-  description: "Package configuration"
-  file_type: "yaml"
-```
-
-For non-Dart files, `auto-index` still works but only stores path, name, file_type, and description. If you want to add exports/imports metadata for non-Dart files, use `index-file` with manually extracted properties.
-
-## auto-index operation (recommended for Dart files)
-
-Automatically reads a Dart source file and extracts all metadata programmatically:
-- Imports, exports (classes, functions, methods, enums, typedefs, extensions, mixins)
-- Variables (top-level const/final/var)
-- Annotations (TODO/FIXME/HACK/NOTE/DEPRECATED)
-- File type and name auto-detected from path
-
-Parameters:
-
-| Parameter | Required | Description |
-|---|---|---|
-| `path` | Yes | Relative path from project root |
-| `description` | No | One-line summary of what the file does (LLM-provided) |
-
-Example:
-```
-code-index: auto-index
-  path: "lib/src/models/user.dart"
-  description: "User model with authentication and profile data"
+```json
+{
+  "data": { ... },
+  "needs_reindex": [
+    { "path": "lib/src/foo.dart", "reason": "changed" },
+    { "path": "lib/src/bar.dart", "reason": "changed" }
+  ]
+}
 ```
 
-The agent only needs to read the file to write a description — all structural extraction is handled automatically. This is more reliable than manual extraction because it uses deterministic parsing rather than LLM interpretation.
+**Decision rule:** if correctness matters for the current question, spawn `code-index-agent` with the batch as input. Otherwise, continue with the stale data — it is usually close enough.
 
-### index-file parameter reference
+```
+Spawn code-index-agent with:
+{
+  "needs_reindex": [
+    { "path": "lib/src/foo.dart", "reason": "changed" },
+    { "path": "lib/src/bar.dart", "reason": "changed" }
+  ]
+}
+```
 
-| Parameter | Required | Description |
-|---|---|---|
-| `path` | Yes | Relative path from project root |
-| `name` | Yes | File name (e.g., "user.dart") |
-| `description` | No | What the file does |
-| `file_type` | No | Language/type (e.g., "dart", "yaml", "json") |
-| `exports` | No | Array of exported symbols |
-| `variables` | No | Array of top-level variables |
-| `imports` | No | Array of import path strings |
-| `annotations` | No | Array of TODO/FIXME/HACK/NOTE/DEPRECATED |
+## Handling `out_of_scope`
 
-**Export object properties:** `name` (required), `kind` (required: class, method, function, class_member, enum, typedef, extension, mixin), `parameters` (optional), `description` (optional), `parent_name` (optional — for methods/members, the owning class)
+When you query a file outside the configured `code-index` allowed paths, you get a structured response:
 
-**Variable object properties:** `name` (required), `description` (optional)
+```json
+{ "status": "out_of_scope", "allowed_paths": ["lib", "bin", "test"] }
+```
 
-**Annotation object properties:** `kind` (required: TODO, FIXME, HACK, NOTE, DEPRECATED), `message` (optional), `line` (optional)
+This is normal. The index cannot answer about this file — read it yourself with `filesystem read-file`.
 
-## Analysis Guidelines (for manual `index-file` — non-Dart files)
+## When to Spawn `code-index-agent`
 
-When manually analyzing a source file to extract index properties (not needed for Dart files using `auto-index`):
+1. **Session start** — run `auto-scan` (with `rebuild: false` unless you need a full rebuild), then hand the returned plan to `code-index-agent`:
 
-1. **Exports**: Identify all public classes, functions, methods, enums, typedefs, extensions, and mixins. For methods, set `parent_name` to the containing class. Include parameter signatures.
-2. **Variables**: Identify top-level constants and variables (not local or class members — those go as exports with kind `class_member`).
-3. **Imports**: Extract all import statements as path strings.
-4. **Annotations**: Look for `// TODO:`, `// FIXME:`, `// HACK:`, `// NOTE:`, and `@deprecated` / `// DEPRECATED:` comments. Include the message and line number.
-5. **Description**: Write a concise one-line summary of what the file does.
+   ```
+   code-index: auto-scan
+   # → { plan: [...], out_of_scope: [...], allowed_paths: [...] }
 
-## Batch Indexing Strategy
+   Spawn code-index-agent with the plan object
+   ```
 
-When indexing a large number of files:
+2. **On demand** — when `needs_reindex` is non-empty and freshness matters for your current question, spawn `code-index-agent` with the `needs_reindex` array.
 
-- Process files in batches of 5-10 per sub-agent invocation
-- Group files by directory or feature area for coherent batches
-- After all batches complete, use `code-index stats` to verify the index is complete
-- Use `code-index diff` again to confirm no files were missed
+3. **Routine reads** — do NOT spawn the agent. Just query the index directly.
 
-## Exploration Operations Reference
+## Operation Reference
 
-After indexing, these operations are available for exploring the codebase:
+All operations require the `project_dir` parameter.
 
-- **overview** — Compact listing of all indexed files with path, description, file_type, and export names as "name (kind)" strings. Use `path_pattern` and `file_type` to filter. Returns ~50-100 tokens for an entire codebase.
-- **file-summary** (path) — Shows a file's exports grouped by class, with descriptions and parameters. Lighter than `show-file` (excludes imports, annotations, timestamps). Use to understand a file's API surface.
-- **search** (query + filters) — FTS5 keyword search across file names, descriptions, export names, variable names. Supports filters: `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`, `description_pattern`. **Limitation:** keyword-based only, no phrase search. Multi-word queries match independent keywords joined by AND. For phrase/regex, use `filesystem search-text`.
-- **show-file** (path) — Full indexed info including exports, imports, variables, and annotations. Use when you need the complete picture.
-- **dependents** (path) — Find all files that import a given path.
-- **dependencies** (path) — Get a file's imports classified as internal (indexed) or external.
-- **search-annotations** — Find TODO/FIXME/HACK/NOTE/DEPRECATED across the codebase. Filter by `kind`, `path_pattern`, `message_pattern`, `file_type`.
-- **stats** — Aggregate counts: files by type, exports by kind, top imports, annotations by kind.
+### Querying
 
-## Error Handling
+| Operation | Description | Key parameters |
+|-----------|-------------|----------------|
+| `overview` | Compact listing of all indexed files (layer 0+1): path, description, file type, export names. | `path_pattern`, `file_type` |
+| `get-file` | Single file with selected layers. Default layers: `[0, 1, 4]`. | `path`, `layers` |
+| `get-files` | Batched `get-file` for multiple files at once. | `paths`, `layers` |
+| `search` | FTS5 keyword search across names, descriptions, exports, variables. Multi-word = AND. | `query`, `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`, `description_pattern` |
+| `usages` | Find all usages of a symbol across indexed files. | `symbol` |
+| `dependents` | Find all files that import a given path. | `path` |
+| `dependencies` | Get a file's imports classified as internal or external. | `path` |
+| `search-annotations` | Find TODO/FIXME/HACK/NOTE/DEPRECATED across the codebase. | `kind`, `path_pattern`, `message_pattern`, `file_type` |
+| `stats` | Aggregate counts: files by type, exports by kind, top imports, annotations. | — |
+| `is-allowed` | Check whether a path is inside the `code-index` allowed paths. | `path` |
 
-- **File read fails**: Skip the file and continue with the next. Report skipped files at the end.
-- **index-file fails**: Check that `path` and `name` are provided (required fields). Retry once, then skip and report.
-- **Large file**: If a file is too large to fit in context, focus on extracting exports and imports (the most useful parts for search). Skip detailed parameter extraction if needed.
+### Scanning (triggers indexing via agent)
+
+| Operation | Description | Key parameters |
+|-----------|-------------|----------------|
+| `auto-scan` | Walk the project, diff against the index, return a plan for `code-index-agent`. Does NOT index anything itself. | `rebuild`, `since` |
+
+### Indexing (used by `code-index-agent`, not by consumers)
+
+| Operation | Description |
+|-----------|-------------|
+| `auto-index` | Write layers for a single file. Called by the agent, not by consumers. |
 
 ## Tool Reference
 
