@@ -106,7 +106,6 @@ CallToolResult validationError(String field, String message) {
 /// ```
 CallToolResult notFoundError(String resourceType, String resourceId) {
   return textResult('Error: $resourceType not found: $resourceId');
-  return textResult('Error: $resourceType not found: $resourceId');
 }
 
 /// Creates a structured out-of-scope response for path restriction violations.
