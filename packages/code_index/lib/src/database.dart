@@ -3,10 +3,15 @@ import 'dart:io';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-/// Current schema version. Increment when making schema changes.
-const int currentSchemaVersion = 4;
+/// Schema version stamp for diagnostics. This is a clean-break schema —
+/// no migrations exist. If the version on disk differs, the database is
+/// discarded and rebuilt from scratch via [rebuildDatabase].
+const int schemaVersion = 1;
 
-/// Initialize the code-index database with WAL mode and proper configuration.
+/// Initialize the code-index database with WAL mode and the full v1 schema.
+///
+/// This must only be called on a freshly-created (empty) database file.
+/// For re-indexing, use [rebuildDatabase] which deletes the old file first.
 Database initializeDatabase(String dbPath) {
   final database = sqlite3.open(dbPath);
 
@@ -22,32 +27,70 @@ Database initializeDatabase(String dbPath) {
   // Enable foreign key enforcement
   database.execute('PRAGMA foreign_keys=ON');
 
-  // Create schema metadata table for version tracking
-  database.execute('''
-    CREATE TABLE IF NOT EXISTS schema_metadata (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  ''');
+  _createSchema(database);
 
-  // Create files table
-  database.execute('''
-    CREATE TABLE IF NOT EXISTS files (
+  return database;
+}
+
+/// Delete the existing database (and WAL/SHM sidecars) then create a fresh
+/// one via [initializeDatabase].
+///
+/// If [existingDb] is provided it will be disposed before the files are
+/// deleted — call this when you hold an open connection.
+Database rebuildDatabase(String dbPath, {Database? existingDb}) {
+  if (existingDb != null) {
+    try {
+      existingDb.dispose();
+    } catch (_) {
+      // Best-effort — the DB may already be closed.
+    }
+  }
+
+  // Delete the main DB file and WAL/SHM sidecars.
+  for (final suffix in ['', '-wal', '-shm']) {
+    final f = File('$dbPath$suffix');
+    if (f.existsSync()) {
+      f.deleteSync();
+    }
+  }
+
+  return initializeDatabase(dbPath);
+}
+
+/// Create all tables, indexes, and FTS5 virtual tables in one pass.
+void _createSchema(Database db) {
+  // -- files -----------------------------------------------------------------
+  db.execute('''
+    CREATE TABLE files (
       id TEXT PRIMARY KEY,
       path TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       description TEXT,
       file_type TEXT,
       file_hash TEXT NOT NULL,
+      size_bytes INTEGER,
+      line_count INTEGER,
+      word_count INTEGER,
+      mtime TEXT,
+      short_summary TEXT,
+      layers_present TEXT,
+      last_analyzed_at TEXT,
+      analysis_status TEXT NOT NULL DEFAULT 'pending',
+      analysis_error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   ''');
 
-  // Create exports table (methods, classes, class members)
-  database.execute('''
-    CREATE TABLE IF NOT EXISTS exports (
+  db.execute('CREATE INDEX idx_files_path ON files(path)');
+  db.execute('CREATE INDEX idx_files_file_type ON files(file_type)');
+  db.execute('CREATE INDEX idx_files_name ON files(name)');
+  db.execute(
+      'CREATE INDEX idx_files_analysis_status ON files(analysis_status)');
+
+  // -- exports (layer 2 declarations + layer 3 per-symbol summaries) ---------
+  db.execute('''
+    CREATE TABLE exports (
       id TEXT PRIMARY KEY,
       file_id TEXT NOT NULL,
       name TEXT NOT NULL,
@@ -61,9 +104,13 @@ Database initializeDatabase(String dbPath) {
     )
   ''');
 
-  // Create variables table (exported/exposed variables)
-  database.execute('''
-    CREATE TABLE IF NOT EXISTS variables (
+  db.execute('CREATE INDEX idx_exports_file_id ON exports(file_id)');
+  db.execute('CREATE INDEX idx_exports_name ON exports(name)');
+  db.execute('CREATE INDEX idx_exports_kind ON exports(kind)');
+
+  // -- variables -------------------------------------------------------------
+  db.execute('''
+    CREATE TABLE variables (
       id TEXT PRIMARY KEY,
       file_id TEXT NOT NULL,
       name TEXT NOT NULL,
@@ -74,9 +121,12 @@ Database initializeDatabase(String dbPath) {
     )
   ''');
 
-  // Create imports table
-  database.execute('''
-    CREATE TABLE IF NOT EXISTS imports (
+  db.execute('CREATE INDEX idx_variables_file_id ON variables(file_id)');
+  db.execute('CREATE INDEX idx_variables_name ON variables(name)');
+
+  // -- imports ---------------------------------------------------------------
+  db.execute('''
+    CREATE TABLE imports (
       id TEXT PRIMARY KEY,
       file_id TEXT NOT NULL,
       import_path TEXT NOT NULL,
@@ -85,50 +135,12 @@ Database initializeDatabase(String dbPath) {
     )
   ''');
 
-  // Create indexes for files table
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_files_file_type ON files(file_type)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_files_name ON files(name)');
+  db.execute('CREATE INDEX idx_imports_file_id ON imports(file_id)');
+  db.execute('CREATE INDEX idx_imports_import_path ON imports(import_path)');
 
-  // Create indexes for exports table
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_exports_file_id ON exports(file_id)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_exports_name ON exports(name)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_exports_kind ON exports(kind)');
-
-  // Create indexes for variables table
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_variables_file_id ON variables(file_id)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_variables_name ON variables(name)');
-
-  // Create indexes for imports table
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_imports_file_id ON imports(file_id)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_imports_import_path ON imports(import_path)');
-
-  // Create FTS5 virtual table for full-text search
-  database.execute('''
-    CREATE VIRTUAL TABLE IF NOT EXISTS code_search_fts USING fts5(
-      file_id UNINDEXED,
-      name,
-      description,
-      export_names,
-      export_descriptions,
-      variable_names,
-      file_path
-    )
-  ''');
-
-  // Create annotations table for TODO/FIXME/HACK tracking
-  database.execute('''
-    CREATE TABLE IF NOT EXISTS annotations (
+  // -- annotations -----------------------------------------------------------
+  db.execute('''
+    CREATE TABLE annotations (
       id TEXT PRIMARY KEY,
       file_id TEXT NOT NULL,
       kind TEXT NOT NULL,
@@ -139,122 +151,49 @@ Database initializeDatabase(String dbPath) {
     )
   ''');
 
-  // Create indexes for annotations table
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_annotations_file_id ON annotations(file_id)');
-  database.execute(
-      'CREATE INDEX IF NOT EXISTS idx_annotations_kind ON annotations(kind)');
+  db.execute(
+      'CREATE INDEX idx_annotations_file_id ON annotations(file_id)');
+  db.execute(
+      'CREATE INDEX idx_annotations_kind ON annotations(kind)');
 
-  // Run migrations to ensure schema is up to date
-  _runMigrations(database);
+  // -- external_symbol_usages (§5a.3 dot-notation references) ----------------
+  db.execute('''
+    CREATE TABLE external_symbol_usages (
+      id TEXT PRIMARY KEY,
+      file_id TEXT NOT NULL,
+      module TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      symbol_kind TEXT,
+      dot_path TEXT NOT NULL,
+      reference_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+      UNIQUE(file_id, dot_path)
+    )
+  ''');
 
-  return database;
-}
+  db.execute(
+      'CREATE INDEX idx_ext_usages_symbol ON external_symbol_usages(symbol)');
+  db.execute(
+      'CREATE INDEX idx_ext_usages_module ON external_symbol_usages(module)');
+  db.execute(
+      'CREATE INDEX idx_ext_usages_dot_path ON external_symbol_usages(dot_path)');
 
-/// Get the current schema version from the database.
-/// Returns 0 if no version has been set (fresh database).
-int _getSchemaVersion(Database database) {
-  final result = database
-      .select("SELECT value FROM schema_metadata WHERE key = 'schema_version'");
-  if (result.isEmpty) {
-    return 0;
-  }
-  return int.tryParse(result.first['value'] as String) ?? 0;
-}
-
-/// Set the schema version in the database.
-void _setSchemaVersion(Database database, int version) {
-  final now = DateTime.now().toUtc().toIso8601String();
-  database.execute('''
-    INSERT OR REPLACE INTO schema_metadata (key, value, updated_at)
-    VALUES ('schema_version', ?, ?)
-  ''', [version.toString(), now]);
-}
-
-/// Run all pending migrations to bring the schema up to date.
-void _runMigrations(Database database) {
-  final currentVersion = _getSchemaVersion(database);
-
-  // Migration from version 0 (fresh) to version 1
-  if (currentVersion < 1) {
-    logInfo('code-index', 'Running migration to schema version 1...');
-    _setSchemaVersion(database, 1);
-    logInfo('code-index', 'Migration to schema version 1 complete.');
-  }
-
-  // Migration from version 1 to version 2: Add FTS5
-  if (currentVersion < 2) {
-    logInfo('code-index', 'Running migration to schema version 2...');
-
-    // Populate FTS from existing data
-    database.execute('''
-      INSERT INTO code_search_fts (file_id, name, description, export_names, export_descriptions, variable_names, file_path)
-      SELECT 
-        f.id,
-        f.name,
-        COALESCE(f.description, ''),
-        COALESCE((SELECT GROUP_CONCAT(e.name, ' ') FROM exports e WHERE e.file_id = f.id), ''),
-        COALESCE((SELECT GROUP_CONCAT(e.description, ' ') FROM exports e WHERE e.file_id = f.id AND e.description IS NOT NULL), ''),
-        COALESCE((SELECT GROUP_CONCAT(v.name, ' ') FROM variables v WHERE v.file_id = f.id), ''),
-        f.path
-      FROM files f
-    ''');
-
-    _setSchemaVersion(database, 2);
-    logInfo('code-index', 'Migration to schema version 2 complete.');
-  }
-
-  // Migration from version 2 to version 3: Add annotations table
-  if (currentVersion < 3) {
-    logInfo('code-index', 'Running migration to schema version 3...');
-    // Table and indexes are created via CREATE IF NOT EXISTS above,
-    // so just bump the version.
-    _setSchemaVersion(database, 3);
-    logInfo('code-index', 'Migration to schema version 3 complete.');
-  }
-
-  // Migration from version 3 to version 4: Add export_descriptions to FTS5
-  if (currentVersion < 4) {
-    logInfo('code-index', 'Running migration to schema version 4...');
-
-    // Drop and recreate FTS table with new export_descriptions column
-    database.execute('DROP TABLE IF EXISTS code_search_fts');
-    database.execute('''
-      CREATE VIRTUAL TABLE code_search_fts USING fts5(
-        file_id UNINDEXED,
-        name,
-        description,
-        export_names,
-        export_descriptions,
-        variable_names,
-        file_path
-      )
-    ''');
-
-    // Repopulate FTS from existing data including export descriptions
-    database.execute('''
-      INSERT INTO code_search_fts (file_id, name, description, export_names, export_descriptions, variable_names, file_path)
-      SELECT 
-        f.id,
-        f.name,
-        COALESCE(f.description, ''),
-        COALESCE((SELECT GROUP_CONCAT(e.name, ' ') FROM exports e WHERE e.file_id = f.id), ''),
-        COALESCE((SELECT GROUP_CONCAT(e.description, ' ') FROM exports e WHERE e.file_id = f.id AND e.description IS NOT NULL), ''),
-        COALESCE((SELECT GROUP_CONCAT(v.name, ' ') FROM variables v WHERE v.file_id = f.id), ''),
-        f.path
-      FROM files f
-    ''');
-
-    _setSchemaVersion(database, 4);
-    logInfo('code-index', 'Migration to schema version 4 complete.');
-  }
-
-  // Verify we're at the expected version
-  final finalVersion = _getSchemaVersion(database);
-  if (finalVersion != currentSchemaVersion) {
-    logWarning('code-index',
-        'Schema version mismatch. Expected $currentSchemaVersion, got $finalVersion');
-  }
+  // -- FTS5 full-text search -------------------------------------------------
+  db.execute('''
+    CREATE VIRTUAL TABLE code_search_fts USING fts5(
+      file_id UNINDEXED,
+      name,
+      description,
+      export_names,
+      export_descriptions,
+      variable_names,
+      file_path,
+      external_symbols
+    )
+  ''');
 }
 
 /// Set up signal handlers for graceful shutdown.

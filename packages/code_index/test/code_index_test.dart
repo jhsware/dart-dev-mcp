@@ -45,14 +45,14 @@ void main() {
       expect(tableNames, contains('exports'));
       expect(tableNames, contains('variables'));
       expect(tableNames, contains('imports'));
-      expect(tableNames, contains('schema_metadata'));
       expect(tableNames, contains('annotations'));
+      expect(tableNames, contains('external_symbol_usages'));
     });
 
-    test('sets schema version', () {
+    test('creates FTS table with external_symbols column', () {
       final result = database.select(
-          "SELECT value FROM schema_metadata WHERE key = 'schema_version'");
-      expect(result.first['value'], '$currentSchemaVersion');
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='code_search_fts'");
+      expect(result, hasLength(1));
     });
 
     test('enables foreign keys', () {
