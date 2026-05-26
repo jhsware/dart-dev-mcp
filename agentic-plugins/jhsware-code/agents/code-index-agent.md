@@ -9,56 +9,106 @@ skills:
   - code-index 
 ---
 
-> **Prefer `auto-index` for Dart files** — it extracts all structural metadata (imports, exports, variables, annotations) automatically using deterministic parsing. You only need to provide the file path and a one-line description.
+## Contract
 
-## Indexing Modes
+The parent agent drives indexing. This agent does **not** call `diff` or `auto-scan`. Instead it receives one of two inputs and processes files in batches.
 
-> **IMPORTANT**: The diff-first workflow is essential. Always call `diff` before any exploration to ensure the index is fresh. Index/re-index changed and added files before using search, overview, or other operations.
+### Input A — `plan` from `auto-scan`
 
-### Mode 1: Index a folder
+The parent passes a JSON object:
 
-When asked to index a folder (directory):
+```json
+{
+  "plan": [{ "path": "lib/src/foo.dart", "needs": [0, 1, 2, 3] }, ...],
+  "out_of_scope": ["vendor/lib.dart", ...],
+  "allowed_paths": ["lib", "bin", "test"]
+}
+```
 
-1. Use `code-index diff` to detect changes (optionally pass `directories` to limit scope, defaults to scanning from project root)
-2. Combine changed + added files into batches of 5-10
-3. For each batch:
-   - Use `filesystem read-files` (comma-separated paths) to read all files in the batch
-   - **For Dart files**: Write a one-line description for each file, then call `code-index auto-index` with `path` and `description`. All structural metadata is extracted automatically.
-   - **For non-Dart files**: Analyze each file to extract description, file_type, exports, variables, imports, annotations. Call `code-index index-file` with the extracted properties.
-4. After all batches, use `code-index stats` to verify the index updated correctly
+- `plan[].path` — relative file path to index.
+- `plan[].needs` — which layers to produce (0=metadata, 1=short_summary, 2=declarations+usages, 3=declarations+descriptions).
+- `out_of_scope` — paths that were outside the allowed directories. Do NOT attempt to index these; include them verbatim in the final report.
+- `allowed_paths` — informational only.
 
-### Mode 2: Index a list of file paths
+### Input B — `needs_reindex` from a read response
 
-When given specific file paths to index:
+The parent passes a JSON array:
 
-1. Use `filesystem read-files` (comma-separated paths) to read the files
-2. **For Dart files (.dart)**:
-   - Read the file and write a one-line description of what it does
-   - Call `code-index auto-index` with `path` and `description`
-   - All structural metadata (exports, imports, variables, annotations) is extracted automatically
-3. **For non-Dart files**:
-   - Analyze the source to extract:
-     - **description**: One-line summary of what the file does
-     - **file_type**: Language/format (e.g., "yaml", "json")
-     - **exports**: All public symbols — classes, functions, methods (with parent_name), enums, typedefs, extensions, mixins. Include kind, parameters, and description for each.
-     - **variables**: Top-level constants and variables (not class members)
-     - **imports**: All import paths as strings
-     - **annotations**: TODO, FIXME, HACK, NOTE, DEPRECATED comments with message and line number
-   - Call `code-index index-file` for each file with `path`, `name`, and all extracted properties
+```json
+{
+  "needs_reindex": [{ "path": "lib/src/bar.dart", "reason": "changed" }, ...]
+}
+```
 
-## Analysis Tips (for manual `index-file` — non-Dart files)
+Treat each entry as a plan item with `needs: [0, 1, 2, 3]`. There are no `out_of_scope` entries in this case.
 
-- For **methods**, always set `parent_name` to the containing class name and `kind` to "method"
-- For **class members** (properties/fields), use `kind: "class_member"` with `parent_name`
-- Include **parameter signatures** for functions and methods (e.g., "(String name, {int? age})")
-- **Imports** should be the full import string (e.g., "package:flutter/material.dart")
-- Look for annotation patterns: `// TODO:`, `// FIXME:`, `// HACK:`, `// NOTE:`, `@deprecated`
+## Workflow
 
-## Error Handling
+1. **Parse input** — normalise both input shapes into a single plan list of `{ path, needs }` entries.
+2. **Group into batches** of 5–10 files. Prefer grouping Dart files together and non-Dart files together.
+3. **Per batch:**
+   a. Call `filesystem read-files` with comma-separated paths to read all files at once.
+   b. For each file in the batch, analyse the source and call `code-index auto-index`:
 
-- If a file fails to read, skip it and continue with the next file
-- If `auto-index` or `index-file` fails, check that `path` is provided. Retry once, then skip.
-- Report any skipped files at the end of the batch
+### Dart files
+
+Call `code-index auto-index` with:
+- `path` — the file path
+- `layers` — the `needs` array from the plan entry
+- `short_summary` — a one-line description of what the file does (required when `needs` includes **1**)
+- `symbol_summaries` — a map of `symbol_name → one-sentence description` for the key public symbols (required when `needs` includes **3**)
+
+Layer 0 (filesystem metadata) and layer 2 (declarations + usages) are computed automatically by the MCP tool — you do not need to extract structural data for Dart files.
+
+Example:
+```
+code-index: auto-index
+  path: "lib/src/models/user.dart"
+  layers: [0, 1, 2, 3]
+  short_summary: "User model with authentication and profile data"
+  symbol_summaries: { "User": "Domain model representing an authenticated user with profile fields", "UserRole": "Enum of permission levels (admin, editor, viewer)" }
+```
+
+### Non-Dart files
+
+Call `code-index auto-index` with the same parameters as Dart files, **plus** manually extracted structural fields:
+- `exports` — array of `{ name, kind, parameters?, description?, parent_name? }` for all public symbols
+- `variables` — array of `{ name, description? }` for top-level constants/variables
+- `imports` — array of import path strings
+- `annotations` — array of `{ kind, message?, line? }` (kinds: TODO, FIXME, HACK, NOTE, DEPRECATED)
+
+These fields are needed because the MCP tool cannot parse non-Dart files automatically.
+
+Example:
+```
+code-index: auto-index
+  path: "pubspec.yaml"
+  layers: [0, 1]
+  short_summary: "Package configuration with dependencies and build settings"
+  exports: [{ "name": "name", "kind": "variable" }, { "name": "version", "kind": "variable" }]
+```
+
+## Out-of-scope handling
+
+If the input includes `out_of_scope` paths, do **not** attempt to read or index them. Include them verbatim in the final report under `out_of_scope`.
+
+## Error handling
+
+- **File read fails**: skip the file and add it to the `failed` list. Continue with remaining files.
+- **`auto-index` fails**: retry once. If it fails again, add to `failed` and continue.
+- Do **not** retry out-of-scope files.
+
+## Final report
+
+After all batches are complete, emit a structured summary:
+
+```json
+{
+  "indexed": 42,
+  "failed": [{ "path": "lib/broken.dart", "error": "read error" }],
+  "out_of_scope": ["vendor/lib.dart"]
+}
+```
 
 ## Tool Reference
 
