@@ -178,8 +178,57 @@ Database initializeDatabase(String dbPath) {
 
   // Run migrations to ensure schema is up to date
   _runMigrations(database);
+  // Backfill columns that later migrations add to *pre-existing* tables.
+  // Idempotent and unconditional, so a database that was mis-stamped straight
+  // to the current schema version still gets repaired (see
+  // [_ensureMigrationColumns]).
+  _ensureMigrationColumns(database);
 
   return database;
+}
+
+/// Ensures columns that later migrations add to *pre-existing* tables are
+/// present, regardless of the recorded schema version.
+///
+/// [_runMigrations] skips all incremental migrations when it reads schema
+/// version 0, assuming a brand-new database whose `CREATE TABLE` statements
+/// already include the full schema. Databases created by planner_app predate
+/// the `schema_metadata` table, so the first time the MCP/server opens one it
+/// reads version 0, stamps the current version and skips the migrations —
+/// leaving a pre-`sort_order` `steps` table permanently missing the column (the
+/// version stamp then blocks every `currentVersion < N` guard, so it can never
+/// be added). This backfill repairs such databases on open. Each ALTER is
+/// guarded by a column-existence check, so it is safe on every open and never
+/// conflicts with the incremental migrations.
+void _ensureMigrationColumns(Database database) {
+  void addColumnIfMissing(String table, String column, String definition) {
+    final tableExists = database
+        .select(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='$table'")
+        .isNotEmpty;
+    if (!tableExists) return;
+    final hasColumn = database
+        .select('PRAGMA table_info($table)')
+        .any((row) => row['name'] == column);
+    if (hasColumn) return;
+    logInfo('planner', 'Backfilling missing column $table.$column');
+    database.execute('ALTER TABLE $table ADD COLUMN $definition');
+  }
+
+  // Step ordering / sub-task linkage (schema v2, v3).
+  addColumnIfMissing('steps', 'sort_order', 'sort_order INTEGER');
+  addColumnIfMissing('steps', 'sub_task_id', 'sub_task_id TEXT');
+
+  // Slate status / date (schema v5).
+  addColumnIfMissing('slates', 'status', "status TEXT NOT NULL DEFAULT 'draft'");
+  addColumnIfMissing('slates', 'slate_date', 'slate_date TEXT');
+
+  // Join-table timestamps (schema v7).
+  final now = DateTime.now().toUtc().toIso8601String();
+  addColumnIfMissing(
+      'task_items', 'added_at', "added_at TEXT NOT NULL DEFAULT '$now'");
+  addColumnIfMissing(
+      'slate_items', 'added_at', "added_at TEXT NOT NULL DEFAULT '$now'");
 }
 
 /// Get the current schema version from the database.

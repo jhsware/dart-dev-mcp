@@ -604,11 +604,11 @@ void main() {
       expect(taskItemRows.first['added_at'], isNotNull);
       expect(taskItemRows.first['added_at'], isNotEmpty);
 
-// Step 5: Verify schema version is now 9
+      // Step 5: Verify schema version is now 10 (current schema version)
       final versionResult = db.select(
           "SELECT value FROM schema_metadata WHERE key = 'schema_version'");
       expect(versionResult, hasLength(1));
-      expect(versionResult.first['value'], '9');
+      expect(versionResult.first['value'], '10');
 
       // Step 6: Verify that queries using ORDER BY ti.added_at work
       final queryResult = migratedDb.select('''
@@ -629,11 +629,11 @@ void main() {
       final migrationDbPath = p.join(migrationTempDir.path, 'test.db');
       final freshDb = initializeDatabase(migrationDbPath);
 
-// Verify schema version is 9 (fresh db gets latest version)
+      // Verify schema version is 10 (fresh db gets latest version)
       final versionResult = freshDb.select(
           "SELECT value FROM schema_metadata WHERE key = 'schema_version'");
       expect(versionResult, hasLength(1));
-      expect(versionResult.first['value'], '9');
+      expect(versionResult.first['value'], '10');
 
       // Verify added_at exists in both tables
       final taskItemsCols =
