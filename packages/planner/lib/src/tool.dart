@@ -50,7 +50,7 @@ CallToolResult _text(String text) =>
 void registerPlannerTool(
   McpServer server,
   PlannerApiClient client,
-  PlannerRemoteConfig config,
+  PlannerConfig config,
 ) {
   server.registerTool(
     'planner',
@@ -177,7 +177,7 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
 Future<CallToolResult> dispatchPlanner(
   Map<String, dynamic> args,
   PlannerApiClient client,
-  PlannerRemoteConfig config,
+  PlannerConfig config,
 ) async {
   final operation = args['operation'] as String?;
   if (operation == null || !validOperations.contains(operation)) {

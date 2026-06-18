@@ -247,7 +247,7 @@ output_server_cmd() {
     dart_runner_mcp.dart) package_dir="dart_runner" ;;
     flutter_runner_mcp.dart) package_dir="flutter_runner" ;;
     git_mcp.dart) package_dir="git" ;;
-    planner_remote_mcp.dart) package_dir="planner_remote" ;;
+    planner_mcp.dart) package_dir="planner" ;;
     code_index_mcp.dart) package_dir="code_index" ;;
     apple_mail_mcp.dart) package_dir="apple_mail_mcp" ;;
   esac
@@ -386,7 +386,7 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
 
-    # Assemble planner_remote args: server URL first, then optional TLS material.
+    # Assemble planner args: server URL first, then optional TLS material.
     local planner_args=("--server-url=$PLANNER_SERVER_URL")
     if [ -n "$PLANNER_SERVER_CA_CERT" ]; then
       planner_args+=("--ca-cert=$PLANNER_SERVER_CA_CERT")
@@ -409,7 +409,7 @@ build_mcp_config() {
     fi
 
     echo '    "dart-dev-mcp-planner": {'
-    output_server_cmd "planner-remote-mcp" "planner_remote_mcp.dart" "$planner_env" "${planner_args[@]}"
+    output_server_cmd "planner-mcp" "planner_mcp.dart" "$planner_env" "${planner_args[@]}"
     echo '    }'
   fi
 

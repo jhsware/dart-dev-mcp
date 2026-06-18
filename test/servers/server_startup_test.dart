@@ -76,23 +76,16 @@ void main() {
     });
 
     test('planner_mcp starts successfully', () async {
-      final tempDir = await Directory.systemTemp.createTemp('planner_startup_');
-      try {
-        final (process, stderrBuffer) = await startServer(
-          'packages/planner/bin/planner_mcp.dart',
-          ['--project-dir=.', '--planner-data-root=${tempDir.path}'],
-        );
-        await stopServer(process);
+      final (process, stderrBuffer) = await startServer(
+        'packages/planner/bin/planner_mcp.dart',
+        ['--project-dir=.'],
+      );
+      await stopServer(process);
 
-        expect(
-          stderrBuffer.toString(),
-          contains('Planner MCP Server running on stdio'),
-        );
-      } finally {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
-      }
+      expect(
+        stderrBuffer.toString(),
+        contains('Planner MCP Server running on stdio'),
+      );
     });
 
     test('code_index_mcp starts successfully', () async {

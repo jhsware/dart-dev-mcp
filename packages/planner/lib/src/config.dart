@@ -1,6 +1,6 @@
 import 'dart:io';
 
-/// Parsed configuration for the planner_remote MCP server.
+/// Parsed configuration for the planner MCP server.
 ///
 /// CLI args (each also has an env-var fallback):
 ///   --project-dir=PATH        (repeatable; maps basename -> server project)
@@ -11,8 +11,8 @@ import 'dart:io';
 ///   --client-key=PATH         PLANNER_SERVER_CLIENT_KEY  (mTLS)
 ///   --insecure                PLANNER_SERVER_INSECURE=true (skip TLS verify)
 ///   --help, -h
-class PlannerRemoteConfig {
-  PlannerRemoteConfig({
+class PlannerConfig {
+  PlannerConfig({
     required this.projectDirs,
     required this.serverUrl,
     required this.token,
@@ -32,7 +32,7 @@ class PlannerRemoteConfig {
   final bool insecure;
   final bool helpRequested;
 
-  static PlannerRemoteConfig parse(List<String> args) {
+  static PlannerConfig parse(List<String> args) {
     final env = Platform.environment;
     final projectDirs = <String>[];
     String? serverUrl;
@@ -66,7 +66,7 @@ class PlannerRemoteConfig {
       }
     }
 
-    return PlannerRemoteConfig(
+    return PlannerConfig(
       projectDirs: projectDirs,
       serverUrl:
           (serverUrl ?? env['PLANNER_SERVER_URL'] ?? 'https://localhost:9444')

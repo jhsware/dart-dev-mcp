@@ -1,19 +1,19 @@
 import 'dart:io';
 
 import 'package:mcp_dart/mcp_dart.dart';
-import 'package:planner_remote_mcp/planner_remote_mcp.dart';
+import 'package:planner_mcp/planner_mcp.dart';
 
-/// Planner MCP Server (remote).
+/// Planner MCP Server.
 ///
 /// Same tool surface as the local `planner` MCP, but proxies every operation to
 /// a planner_server over HTTPS instead of opening planner.db directly.
 ///
 /// Usage:
-///   planner_remote_mcp --project-dir=PATH [--project-dir=PATH2 ...] \
+///   planner_mcp --project-dir=PATH [--project-dir=PATH2 ...] \
 ///     --server-url=https://host:9444 --token=BEARER \
 ///     [--ca-cert=PATH] [--client-cert=PATH --client-key=PATH] [--insecure]
 void main(List<String> arguments) async {
-  final config = PlannerRemoteConfig.parse(arguments);
+  final config = PlannerConfig.parse(arguments);
 
   if (config.helpRequested) {
     _printUsage();
@@ -44,11 +44,12 @@ void main(List<String> arguments) async {
 
   final transport = StdioServerTransport();
   await server.connect(transport);
+  stderr.writeln('Planner MCP Server running on stdio');
 }
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: planner_remote_mcp --project-dir=PATH [--project-dir=PATH2 ...] '
+      'Usage: planner_mcp --project-dir=PATH [--project-dir=PATH2 ...] '
       '--server-url=URL [--token=TOKEN] [--ca-cert=PATH] '
       '[--client-cert=PATH --client-key=PATH] [--insecure]');
   stderr.writeln('');

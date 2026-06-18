@@ -45,7 +45,7 @@ Path-based access control (the `git:` list in `jhsware-code.yaml`) stays anchore
 If no `.git` is found all the way up to the filesystem root, the server returns a clear error: `No git repository found. Searched for a .git directory starting at "<projectDir>" and walking up to the filesystem root without success. Run "git init" here or in a parent directory.`
 
 
-### 3. Planner MCP (`packages/planner_remote/bin/planner_remote_mcp.dart`)
+### 3. Planner MCP (`packages/planner/bin/planner_mcp.dart`)
 Task and step management for AI-assisted development. Proxies to a planner_server over HTTPS:
 - Task operations: `add-task`, `show-task`, `update-task`, `list-tasks`
 - Step operations: `add-step`, `show-step`, `update-step`
@@ -147,7 +147,7 @@ cd dart_dev_mcp
 
 # Get dependencies for all packages
 cd packages/shared_libs && dart pub get && cd ../..
-cd packages/planner_remote && dart pub get && cd ../..
+cd packages/planner && dart pub get && cd ../..
 cd packages/code_index && dart pub get && cd ../..
 cd packages/filesystem && dart pub get && cd ../..
 cd packages/git && dart pub get && cd ../..
@@ -173,12 +173,12 @@ All tool invocations require a valid `project_dir` parameter that must match a r
 
 ```bash
 # Run tests for a package
-dart test packages/planner_remote
+dart test packages/planner
 dart test packages/filesystem
 
 # Analyze code
 dart analyze packages/shared_libs
-dart analyze packages/planner_remote
+dart analyze packages/planner
 
 # Format code
 dart format packages/

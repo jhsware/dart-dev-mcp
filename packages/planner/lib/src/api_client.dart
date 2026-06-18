@@ -32,7 +32,7 @@ class PlannerApiClient {
   final Duration timeout;
   final http.Client _client;
 
-  factory PlannerApiClient.fromConfig(PlannerRemoteConfig config) {
+  factory PlannerApiClient.fromConfig(PlannerConfig config) {
     return PlannerApiClient(
       baseUrl: config.serverUrl,
       token: config.token,
@@ -40,7 +40,7 @@ class PlannerApiClient {
     );
   }
 
-  static http.Client _buildClient(PlannerRemoteConfig config) {
+  static http.Client _buildClient(PlannerConfig config) {
     final needsCustom = config.insecure ||
         config.caCertPath != null ||
         config.clientCertPath != null;

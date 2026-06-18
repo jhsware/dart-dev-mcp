@@ -147,114 +147,23 @@ void main() {
       expect(result.stderr, contains('--project-dir is required'));
     });
 
-    test('shows error without --planner-data-root', () async {
+    test('fails with non-existent project directory', () async {
       final result = await runServer(
         'packages/planner/bin/planner_mcp.dart',
-        ['--project-dir=.'],
+        ['--project-dir=/nonexistent/path'],
       );
 
-      expect(result.exitCode, isNot(0));
-      expect(result.stderr, contains('--planner-data-root is required'));
-    });
-
-    test('shows project dirs and planner data root with required flags', () async {
-      final tempDir = await Directory.systemTemp.createTemp('planner_args_test_');
-      try {
-        final (process, stderrBuffer) = await startServer(
-          'packages/planner/bin/planner_mcp.dart',
-          ['--project-dir=.', '--planner-data-root=${tempDir.path}'],
-        );
-        await stopServer(process);
-
-        final stderr = stderrBuffer.toString();
-        expect(stderr, contains('Project dirs:'));
-        expect(stderr, contains('Planner data root:'));
-        expect(stderr, contains(tempDir.path));
-      } finally {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
-      }
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('does not exist'));
     });
 
     test('shows help with --help flag', () async {
-      final result = await runServer('packages/planner/bin/planner_mcp.dart', ['--help']);
+      final result =
+          await runServer('packages/planner/bin/planner_mcp.dart', ['--help']);
 
       expect(result.exitCode, 0);
-      expect(result.stderr,
-          contains('Usage: planner_mcp --planner-data-root=PATH --project-dir=PATH'));
-      expect(result.stderr, contains('--planner-data-root'));
-      expect(result.stderr, contains('AGENTS.md'));
-    });
-
-    test('fails with non-existent project directory', () async {
-      final tempDir = await Directory.systemTemp.createTemp('planner_args_test_');
-      try {
-        final result = await runServer(
-          'packages/planner/bin/planner_mcp.dart',
-          [
-            '--project-dir=/nonexistent/path',
-            '--planner-data-root=${tempDir.path}',
-          ],
-        );
-
-        expect(result.exitCode, 1);
-        expect(result.stderr, contains('does not exist'));
-      } finally {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
-      }
-    });
-
-    test('creates inferred db directory under planner-data-root on first use',
-        () async {
-      final tempProject =
-          await Directory.systemTemp.createTemp('planner_args_test_project_');
-      final tempData =
-          await Directory.systemTemp.createTemp('planner_args_test_data_');
-      try {
-        final projectName = p.basename(tempProject.path);
-        final expectedDbDir = Directory(p.join(
-          tempData.path,
-          'projects',
-          projectName,
-          'db',
-        ));
-        expect(await expectedDbDir.exists(), isFalse);
-
-        final (process, _) = await startServer(
-          'packages/planner/bin/planner_mcp.dart',
-          [
-            '--project-dir=${tempProject.path}',
-            '--planner-data-root=${tempData.path}',
-          ],
-        );
-
-        // Allow the server to settle before we tear down — the directory
-        // is created lazily on first DB access, but the planner_mcp also
-        // pre-creates the dir when it boots a connection. In any case,
-        // verify the inferred db path scheme exists below the data root.
-        await stopServer(process);
-
-        // The server only creates the db directory lazily (on first tool
-        // call), so just verify the planner-data-root path is honored by
-        // checking the inferred parent exists.
-        final projectsDir = Directory(p.join(tempData.path, 'projects'));
-        // It's OK if no DB was created yet — we just confirm the server
-        // accepted the flag and the path scheme is what we expect.
-        expect(
-          await projectsDir.exists() || true,
-          isTrue,
-        );
-      } finally {
-        if (await tempProject.exists()) {
-          await tempProject.delete(recursive: true);
-        }
-        if (await tempData.exists()) {
-          await tempData.delete(recursive: true);
-        }
-      }
+      expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
+      expect(result.stderr, contains('--server-url'));
     });
   });
 

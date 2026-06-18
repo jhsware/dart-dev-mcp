@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:planner_remote_mcp/planner_remote_mcp.dart';
+import 'package:planner_mcp/planner_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
 
@@ -10,9 +10,9 @@ import 'package:test/test.dart';
 String _resultText(CallToolResult r) => (r.content.first as TextContent).text;
 
 void main() {
-  group('PlannerRemoteConfig.parse', () {
+  group('PlannerConfig.parse', () {
     test('parses repeated project dirs and trims trailing slashes', () {
-      final c = PlannerRemoteConfig.parse([
+      final c = PlannerConfig.parse([
         '--project-dir=/a/one',
         '--project-dir=/b/two',
         '--server-url=https://h:9444///',
@@ -25,7 +25,7 @@ void main() {
     });
 
     test('--insecure flag', () {
-      final c = PlannerRemoteConfig.parse(
+      final c = PlannerConfig.parse(
           ['--project-dir=/a', '--server-url=https://h', '--insecure']);
       expect(c.insecure, isTrue);
     });
@@ -34,7 +34,7 @@ void main() {
   group('dispatchPlanner mapping', () {
     late HttpServer server;
     late PlannerApiClient client;
-    late PlannerRemoteConfig config;
+    late PlannerConfig config;
     const projectDir = '/tmp/myproj';
 
     setUp(() async {
@@ -53,7 +53,7 @@ void main() {
         await req.response.close();
       });
       final base = 'http://127.0.0.1:${server.port}';
-      config = PlannerRemoteConfig.parse(
+      config = PlannerConfig.parse(
           ['--project-dir=$projectDir', '--server-url=$base']);
       client = PlannerApiClient(baseUrl: base, client: http.Client());
     });

@@ -1,7 +1,6 @@
-name: planner_remote_mcp
+name: planner_mcp
 description: >-
-  Planner MCP server (remote). Same tool surface as the local `planner` MCP but
-  proxies to a planner_server over HTTPS instead of opening planner.db directly.
+  Planner MCP server. Proxies to a planner_server over HTTPS.
 version: 1.0.0
 publish_to: none
 repository: https://github.com/jhsware/dart_dev_mcp
