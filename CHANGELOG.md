@@ -1,5 +1,19 @@
 ## Unreleased
 
+### BREAKING: planner is now a remote client (planner_remote → planner)
+
+The `planner` MCP no longer opens a local `planner.db`. It is now a thin client
+that proxies every operation to a separate **planner_server** over HTTPS.
+
+- Package `planner_remote_mcp` renamed to `planner_mcp` (binary `planner-mcp`);
+  the old local SQLite `planner` package was removed.
+- Requires a planner_server URL and a service token (or an mTLS client cert):
+  `--server-url` / `PLANNER_SERVER_URL` and `--token` / `PLANNER_SERVER_TOKEN`,
+  plus optional `--ca-cert`, `--client-cert` / `--client-key`, and `--insecure`.
+- `--planner-data-root` is no longer used by the planner (still used by code-index).
+- Issue a service token on the planner_server host:
+  `planner_server token issue --name <label> --kind mcp`.
+
 ### BREAKING: code-index rewrite (layered storage, MCP-driven invalidation)
 
 **Removed operations:**

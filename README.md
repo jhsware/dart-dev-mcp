@@ -46,7 +46,10 @@ If no `.git` is found all the way up to the filesystem root, the server returns 
 
 
 ### 3. Planner MCP (`packages/planner/bin/planner_mcp.dart`)
-Task and step management for AI-assisted development. Proxies to a planner_server over HTTPS:
+Task and step management for AI-assisted development. The planner is a **client**
+that proxies every operation to a running **planner_server** over HTTPS — it
+requires a server URL and a service token (or mTLS client cert) and keeps no local
+database (see [Planner server connection](#planner-server-connection)). Operations:
 - Task operations: `add-task`, `show-task`, `update-task`, `list-tasks`
 - Step operations: `add-step`, `show-step`, `update-step`
 - Memory: `show-task-memory`, `update-task-memory`
@@ -117,6 +120,28 @@ dart run packages/<server>/bin/<server>_mcp.dart \
 The code-index database path is automatically inferred from `--planner-data-root`:
 - Code Index: `[planner-data-root]/projects/[project-dir-name]/db/code_index.db`
 
+### Planner server connection
+
+The `planner` server is a thin client for a separate **planner_server** and keeps
+no local database. Point it at the server and authenticate with a service token
+(or an mTLS client certificate):
+
+- `--server-url=URL` - planner_server base URL (default `https://localhost:9444`)
+- `--token=TOKEN` - service (bearer) token used to authenticate the MCP
+- `--ca-cert=PATH` - pin the planner_server CA certificate (recommended in prod)
+- `--client-cert=PATH` / `--client-key=PATH` - mTLS client certificate + key
+- `--insecure` - skip TLS verification (development only)
+
+Each flag has an env-var fallback: `PLANNER_SERVER_URL`, `PLANNER_SERVER_TOKEN`,
+`PLANNER_SERVER_CA_CERT`, `PLANNER_SERVER_CLIENT_CERT`, `PLANNER_SERVER_CLIENT_KEY`,
+`PLANNER_SERVER_INSECURE`.
+
+Issue a service token on the planner_server host (printed once):
+
+```bash
+planner_server token issue --name <label> --kind mcp [--owner you@example.com]
+```
+
 ### Project Configuration
 Each project directory can contain a `jhsware-code.yaml` configuration file that specifies allowed paths per tool:
 
@@ -157,11 +182,22 @@ cd packages/flutter_runner && dart pub get && cd ../..
 
 ## Usage with Claude Desktop
 
-Use the `claude.sh` script to launch Claude with the MCP servers:
+Use the `claude.sh` script to launch Claude with the MCP servers. The `planner`
+server is a client for a separate **planner_server**, so it needs the server URL
+and a service token — pass them as flags or via environment variables:
 
 ```bash
-./claude.sh --project-dir=/path/to/project --planner-data-root=/path/to/data
+export PLANNER_SERVER_TOKEN=...     # issued on the planner_server host
+
+./claude.sh all \
+  --project-dir=/path/to/project \
+  --planner-data-root=/path/to/data \
+  --server-url=https://localhost:9444
 ```
+
+`--planner-data-root` is for the code-index server; the planner server reads
+`--server-url` / `--planner-token` (or `PLANNER_SERVER_URL` / `PLANNER_SERVER_TOKEN`).
+Run `./claude.sh --help` for CA-pinning and mTLS options.
 
 ## Security
 
