@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # All MCP server binaries
-BINARIES="file_edit_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp code_index_mcp"
+BINARIES="file_edit_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp planner_remote_mcp code_index_mcp"
 
 # Get package directory for a binary
 get_package_dir() {
@@ -16,6 +16,7 @@ get_package_dir() {
     flutter_runner_mcp) echo "flutter_runner" ;;
     git_mcp) echo "git" ;;
     planner_mcp) echo "planner" ;;
+    planner_remote_mcp) echo "planner_remote" ;;
     code_index_mcp) echo "code_index" ;;
     *) echo "$1" ;;
   esac

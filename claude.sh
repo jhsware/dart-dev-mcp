@@ -7,6 +7,14 @@ set -m
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLANNER_DATA_ROOT=${SSH_KEY:-"$HOME/Library/Application Support/se.urbantalk.planner-app"}
 
+# planner_remote -> planner_server connection.
+# Values may come from the environment or the matching CLI flags below.
+PLANNER_SERVER_URL=${PLANNER_SERVER_URL:-"https://localhost:9444"}
+PLANNER_SERVER_TOKEN=${PLANNER_SERVER_TOKEN:-""}
+PLANNER_SERVER_CA_CERT=${PLANNER_SERVER_CA_CERT:-""}
+PLANNER_SERVER_CLIENT_CERT=${PLANNER_SERVER_CLIENT_CERT:-""}
+PLANNER_SERVER_CLIENT_KEY=${PLANNER_SERVER_CLIENT_KEY:-""}
+
 SERVERS=""
 
 # Default to production mode (installed binaries)
@@ -27,7 +35,7 @@ Servers (comma-separated):
   nix-infra-dev Develop packages for nix-infra
   nix-infra-machine Perform SysOps on a nix-infra machine fleet
   git         Git version control (branch, merge, commit, stash, tag)
-  planner     Task and step management with SQLite storage
+  planner     Task/step management (remote: proxies to planner_server over HTTPS)
   code-index  Code file index for efficient search
   apple-mail  Apple Mail read-only operations (list, search, export)
   all         Enable all servers
@@ -35,9 +43,23 @@ Servers (comma-separated):
 Options:
   --help                    Show this help message
   --development             Use dart run with source files (for development)
+                            (planner: disables mTLS, skips server-cert verification)
   --project-dir=PATH        Project directory (can be specified multiple times)
-  --planner-data-root=PATH  Root directory for planner/code-index databases
+  --planner-data-root=PATH  Root directory for the code-index database
                             DB path inferred as: [root]/projects/[dir-name]/db/planner.db
+
+planner_server connection (for the 'planner' server):
+  --server-url=URL          planner_server base URL (default: https://localhost:9444)
+  --planner-token=TOKEN     Service (bearer) token used to authenticate the MCP
+  --ca-cert=PATH            Pin the planner_server CA certificate (recommended in prod)
+  --client-cert=PATH        mTLS client certificate (hardened mode only)
+  --client-key=PATH         mTLS client key (hardened mode only)
+
+  Env fallbacks: PLANNER_SERVER_URL, PLANNER_SERVER_TOKEN, PLANNER_SERVER_CA_CERT,
+  PLANNER_SERVER_CLIENT_CERT, PLANNER_SERVER_CLIENT_KEY.
+
+  Issue a service token on the planner_server host (printed once):
+    planner_server token issue --name <label> --kind mcp [--owner you@example.com]
 
 SSH Signing:
   For SSH commit signing to work with passphrase-protected keys, make sure
@@ -84,6 +106,26 @@ while [[ $# -gt 0 ]]; do
       ;;
     --planner-data-root=*)
       PLANNER_DATA_ROOT="${1#*=}"
+      shift
+      ;;
+    --server-url=*)
+      PLANNER_SERVER_URL="${1#*=}"
+      shift
+      ;;
+    --planner-token=*)
+      PLANNER_SERVER_TOKEN="${1#*=}"
+      shift
+      ;;
+    --ca-cert=*)
+      PLANNER_SERVER_CA_CERT="${1#*=}"
+      shift
+      ;;
+    --client-cert=*)
+      PLANNER_SERVER_CLIENT_CERT="${1#*=}"
+      shift
+      ;;
+    --client-key=*)
+      PLANNER_SERVER_CLIENT_KEY="${1#*=}"
       shift
       ;;
     --*)
@@ -206,6 +248,7 @@ output_server_cmd() {
     flutter_runner_mcp.dart) package_dir="flutter_runner" ;;
     git_mcp.dart) package_dir="git" ;;
     planner_mcp.dart) package_dir="planner" ;;
+    planner_remote_mcp.dart) package_dir="planner_remote" ;;
     code_index_mcp.dart) package_dir="code_index" ;;
     apple_mail_mcp.dart) package_dir="apple_mail_mcp" ;;
   esac
@@ -339,13 +382,35 @@ build_mcp_config() {
     echo '    }'
   fi
   
-  # Planner Server
+  # Planner Server (remote — proxies to planner_server over HTTPS)
   if [[ "$servers" == *"planner"* ]]; then
     if [ "$first" != true ]; then echo ','; fi
     first=false
-    
+
+    # Assemble planner_remote args: server URL first, then optional TLS material.
+    local planner_args=("--server-url=$PLANNER_SERVER_URL")
+    if [ -n "$PLANNER_SERVER_CA_CERT" ]; then
+      planner_args+=("--ca-cert=$PLANNER_SERVER_CA_CERT")
+    fi
+    # mTLS only when BOTH the client cert and key are provided.
+    if [ -n "$PLANNER_SERVER_CLIENT_CERT" ] && [ -n "$PLANNER_SERVER_CLIENT_KEY" ]; then
+      planner_args+=("--client-cert=$PLANNER_SERVER_CLIENT_CERT")
+      planner_args+=("--client-key=$PLANNER_SERVER_CLIENT_KEY")
+    fi
+    # Development mode: no mTLS, and skip verification of the dev server cert.
+    if [ "$DEV_MODE" = true ]; then
+      planner_args+=("--insecure")
+    fi
+    planner_args+=("${project_dir_args[@]}")
+
+    # Pass the service token via env so it is not embedded in the args array.
+    local planner_env="null"
+    if [ -n "$PLANNER_SERVER_TOKEN" ]; then
+      planner_env="\"env\": { \"PLANNER_SERVER_TOKEN\": \"$PLANNER_SERVER_TOKEN\" }"
+    fi
+
     echo '    "dart-dev-mcp-planner": {'
-    output_server_cmd "planner-mcp" "planner_mcp.dart" "null" "--planner-data-root=$PLANNER_DATA_ROOT" "${project_dir_args[@]}"
+    output_server_cmd "planner-remote-mcp" "planner_remote_mcp.dart" "$planner_env" "${planner_args[@]}"
     echo '    }'
   fi
 
@@ -413,6 +478,12 @@ echo "Project directories: ${PROJECT_DIRS[*]}"
 if [ -n "$PLANNER_DATA_ROOT" ]; then
   echo "Planner data root: $PLANNER_DATA_ROOT"
 fi
+if [[ "$SERVERS" == *"planner"* ]] || [[ "$SERVERS" == *"all"* ]]; then
+  echo "Planner server URL: $PLANNER_SERVER_URL"
+  if [ "$DEV_MODE" = true ]; then
+    echo "Planner TLS: development mode (mTLS off, server-cert verification skipped)"
+  fi
+fi
 
 # Check SSH agent for git signing
 SSH_AGENT_SOCKET=""
@@ -446,13 +517,25 @@ if [[ "$SERVERS" == *"git"* ]] || [[ "$SERVERS" == *"all"* ]]; then
   fi
 fi
 
-# Warn if planner/code-index requested without planner-data-root
-if [[ "$SERVERS" == *"planner"* ]] || [[ "$SERVERS" == *"code-index"* ]] || [[ "$SERVERS" == *"all"* ]]; then
+# code-index still stores its index locally and needs a data root.
+if [[ "$SERVERS" == *"code-index"* ]] || [[ "$SERVERS" == *"all"* ]]; then
   if [ -z "$PLANNER_DATA_ROOT" ]; then
     echo ""
-    echo "Warning: --planner-data-root is required for planner and code-index servers" >&2
+    echo "Warning: --planner-data-root is required for the code-index server" >&2
     echo "  Example: --planner-data-root=\"\$HOME/Library/Application Support/se.urbantalk.planner-app\"" >&2
     exit 1
+  fi
+fi
+
+# planner (remote) authenticates to planner_server with a service token or mTLS cert.
+if [[ "$SERVERS" == *"planner"* ]] || [[ "$SERVERS" == *"all"* ]]; then
+  if [ -z "$PLANNER_SERVER_TOKEN" ] && { [ -z "$PLANNER_SERVER_CLIENT_CERT" ] || [ -z "$PLANNER_SERVER_CLIENT_KEY" ]; }; then
+    echo ""
+    echo "Warning: planner (remote) has no credentials configured." >&2
+    echo "  Provide a service token:  export PLANNER_SERVER_TOKEN=...   (or --planner-token=...)" >&2
+    echo "  ...or an mTLS client cert: export PLANNER_SERVER_CLIENT_CERT=... PLANNER_SERVER_CLIENT_KEY=..." >&2
+    echo "  Issue a token on the planner_server host with:" >&2
+    echo "    planner_server token issue --name <label> --kind mcp [--owner you@example.com]" >&2
   fi
 fi
 
@@ -461,7 +544,8 @@ build_mcp_config "$SERVERS" "$SSH_AGENT_SOCKET" > "$PATH_TO_CLAUDE/claude_deskto
 echo ""
 echo "Configuration written to: $PATH_TO_CLAUDE/claude_desktop_config.json"
 echo ""
-cat "$PATH_TO_CLAUDE/claude_desktop_config.json"
+# Print the generated config, redacting the planner service token.
+sed -E 's/("PLANNER_SERVER_TOKEN": ")[^"]*"/\1***redacted***"/' "$PATH_TO_CLAUDE/claude_desktop_config.json"
 echo ""
 
 # Run Claude
