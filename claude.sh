@@ -247,7 +247,6 @@ output_server_cmd() {
     dart_runner_mcp.dart) package_dir="dart_runner" ;;
     flutter_runner_mcp.dart) package_dir="flutter_runner" ;;
     git_mcp.dart) package_dir="git" ;;
-    planner_mcp.dart) package_dir="planner" ;;
     planner_remote_mcp.dart) package_dir="planner_remote" ;;
     code_index_mcp.dart) package_dir="code_index" ;;
     apple_mail_mcp.dart) package_dir="apple_mail_mcp" ;;

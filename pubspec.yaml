@@ -29,6 +29,5 @@ workspace:
   - packages/filesystem
   - packages/flutter_runner
   - packages/git
-  - packages/planner
   - packages/planner_remote
   - packages/shared_libs
