@@ -144,5 +144,39 @@ void main() {
       expect(r['_method'], 'GET');
       expect(r['_path'], '/projects/myproj/audit/task/t1');
     });
+
+    test('create-project -> POST /projects with body, no project_dir needed',
+        () async {
+      final r = await call({
+        'operation': 'create-project',
+        'local_path': '/tmp/newproj',
+        'name': 'New Proj',
+      });
+      expect(r['_method'], 'POST');
+      expect(r['_path'], '/projects');
+      expect(r['_body'], {'local_path': '/tmp/newproj', 'name': 'New Proj'});
+      // The raw server JSON is returned without project_dir injection.
+      expect(r.containsKey('project_dir'), isFalse);
+    });
+
+    test('create-project omits name when not provided', () async {
+      final r = await call({
+        'operation': 'create-project',
+        'local_path': '/tmp/newproj',
+      });
+      expect(r['_method'], 'POST');
+      expect(r['_path'], '/projects');
+      expect(r['_body'], {'local_path': '/tmp/newproj'});
+    });
+
+    test('create-project requires local_path', () async {
+      final r = await dispatchPlanner(
+          {'operation': 'create-project'}, client, config);
+      expect(_resultText(r), 'Error: local_path is required');
+    });
+
+    test('validOperations includes create-project', () {
+      expect(validOperations, contains('create-project'));
+    });
   });
 }
