@@ -8,6 +8,7 @@ import 'config.dart';
 
 const validOperations = [
   'list-projects',
+  'create-project',
   'get-project-instructions',
   'add-task',
   'show-task',
@@ -59,6 +60,7 @@ void registerPlannerTool(
 
 Operations:
 - list-projects: List all registered project directories with their short names. Takes no arguments. Returns project_dir (full path) and project_name (basename) for each.
+- create-project: Create/register a project from a local files folder path on the server. Requires: local_path. Optional: name. Idempotent/additive; does not require project_dir.
 - get-project-instructions: Read project instructions from AGENTS.md
 - add-task: Create a new task
 - show-task: Show task details with list of steps and linked backlog items. Requires: id.
@@ -98,9 +100,15 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
       properties: {
         'project_dir': JsonSchema.string(
             description:
-                'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects.'),
+                'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects and create-project.'),
         'operation': JsonSchema.string(
             description: 'The operation to perform', enumValues: validOperations),
+        'local_path': JsonSchema.string(
+            description:
+                'Absolute path to the project local files folder (create-project).'),
+        'name': JsonSchema.string(
+            description:
+                'Optional project name (create-project); defaults to folder basename.'),
         'id': JsonSchema.string(
             description: 'Task or step ID (for show/update/audit-trail)'),
         'task_id': JsonSchema.string(
@@ -191,6 +199,24 @@ Future<CallToolResult> dispatchPlanner(
     return _json({'projects': projects, 'count': projects.length});
   }
 
+  if (operation == 'create-project') {
+    final localPath = (args['local_path'] as String?)?.trim();
+    if (localPath == null || localPath.isEmpty) {
+      return _text('Error: local_path is required');
+    }
+    try {
+      final name = args['name'] as String?;
+      final body = {
+        'local_path': localPath,
+        if (name != null && name.isNotEmpty) 'name': name,
+      };
+      return _json(await client.requestJson('POST', '/projects', body: body));
+    } on PlannerHttpException catch (e) {
+      return _text('Error: ${e.message}');
+    } catch (e) {
+      return _text('Error: $e');
+    }
+  }
   final projectDir = args['project_dir'] as String?;
   if (projectDir == null || projectDir.isEmpty) {
     return _text('Error: project_dir is required');
