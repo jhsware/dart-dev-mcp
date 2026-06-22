@@ -4,7 +4,7 @@ The Planner MCP server: task and step management for AI-assisted development.
 It proxies every operation to a **planner_server** over HTTPS rather than
 opening a local `planner.db`.
 
-One `planner` tool exposes the full `operation` enum (28 operations) with the
+One `planner` tool exposes the full `operation` enum (29 operations) with the
 same parameters and JSON result shapes, so agent prompts and skills target it
 unchanged.
 
@@ -29,6 +29,11 @@ Every flag has an env-var fallback: `PLANNER_SERVER_URL`,
 `--project-dir` is repeatable; the basename of each path is used as the
 `{project}` segment in server URLs (e.g. `/projects/<basename>/tasks`). The
 server resolves it by project id, then name, then `basename(local_path)`.
+
+`create-project` and `list-projects` are the two operations that do **not**
+require `project_dir`. `create-project` provisions a project on the server from
+a `local_path` (optional `name`) via `POST /projects`, returning the project
+record (`id`, `name`, `local_path`, `has_instructions`).
 
 ## Tests
 
