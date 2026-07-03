@@ -2,6 +2,7 @@
 
 **Status:** Approved design — implementation not started
 **Date:** 2026-07-03
+**Revised:** 2026-07-03 — aligned with the analyzer-hybrid extraction model (parent design §8.4–§8.5)
 **Author:** sebastian@urbantalk.se
 **Parent design:** `design-v2-architecture.md`
 
@@ -11,6 +12,8 @@ This document specifies the two LLM-side artifacts that ship with the v2 rewrite
 - `agentic-plugins/jhsware-code/skills/code-index/SKILL.md` — the **reader's guide**: teaches parent agents how to query the index token-efficiently.
 
 The hard rule carried over from v1: the skill is consumer-side only, the indexing playbook lives in the agent. Neither document duplicates the other.
+
+Division of extraction labor (from the parent design): **the MCP computes layer 2 for Dart files itself** (analyzer: exact line ranges, resolved dot-path references, annotations). The agent produces layers 1+3 for every file, and layer 2 only for non-Dart files.
 
 ---
 
@@ -35,7 +38,10 @@ The parent drives indexing (pull model). The agent never calls `scan` itself. It
 
 ```json
 {
-  "plan": [{ "path": "lib/src/foo.dart", "needs": [1, 2, 3] }],
+  "plan": [
+    { "path": "lib/src/foo.dart", "needs": [1, 3] },
+    { "path": "tool/build.yaml", "needs": [1, 2, 3] }
+  ],
   "out_of_scope": ["vendor/lib.js"]
 }
 ```
@@ -46,16 +52,16 @@ The parent drives indexing (pull model). The agent never calls `scan` itself. It
 { "needs_reindex": [{ "path": "lib/src/bar.dart", "reason": "changed" }] }
 ```
 
-Input B entries are treated as plan items with `needs: [1, 2, 3]`.
+Input B entries are treated as plan items with `needs: [1, 3]` for Dart files and `needs: [1, 2, 3]` otherwise.
 
-`needs` refers to agent-produced layers only (1 = summary+tags, 2 = structure, 3 = symbol summaries). Layer 0 is always computed by the MCP on write.
+`needs` refers to agent-produced layers only (1 = summary+tags, 2 = structure, 3 = symbol summaries). Layer 0 is always computed by the MCP on write, and **layer 2 for Dart files is computed by the MCP too** — never produce structural fields for a `.dart` file; they would be ignored.
 
 ### 1.3 Workflow
 
 1. **Normalize** both input shapes into one list of `{ path, needs }`.
 2. **Batch** 5–10 files. Group similar languages together when convenient.
 3. Per batch:
-   a. `filesystem read-files` with comma-separated paths. The output is line-numbered (`L1:`, `L2:` …) — **these numbers are the source of truth for `line` / `end_line`**.
+   a. `filesystem read-files` with comma-separated paths. The output is line-numbered (`L1:`, `L2:` …) — **these numbers are the source of truth for `line` / `end_line`** on non-Dart records.
    b. Build one record per file (see 1.4).
    c. Submit the whole batch in **one** `code-index index-files` call.
 4. **Report** (see 1.6).
@@ -66,16 +72,26 @@ The v1 flow of one `auto-index` call per file is gone; one call per batch.
 
 Produce only the layers listed in `needs`; `path` is always included.
 
+**Dart files** (`needs` never includes 2) — the record is small:
+
 | Field | Layer | Rules |
 |-------|:-----:|-------|
-| `language` | — | Lowercase language name (`dart`, `typescript`, `yaml`, `markdown`, …). Omit if unsure — the MCP falls back to an extension map. |
+| `language` | — | `"dart"`. |
 | `summary` | 1 | One sentence, ≤ 25 words, present tense, states what the file *provides* — not how it is written. Use the codebase's domain vocabulary so FTS finds it. |
 | `tags` | 1 | 5–10 lowercase keywords. Cover: (a) domain concepts (`auth`, `session`), (b) **synonyms** of the file's own terminology (`login` for `signIn`), (c) architectural role (`repository`, `http-client`, `migration`, `widget`). Never restate the filename or path. |
-| `symbols` | 2 | Every top-level declaration and every class/struct member. Fields: `name`, `kind` (from the vocabulary in the parent design §6), `visibility` (`public`/`private` by the conventions of the language — `_` prefix in Dart, `#`/non-exported in JS/TS, `_` in Python), `parent` (enclosing symbol), `signature` (compact, e.g. `(Duration ttl) -> Future<Session>`; omit for variables), `line`, `end_line` (from the read-file line numbers; `end_line` = last line of the declaration body). Cap at 150 symbols per file and note truncation in the report. |
+| `symbol_summaries` | 3 | Map of `"Name"` or `"Parent.name"` → one sentence, for the **public** symbols you can see in the source. The MCP attaches each entry to the matching extracted symbol. Skip private symbols and trivial getters/setters. |
+
+**Non-Dart files** — the record additionally carries structure:
+
+| Field | Layer | Rules |
+|-------|:-----:|-------|
+| `language` | — | Lowercase language name (`typescript`, `yaml`, `markdown`, …). Omit if unsure — the MCP falls back to an extension map. |
+| `summary`, `tags` | 1 | Same rules as above. |
+| `symbols` | 2 | Every top-level declaration and every class/struct member. Fields: `name`, `kind` (vocabulary in parent design §6), `visibility` (`public`/`private` by the conventions of the language — `#`/non-exported in JS/TS, `_` in Python), `parent` (enclosing symbol), `signature` (compact; omit for variables), `line`, `end_line` (from the read-file line numbers; `end_line` = last line of the declaration body). Cap at 150 symbols per file and note truncation in the report. |
 | `imports` | 2 | Import/require/include paths verbatim, one entry per statement. |
-| `references` | 2 | External symbols this file actually *uses* (not merely imports): `{ symbol, qualifier, count }` where `qualifier` is the import path you attribute the symbol to. Only the meaningful ones — cap 20, ordered by importance. Best-effort; skip for config/doc files. |
+| `references` | 2 | External symbols this file actually *uses* (not merely imports): `{ symbol, qualifier, count }` where `qualifier` is the import path you attribute the symbol to (e.g. `"package:http/http.dart"`, `"react"`). The MCP normalizes these into dot-path form and marks them `resolution: "declared"` — you never construct dot-paths yourself. Only the meaningful ones — cap 20, ordered by importance. Skip for config/doc files. |
 | `annotations` | 2 | `TODO`/`FIXME`/`HACK`/`NOTE`/`DEPRECATED` comments: `{ kind, message, line }`. |
-| `symbols[].summary` | 3 | One sentence per **public** symbol. Skip private symbols and trivial getters/setters. |
+| `symbols[].summary` or `symbol_summaries` | 3 | One sentence per **public** symbol; either inline on the symbol or via the map. |
 
 Non-code files:
 
@@ -85,6 +101,7 @@ Non-code files:
 ### 1.5 Quality rules
 
 - Never invent symbols, line numbers, or references — extract only what is visible in the read output.
+- Never fabricate dot-paths or qualifiers; a `qualifier` must be an import string that actually appears in the file. Dot-path construction and resolution are the MCP's job.
 - Line numbers must come from the `L<n>:` prefixes; the MCP clamps out-of-range values and reports a warning, which counts against the file's quality.
 - If a file is unreadable or binary, skip it and list it under `failed`.
 - Do not read or index `out_of_scope` paths; echo them in the report.
@@ -92,9 +109,12 @@ Non-code files:
 
 ### 1.6 Final report
 
+Relay `dependents_refreshed` from the `index-files` responses so the parent knows the reference graph was updated beyond the plan:
+
 ```json
 {
   "indexed": 42,
+  "dependents_refreshed": ["lib/src/auth/login_controller.dart"],
   "failed": [{ "path": "lib/broken.dart", "error": "read error" }],
   "truncated": ["lib/generated/api.dart"],
   "out_of_scope": ["vendor/lib.js"]
@@ -151,8 +171,11 @@ filesystem: read-file path="lib/src/auth/session.dart" startLine=57 endLine=74
 **P4 — Impact analysis** (what breaks if I change this?):
 
 ```
-code-index: dependents path="lib/src/auth/session.dart"   # who imports it
-code-index: references symbol="SessionManager"            # who uses the symbol
+code-index: dependents path="lib/src/auth/session.dart"     # who imports it
+code-index: references symbol="SessionManager"              # who uses the symbol, anywhere
+code-index: references dot_path_pattern="flutter.material"  # everything used from material
+code-index: references symbol="Widget" module="flutter" resolution="resolved"
+                                                            # precise: analyzer-verified uses only
 ```
 
 **P5 — Debt sweep:**
@@ -173,6 +196,7 @@ code-index: stats
 - Every read may return `needs_reindex: [{ path, reason }]`. Decision rule (kept from v1): if correctness matters for the current question, spawn `code-index-agent` with the batch; otherwise continue — stale summaries are usually close enough.
 - **Session start:** run `code-index: scan` and, if the plan is non-empty, hand the response to `code-index-agent` before heavy querying.
 - **Routine reads never spawn the agent.**
+- Re-indexing a changed Dart file automatically refreshes the references of its direct dependents (parent design §8.5) — you do not need to re-index importers after a symbol rename; check `dependents_refreshed` in the agent's report.
 
 ### 2.5 Boundaries
 
@@ -188,6 +212,6 @@ code-index: stats
 |----------|-------------|
 | "What does this file/area do?" | skill: P1/P2 (index reads) |
 | "Where is symbol X and what does it look like?" | skill: P3 (`find-symbol` + partial read) |
-| "Who uses/imports X?" | skill: P4 (`references`/`dependents`) |
+| "Who uses/imports X?" | skill: P4 (`references`/`dependents`; `resolution="resolved"` for precision) |
 | "Index is stale/missing — fix it" | agent, driven by `scan` plan or `needs_reindex` batch |
-| "Parse this file into the index" | agent only — consumers never call `index-files` |
+| "Parse this file into the index" | agent for non-Dart structure; **MCP for Dart structure and all dot-path resolution** — consumers never call `index-files` |
