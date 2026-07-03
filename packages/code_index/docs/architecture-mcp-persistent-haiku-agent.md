@@ -1,6 +1,6 @@
 # Architecture: MCP as Persistent Store, Haiku Agent as Reader/Writer
 
-**Status:** Proposal
+**Status:** Superseded by [design-v2-architecture.md](design-v2-architecture.md) (2026-07-03) — kept as the v1 as-built record
 **Date:** 2026-05-26
 **Author:** sebastian@urbantalk.se
 
