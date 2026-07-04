@@ -36,6 +36,10 @@ class ServerArguments {
   /// Any unrecognized arguments (not --project-dir, --planner-data-root, etc.).
   final List<String> unknownArguments;
 
+  /// Root directory for the standalone code-index store (--data-root).
+  /// Defaults to `~/.code-index` when not provided. Exposed via [dataRoot].
+  final String? _dataRoot;
+
   ServerArguments({
     required this.projectDirs,
     this.plannerDataRoot,
@@ -43,7 +47,16 @@ class ServerArguments {
     this.helpRequested = false,
     this.allowToolchainFallback = false,
     this.unknownArguments = const [],
-  });
+    String? dataRoot,
+  }) : _dataRoot = dataRoot;
+
+  /// Root directory for the code-index store. Returns the value supplied via
+  /// `--data-root` (absolute) or the default `~/.code-index` when unset.
+  String get dataRoot => _dataRoot ?? _defaultDataRoot();
+
+  /// Compute the default data root, expanding `~` to the home directory.
+  static String _defaultDataRoot() =>
+      _normalizeToAbsolutePath(p.join('~', '.code-index'));
 
 
   /// Infer planner DB path for a given project directory.
@@ -81,6 +94,7 @@ class ServerArguments {
     String? promptsFilePath;
     bool helpRequested = false;
     bool allowToolchainFallback = false;
+    String? dataRoot;
     final unknownArguments = <String>[];
 
     for (int i = 0; i < arguments.length; i++) {
@@ -129,6 +143,19 @@ class ServerArguments {
           i--;
           unknownArguments.add(arg);
         }
+      } else if (arg.startsWith('--data-root=')) {
+        final value = arg.substring('--data-root='.length);
+        if (value.isNotEmpty) {
+          dataRoot = _normalizeToAbsolutePath(value);
+        }
+      } else if (arg == '--data-root' && i + 1 < arguments.length) {
+        final value = arguments[++i];
+        if (value.isNotEmpty && !value.startsWith('--')) {
+          dataRoot = _normalizeToAbsolutePath(value);
+        } else {
+          i--;
+          unknownArguments.add(arg);
+        }
       } else {
         unknownArguments.add(arg);
       }
@@ -141,6 +168,7 @@ class ServerArguments {
       helpRequested: helpRequested,
       allowToolchainFallback: allowToolchainFallback,
       unknownArguments: unknownArguments,
+      dataRoot: dataRoot,
     );
   }
 
@@ -163,6 +191,7 @@ class ServerArguments {
         'promptsFilePath: $promptsFilePath, '
         'helpRequested: $helpRequested, '
         'allowToolchainFallback: $allowToolchainFallback, '
+        'dataRoot: $dataRoot, '
         'unknownArguments: $unknownArguments)';
   }
 }

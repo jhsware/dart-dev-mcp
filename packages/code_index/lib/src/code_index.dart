@@ -8,13 +8,19 @@
 /// ```
 library;
 
-export 'auto_scan_operations.dart';
 export 'browse_operations.dart';
-export 'dart_parser.dart';
+export 'dart_extractor.dart';
+export 'dot_path.dart';
 export 'database.dart';
-export 'diff_operations.dart';
+export 'graph_queries.dart';
 export 'hash_utils.dart';
-export 'index_operations.dart';
+export 'record_normalize.dart';
+export 'reference_refresh.dart';
+export 'symbol_queries.dart';
+export 'write_operations.dart';
+export 'registry.dart';
 export 'scan_helpers.dart';
+export 'scan_operations.dart';
 export 'search_operations.dart';
 export 'stale_detection.dart';
+export 'storage_paths.dart';

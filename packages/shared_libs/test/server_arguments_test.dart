@@ -207,6 +207,46 @@ void main() {
         expect(plannerDb, isNot(equals(codeIndexDb)));
       });
     });
+    group('dataRoot', () {
+      test('--data-root argument (= format)', () {
+        final args = ServerArguments.parse(['--data-root=/custom/store']);
+
+        expect(args.dataRoot, endsWith('custom/store'));
+        expect(args.dataRoot, startsWith('/'));
+      });
+
+      test('--data-root with space separator format', () {
+        final args = ServerArguments.parse(['--data-root', '/custom/store']);
+
+        expect(args.dataRoot, endsWith('custom/store'));
+      });
+
+      test('--data-root tilde expansion', () {
+        final homeDir = Platform.environment['HOME'] ?? '';
+        if (homeDir.isNotEmpty) {
+          final args = ServerArguments.parse(['--data-root=~/my-store']);
+
+          expect(args.dataRoot, startsWith(homeDir));
+          expect(args.dataRoot, endsWith('my-store'));
+        }
+      });
+
+      test('defaults to ~/.code-index when not provided', () {
+        final homeDir = Platform.environment['HOME'] ?? '';
+        final args = ServerArguments.parse([]);
+
+        expect(args.dataRoot, endsWith('.code-index'));
+        if (homeDir.isNotEmpty) {
+          expect(args.dataRoot, startsWith(homeDir));
+        }
+      });
+
+      test('does not appear in unknownArguments', () {
+        final args = ServerArguments.parse(['--data-root=/store']);
+
+        expect(args.unknownArguments, isEmpty);
+      });
+    });
 
     group('toString', () {
       test('produces readable output', () {

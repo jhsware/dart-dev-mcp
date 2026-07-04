@@ -3,32 +3,30 @@ import 'dart:io';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-/// Schema version stamp for diagnostics. This is a clean-break schema —
-/// no migrations exist. If the version on disk differs, the database is
-/// discarded and rebuilt from scratch via [rebuildDatabase].
-const int schemaVersion = 1;
+/// Schema version stamp, stored in `PRAGMA user_version`. This is a
+/// clean-break schema — no migrations exist. If the version on disk differs,
+/// the database is discarded and rebuilt from scratch via [rebuildDatabase].
+const int schemaVersion = 2;
 
-/// Initialize the code-index database with WAL mode and the full v1 schema.
+/// Apply the standard connection PRAGMAs (WAL, busy timeout, synchronous,
+/// foreign keys) to an open [database].
+void _applyPragmas(Database database) {
+  database.execute('PRAGMA journal_mode=WAL');
+  database.execute('PRAGMA busy_timeout=5000');
+  database.execute('PRAGMA synchronous=NORMAL');
+  database.execute('PRAGMA foreign_keys=ON');
+}
+
+/// Initialize the code-index database with the full v2 schema and stamp
+/// `PRAGMA user_version = schemaVersion`.
 ///
 /// This must only be called on a freshly-created (empty) database file.
 /// For re-indexing, use [rebuildDatabase] which deletes the old file first.
 Database initializeDatabase(String dbPath) {
   final database = sqlite3.open(dbPath);
-
-  // Enable WAL mode for better concurrent access and crash recovery
-  database.execute('PRAGMA journal_mode=WAL');
-
-  // Set busy timeout to wait up to 5 seconds if database is locked
-  database.execute('PRAGMA busy_timeout=5000');
-
-  // Use NORMAL synchronous mode (good balance of safety and performance)
-  database.execute('PRAGMA synchronous=NORMAL');
-
-  // Enable foreign key enforcement
-  database.execute('PRAGMA foreign_keys=ON');
-
+  _applyPragmas(database);
   _createSchema(database);
-
+  database.execute('PRAGMA user_version=$schemaVersion');
   return database;
 }
 
@@ -57,141 +55,143 @@ Database rebuildDatabase(String dbPath, {Database? existingDb}) {
   return initializeDatabase(dbPath);
 }
 
-/// Create all tables, indexes, and FTS5 virtual tables in one pass.
+/// Open the database at [dbPath], rebuilding it from scratch when the stored
+/// `user_version` does not match [schemaVersion] (design §3.4). A brand-new
+/// (empty) file is initialized with the current schema.
+Database openOrRebuild(String dbPath) {
+  final exists = File(dbPath).existsSync();
+  if (!exists) {
+    return initializeDatabase(dbPath);
+  }
+
+  final database = sqlite3.open(dbPath);
+  final result = database.select('PRAGMA user_version');
+  final version = result.isNotEmpty ? result.first.values.first as int : 0;
+  if (version == schemaVersion) {
+    _applyPragmas(database);
+    return database;
+  }
+
+  logInfo('code-index',
+      'Schema version $version != $schemaVersion, rebuilding database');
+  return rebuildDatabase(dbPath, existingDb: database);
+}
+
+/// Create all tables, indexes, and the FTS5 virtual table in one pass
+/// (design §6).
 void _createSchema(Database db) {
   // -- files -----------------------------------------------------------------
   db.execute('''
     CREATE TABLE files (
-      id TEXT PRIMARY KEY,
-      path TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      description TEXT,
-      file_type TEXT,
-      file_hash TEXT NOT NULL,
-      size_bytes INTEGER,
-      line_count INTEGER,
-      word_count INTEGER,
-      mtime TEXT,
-      short_summary TEXT,
-      layers_present TEXT,
-      last_analyzed_at TEXT,
-      analysis_status TEXT NOT NULL DEFAULT 'pending',
-      analysis_error TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      id                      TEXT PRIMARY KEY,
+      path                    TEXT NOT NULL UNIQUE,
+      name                    TEXT NOT NULL,
+      file_type               TEXT,
+      language                TEXT,
+      file_hash               TEXT NOT NULL,
+      size_bytes              INTEGER NOT NULL,
+      line_count              INTEGER NOT NULL,
+      word_count              INTEGER NOT NULL,
+      mtime                   TEXT NOT NULL,
+      summary                 TEXT,
+      tags                    TEXT,
+      layers_present          TEXT NOT NULL,
+      indexed_at              TEXT,
+      structure_refreshed_at  TEXT,
+      analysis_status         TEXT NOT NULL DEFAULT 'pending',
+      analysis_error          TEXT,
+      created_at              TEXT NOT NULL,
+      updated_at              TEXT NOT NULL
     )
   ''');
 
-  db.execute('CREATE INDEX idx_files_path ON files(path)');
-  db.execute('CREATE INDEX idx_files_file_type ON files(file_type)');
-  db.execute('CREATE INDEX idx_files_name ON files(name)');
-  db.execute(
-      'CREATE INDEX idx_files_analysis_status ON files(analysis_status)');
+  db.execute('CREATE INDEX idx_files_path     ON files(path)');
+  db.execute('CREATE INDEX idx_files_name     ON files(name)');
+  db.execute('CREATE INDEX idx_files_type     ON files(file_type)');
+  db.execute('CREATE INDEX idx_files_language ON files(language)');
+  db.execute('CREATE INDEX idx_files_status   ON files(analysis_status)');
 
-  // -- exports (layer 2 declarations + layer 3 per-symbol summaries) ---------
+  // -- symbols (merges v1's exports + variables) -----------------------------
   db.execute('''
-    CREATE TABLE exports (
-      id TEXT PRIMARY KEY,
-      file_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      parameters TEXT,
-      description TEXT,
-      parent_name TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+    CREATE TABLE symbols (
+      id         TEXT PRIMARY KEY,
+      file_id    TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      name       TEXT NOT NULL,
+      kind       TEXT NOT NULL,
+      visibility TEXT NOT NULL DEFAULT 'public',
+      parent     TEXT,
+      signature  TEXT,
+      line       INTEGER,
+      end_line   INTEGER,
+      summary    TEXT,
+      created_at TEXT NOT NULL
     )
   ''');
 
-  db.execute('CREATE INDEX idx_exports_file_id ON exports(file_id)');
-  db.execute('CREATE INDEX idx_exports_name ON exports(name)');
-  db.execute('CREATE INDEX idx_exports_kind ON exports(kind)');
-
-  // -- variables -------------------------------------------------------------
-  db.execute('''
-    CREATE TABLE variables (
-      id TEXT PRIMARY KEY,
-      file_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
-    )
-  ''');
-
-  db.execute('CREATE INDEX idx_variables_file_id ON variables(file_id)');
-  db.execute('CREATE INDEX idx_variables_name ON variables(name)');
+  db.execute('CREATE INDEX idx_symbols_file ON symbols(file_id)');
+  db.execute('CREATE INDEX idx_symbols_name ON symbols(name)');
+  db.execute('CREATE INDEX idx_symbols_kind ON symbols(kind)');
 
   // -- imports ---------------------------------------------------------------
   db.execute('''
     CREATE TABLE imports (
-      id TEXT PRIMARY KEY,
-      file_id TEXT NOT NULL,
+      id          TEXT PRIMARY KEY,
+      file_id     TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
       import_path TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+      created_at  TEXT NOT NULL
     )
   ''');
 
-  db.execute('CREATE INDEX idx_imports_file_id ON imports(file_id)');
-  db.execute('CREATE INDEX idx_imports_import_path ON imports(import_path)');
+  db.execute('CREATE INDEX idx_imports_file ON imports(file_id)');
+  db.execute('CREATE INDEX idx_imports_path ON imports(import_path)');
 
-  // -- annotations -----------------------------------------------------------
+  // -- symbol_references (v1's external_symbol_usages, carried forward) -------
   db.execute('''
-    CREATE TABLE annotations (
-      id TEXT PRIMARY KEY,
-      file_id TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      message TEXT,
-      line INTEGER,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
-    )
-  ''');
-
-  db.execute(
-      'CREATE INDEX idx_annotations_file_id ON annotations(file_id)');
-  db.execute(
-      'CREATE INDEX idx_annotations_kind ON annotations(kind)');
-
-  // -- external_symbol_usages (§5a.3 dot-notation references) ----------------
-  db.execute('''
-    CREATE TABLE external_symbol_usages (
-      id TEXT PRIMARY KEY,
-      file_id TEXT NOT NULL,
-      module TEXT NOT NULL,
-      source_path TEXT NOT NULL,
-      symbol TEXT NOT NULL,
+    CREATE TABLE symbol_references (
+      id          TEXT PRIMARY KEY,
+      file_id     TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      symbol      TEXT NOT NULL,
+      module      TEXT NOT NULL,
+      source_path TEXT,
+      dot_path    TEXT NOT NULL,
       symbol_kind TEXT,
-      dot_path TEXT NOT NULL,
-      reference_count INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+      resolution  TEXT NOT NULL,
+      count       INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT NOT NULL,
       UNIQUE(file_id, dot_path)
     )
   ''');
 
-  db.execute(
-      'CREATE INDEX idx_ext_usages_symbol ON external_symbol_usages(symbol)');
-  db.execute(
-      'CREATE INDEX idx_ext_usages_module ON external_symbol_usages(module)');
-  db.execute(
-      'CREATE INDEX idx_ext_usages_dot_path ON external_symbol_usages(dot_path)');
+  db.execute('CREATE INDEX idx_refs_symbol   ON symbol_references(symbol)');
+  db.execute('CREATE INDEX idx_refs_module   ON symbol_references(module)');
+  db.execute('CREATE INDEX idx_refs_dot_path ON symbol_references(dot_path)');
+
+  // -- annotations -----------------------------------------------------------
+  db.execute('''
+    CREATE TABLE annotations (
+      id         TEXT PRIMARY KEY,
+      file_id    TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      kind       TEXT NOT NULL,
+      message    TEXT,
+      line       INTEGER,
+      created_at TEXT NOT NULL
+    )
+  ''');
+
+  db.execute('CREATE INDEX idx_annotations_file ON annotations(file_id)');
+  db.execute('CREATE INDEX idx_annotations_kind ON annotations(kind)');
 
   // -- FTS5 full-text search -------------------------------------------------
   db.execute('''
-    CREATE VIRTUAL TABLE code_search_fts USING fts5(
+    CREATE VIRTUAL TABLE code_index_fts USING fts5(
       file_id UNINDEXED,
+      path,
       name,
-      description,
-      export_names,
-      export_descriptions,
-      variable_names,
-      file_path,
-      external_symbols
+      summary,
+      tags,
+      symbol_names,
+      symbol_summaries,
+      reference_symbols
     )
   ''');
 }

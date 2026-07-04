@@ -6,12 +6,14 @@ import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
-/// Code Index MCP Server
+/// Code Index MCP Server (v2).
 ///
-/// Maintains a searchable index of programming code files in a project.
-/// Stores data in a SQLite database inferred from --planner-data-root.
+/// Maintains a layered, searchable index of a project's code files in a
+/// standalone SQLite store under `~/.code-index/<basename>-<hash8>` (design
+/// §3). Change detection is SHA-256 based; Dart structure (layer 2) is
+/// extracted by a warm analyzer kept per project per process.
 ///
-/// Usage: `dart run bin/code_index_mcp.dart --planner-data-root=PATH --project-dir=PATH1 [--project-dir=PATH2 ...]`
+/// Usage: `dart run bin/code_index_mcp.dart --project-dir=PATH1 [--project-dir=PATH2 ...] [--data-root=PATH]`
 void main(List<String> arguments) async {
   final serverArgs = ServerArguments.parse(arguments);
 
@@ -20,7 +22,6 @@ void main(List<String> arguments) async {
     exit(0);
   }
 
-  // Validate required arguments
   if (serverArgs.projectDirs.isEmpty) {
     stderr.writeln('Error: at least one --project-dir is required');
     stderr.writeln('');
@@ -28,57 +29,67 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
-  if (serverArgs.plannerDataRoot == null) {
-    stderr.writeln('Error: --planner-data-root is required');
-    stderr.writeln('');
-    _printUsage();
-    exit(1);
-  }
-
-  // Validate all project directories exist
+  // Validate all project directories exist.
   for (final dir in serverArgs.projectDirs) {
-    final workingDir = Directory(dir);
-    if (!await workingDir.exists()) {
+    if (!Directory(dir).existsSync()) {
       stderr.writeln('Error: Project path does not exist: $dir');
       exit(1);
     }
   }
 
-  // Per-project database connections (created on demand)
-  final databases = <String, Database>{};
+  final dataRoot = serverArgs.dataRoot;
 
-  /// Get or create database connection for a project directory.
-  Database getDatabase(String projectDir) {
-    if (databases.containsKey(projectDir)) {
-      return databases[projectDir]!;
+  // Per-project cached resources (created on demand).
+  final resources = <String, _ProjectResources>{};
+
+  /// Open (or lazily create) the resources for [projectDir]: the standalone
+  /// data directory, an open SQLite [Database] (rebuilt on schema drift), and
+  /// a warm [DartExtractor]. Stamps `meta.json` on first open and refreshes
+  /// the central registry (`last_opened_at`) every call.
+  _ProjectResources getResources(String projectDir) {
+    final existing = resources[projectDir];
+    if (existing != null) {
+      // Registry `last_opened_at` refresh is cheap; keep it current.
+      upsertProject(dataRoot, projectDir);
+      return existing;
     }
-    final dbPath = serverArgs.codeIndexDbPath(projectDir);
-    // Ensure parent directory exists
-    final dbDir = Directory(p.dirname(dbPath));
-    if (!dbDir.existsSync()) {
-      dbDir.createSync(recursive: true);
+
+    final dataDir = ensureDataDir(dataRoot, projectDir).path;
+    // Guard against hash-prefix collisions / manual directory shuffling.
+    assertMetaMatches(dataDir, projectDir);
+
+    final dbPath = dbPathFor(dataRoot, projectDir);
+    final database = openOrRebuild(dbPath);
+
+    // Stamp the per-project marker on first open.
+    if (readMeta(dataDir) == null) {
+      writeMeta(dataDir, projectDir, schemaVersion);
     }
-    final db = initializeDatabase(dbPath);
-    databases[projectDir] = db;
-    return db;
+    upsertProject(dataRoot, projectDir);
+
+    final res = _ProjectResources(
+      database: database,
+      extractor: DartExtractor(projectPath: projectDir),
+      dbPath: dbPath,
+    );
+    resources[projectDir] = res;
+    return res;
   }
 
-  logInfo('code-index', 'Code Index MCP Server starting...');
-  logInfo('code-index',
-      'Project dirs: ${serverArgs.projectDirs.join(", ")}');
-  logInfo('code-index',
-      'Planner data root: ${serverArgs.plannerDataRoot}');
+  logInfo('code-index', 'Code Index MCP Server (v2) starting...');
+  logInfo('code-index', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('code-index', 'Data root: $dataRoot');
 
-  // Set up graceful shutdown to close all databases
+  // Graceful shutdown: close every open database.
   ProcessSignal.sigint.watch().listen((_) {
-    for (final db in databases.values) {
-      db.dispose();
+    for (final res in resources.values) {
+      res.database.dispose();
     }
     exit(0);
   });
 
   final server = McpServer(
-    Implementation(name: 'code-index-mcp', version: '1.0.0'),
+    Implementation(name: 'code-index-mcp', version: '2.0.0'),
     options: McpServerOptions(
       capabilities: ServerCapabilities(
         tools: ServerCapabilitiesTools(),
@@ -86,25 +97,25 @@ void main(List<String> arguments) async {
     ),
   );
 
-  // Register the code-index tool
   server.registerTool(
     'code-index',
-    description: '''Maintains a searchable index of code files in a project.
+    description: '''Maintains a layered, searchable index of code files in a project.
 
 Operations:
-- auto-index: Layer-aware indexing of a file. Computes filesystem metadata (layer 0), extracts declarations and external usages for Dart files (layer 2), accepts LLM-provided summary (layer 1) and per-symbol descriptions (layer 3). For non-Dart files, accepts structural fields (exports, variables, imports, annotations).
-- auto-scan: Scan directories and produce an indexing plan. Returns added/changed/deleted files and a plan array for the agent. Supports incremental scans via `since` (mtime filter) and full rebuilds via `rebuild: true`.
-- get-file: Get a single file with layered data. Layers: 0=metadata, 1=summary, 2=all declarations, 3=declarations+descriptions, 4=public API only. Default layers: [0,1,4]. Returns needs_reindex array for stale detection.
-- get-files: Get multiple files with layered data. Same layers as get-file. Returns aggregated needs_reindex array.
-- search: Search the index for files matching criteria
-- dependents: Find all files that import a given path
-- dependencies: Get all imports for a file with internal/external classification
-- usages: Search external symbol usages by symbol, module, source_path, dot_path_pattern, kind, path_pattern
-- search-annotations: Search TODO/FIXME/HACK annotations across the codebase
-- stats: Get aggregate statistics about the code index (files, exports, imports, annotations)
-- diff: Scan directories and report changed/added/deleted files
-- overview: Get a compact overview of all indexed files with descriptions and export names
-- is-allowed: Check if a path is within the allowed paths for this project''',
+- scan: Walk the tree, detect added/changed/deleted files (SHA-256), and return a language-aware indexing plan. Params: directories, extensions, since, rebuild, remove_deleted, verify.
+- index-files: Batched write of 1..N file records. Dart layer 2 (declarations, references, annotations) is computed by the warm analyzer; other files carry agent-supplied structure. Refreshes dependents of changed Dart files unless refresh_dependents:false. Params: files[], refresh_dependents.
+- get-file: One file, selected layers (default [0,1,4]). 0=metadata, 1=summary+tags, 2=all declarations+imports+references+annotations, 3=+per-symbol summaries, 4=public API only. Returns needs_reindex.
+- get-files: Batched get-file with aggregated needs_reindex. Params: paths[], layers.
+- overview: Compact orientation listing — path, summary, tags, line_count, public symbol names. Params: path_pattern, file_type, language, limit.
+- search: FTS5 across names, paths, summaries, tags, symbols, references (OR + prefix + BM25) with AND filters. Params: query, file_type, language, path_pattern, tag, symbol_name, symbol_kind, import_pattern, limit.
+- find-symbol: Resolve a declaration to its file + line range (jump-to-definition). Params: name, match (exact|prefix), kind, visibility, path_pattern, limit.
+- references: Which files use a symbol, in dot-path form. Params: symbol, module, source_path, dot_path_pattern, kind, resolution (resolved|declared), path_pattern, limit.
+- dependents: Which files import a given path. Params: path.
+- dependencies: What a file imports, classified internal/external. Params: path.
+- annotations: TODO/FIXME/HACK/NOTE/DEPRECATED queries with by_kind counts. Params: kind, message_pattern, path_pattern, file_type, limit.
+- stats: Aggregate counts, tag cloud, and freshness summary. Params: limit.
+- project-info: Data dir, db path, registry entry, schema version, row counts, last scan.
+- is-allowed: Check if a path is within the allowed paths for this project. Params: path.''',
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
@@ -115,134 +126,135 @@ Operations:
           description: 'The operation to perform',
           enumValues: _validOperations,
         ),
-        // auto-index / get-file parameters
+        // ── file-scoped read params ──────────────────────────────────────
         'path': JsonSchema.string(
           description:
-              'Relative path from project root (for auto-index, get-file, dependents, dependencies)',
+              'Relative path from project root (for get-file, dependents, dependencies, is-allowed)',
         ),
         'paths': JsonSchema.array(
           items: JsonSchema.string(),
-          description:
-              'List of relative paths from project root (for get-files)',
+          description: 'List of relative paths from project root (for get-files)',
         ),
         'layers': JsonSchema.array(
           items: JsonSchema.integer(),
           description:
-              'Which layers to produce/read. For auto-index default [0,1,2,3]. For get-file/get-files default [0,1,4]. 0=filesystem metadata, 1=short_summary, 2=all declarations+usages, 3=declarations+descriptions, 4=public API only (filters out _ prefixed symbols)',
+              'Which layers to read (for get-file, get-files). Default [0,1,4]. 0=filesystem metadata, 1=summary+tags, 2=all declarations+imports+references+annotations, 3=+per-symbol summaries, 4=public API only.',
         ),
-        'short_summary': JsonSchema.string(
-          description:
-              'LLM-provided file summary (for auto-index, layer 1)',
-        ),
-        'symbol_summaries': JsonSchema.object(
-          description:
-              'Map of symbol_name → description (for auto-index, layer 3). Applied to matching exports.',
-        ),
-        'description': JsonSchema.string(
-          description: 'Description of what the file does (for auto-index non-Dart files)',
-        ),
-        'file_type': JsonSchema.string(
-          description:
-              'File type e.g. "dart", "yaml", "json" (for search)',
-        ),
-        'exports': JsonSchema.array(
+        // ── index-files (write) params ───────────────────────────────────
+        'files': JsonSchema.array(
           items: JsonSchema.object(),
           description:
-              'Exported symbols (for auto-index, non-Dart files). Each item: {name, kind, parameters?, description?, parent_name?}',
+              'Records to index (for index-files). Each item: {path (required), language?, summary?, tags?, symbol_summaries?, symbols?, imports?, references?, annotations?}. For Dart files, structure is extracted by the analyzer and agent-supplied structure arrays are ignored.',
         ),
-        'variables': JsonSchema.array(
-          items: JsonSchema.object(),
+        'refresh_dependents': JsonSchema.boolean(
           description:
-              'Exported variables (for auto-index, non-Dart files). Each item: {name, description?}',
+              'Re-resolve references of Dart files that import the changed Dart files (for index-files, default true).',
         ),
-        'imports': JsonSchema.array(
-          items: JsonSchema.string(),
-          description: 'Import paths (for auto-index, non-Dart files)',
-        ),
-        'annotations': JsonSchema.array(
-          items: JsonSchema.object(),
-          description:
-              'Code annotations (for auto-index, non-Dart files). Each item: {kind, message?, line?}. Kinds: TODO, FIXME, HACK, NOTE, DEPRECATED',
-        ),
-        // search parameters
-        'query': JsonSchema.string(
-          description:
-              'General text search across file names, descriptions, export names, export descriptions, variable names, external symbols (for search). Multiple keywords are joined with OR — files matching more keywords rank higher via BM25. Each keyword uses prefix matching (e.g. "add" matches "addTask"). For AND semantics, run separate searches or use other filters.',
-        ),
-        'name_pattern': JsonSchema.string(
-          description: 'Filter by file name pattern (for search)',
-        ),
-        'export_name': JsonSchema.string(
-          description:
-              'Search for files exporting a specific name (for search)',
-        ),
-        'export_kind': JsonSchema.string(
-          description:
-              'Filter exports by kind: class, method, function, class_member, enum, typedef, extension, mixin (for search)',
-        ),
-        'import_pattern': JsonSchema.string(
-          description: 'Search by import path pattern (for search)',
-        ),
-        'path_pattern': JsonSchema.string(
-          description: 'Filter by file path pattern (for search, usages)',
-        ),
-        'description_pattern': JsonSchema.string(
-          description: 'Search in file descriptions (for search)',
-        ),
-        'limit': JsonSchema.integer(
-          description:
-              'Max results (for search, search-annotations, default 50)',
-        ),
-        // usages parameters
-        'symbol': JsonSchema.string(
-          description: 'Exact symbol name to search for (for usages)',
-        ),
-        'module': JsonSchema.string(
-          description: 'Package/module name filter (for usages)',
-        ),
-        'source_path': JsonSchema.string(
-          description: 'Dot-notation source path filter (for usages)',
-        ),
-        'dot_path_pattern': JsonSchema.string(
-          description: 'LIKE pattern for full dot_path (for usages)',
-        ),
-        // search-annotations parameters
-        'kind': JsonSchema.string(
-          description:
-              'Annotation kind filter: TODO, FIXME, HACK, NOTE, DEPRECATED (for search-annotations). Symbol kind filter (for usages): class, function, method, enum, etc.',
-        ),
-        'message_pattern': JsonSchema.string(
-          description:
-              'Search in annotation messages (for search-annotations)',
-        ),
-        // diff / auto-scan parameters
+        // ── scan params ──────────────────────────────────────────────────
         'directories': JsonSchema.array(
           items: JsonSchema.string(),
           description:
-              'Directories to scan, relative to project root (for diff, auto-scan). Default: ["."]',
+              'Directories to scan, relative to project root (for scan). Default ["."].',
         ),
-        'file_extensions': JsonSchema.array(
+        'extensions': JsonSchema.array(
           items: JsonSchema.string(),
           description:
-              'File extensions to include e.g. [".dart", ".yaml"] (for diff, auto-scan)',
-        ),
-        'remove_deleted': JsonSchema.boolean(
-          description:
-              'Auto-remove deleted files from index (for diff, auto-scan, default true)',
+              'File extensions to include e.g. [".dart", ".yaml"] (for scan).',
         ),
         'since': JsonSchema.string(
           description:
-              'ISO 8601 timestamp. Files with mtime older than this are skipped without hashing (for auto-scan). Useful for incremental scans.',
+              'ISO 8601 timestamp. Files with mtime older than this are skipped without hashing (for scan). Useful for incremental scans.',
         ),
         'rebuild': JsonSchema.boolean(
           description:
-              'Drop and recreate the database before scanning (for auto-scan, default false). Every file will appear as added.',
+              'Drop and recreate the database before scanning (for scan, default false). Every file will appear as added.',
+        ),
+        'remove_deleted': JsonSchema.boolean(
+          description:
+              'Auto-remove deleted files from the index (for scan, default true).',
+        ),
+        'verify': JsonSchema.boolean(
+          description:
+              'Force full hashing even when mtime+size are unchanged (for scan, default false).',
+        ),
+        // ── search params ────────────────────────────────────────────────
+        'query': JsonSchema.string(
+          description:
+              'Full-text query across names, paths, summaries, tags, symbols, and reference dot-paths (for search). Tokens are OR-joined with prefix matching, BM25-ranked. Falls back to LIKE on malformed queries.',
+        ),
+        'file_type': JsonSchema.string(
+          description:
+              'Filter by file type e.g. "dart", "yaml" (for search, overview, annotations).',
+        ),
+        'language': JsonSchema.string(
+          description: 'Filter by language (for search, overview).',
+        ),
+        'path_pattern': JsonSchema.string(
+          description:
+              'Filter by file path (LIKE) (for search, overview, find-symbol, references, annotations).',
+        ),
+        'tag': JsonSchema.string(
+          description: 'Exact concept-tag match (for search).',
+        ),
+        'symbol_name': JsonSchema.string(
+          description: 'Files declaring a symbol with this exact name (for search).',
+        ),
+        'symbol_kind': JsonSchema.string(
+          description:
+              'Files declaring a symbol of this kind: class, mixin, enum, function, method, constructor, getter, setter, variable, constant, typedef, extension (for search).',
+        ),
+        'import_pattern': JsonSchema.string(
+          description: 'Files whose imports match this pattern (for search).',
+        ),
+        // ── find-symbol params ───────────────────────────────────────────
+        'name': JsonSchema.string(
+          description: 'Symbol name to resolve (for find-symbol).',
+        ),
+        'match': JsonSchema.string(
+          description:
+              "Symbol name match mode: 'exact' or 'prefix' (for find-symbol, default exact).",
+          enumValues: const ['exact', 'prefix'],
+        ),
+        'visibility': JsonSchema.string(
+          description: "Filter by visibility: 'public' or 'private' (for find-symbol).",
+        ),
+        // ── references params ────────────────────────────────────────────
+        'symbol': JsonSchema.string(
+          description: 'Exact referenced symbol name (for references).',
+        ),
+        'module': JsonSchema.string(
+          description: 'Package/module name filter (for references).',
+        ),
+        'source_path': JsonSchema.string(
+          description: 'Dot-notation source path filter (for references).',
+        ),
+        'dot_path_pattern': JsonSchema.string(
+          description: 'LIKE pattern for the full dot_path (for references).',
+        ),
+        'resolution': JsonSchema.string(
+          description:
+              "Reference resolution filter: 'resolved' (analyzer) or 'declared' (agent) (for references).",
+          enumValues: const ['resolved', 'declared'],
+        ),
+        // ── shared: kind (find-symbol / references / annotations) ────────
+        'kind': JsonSchema.string(
+          description:
+              'Symbol kind filter (find-symbol, references). Annotation kind filter: TODO, FIXME, HACK, NOTE, DEPRECATED (annotations).',
+        ),
+        // ── annotations params ───────────────────────────────────────────
+        'message_pattern': JsonSchema.string(
+          description: 'LIKE pattern for annotation messages (for annotations).',
+        ),
+        // ── shared: limit ────────────────────────────────────────────────
+        'limit': JsonSchema.integer(
+          description:
+              'Max results (for search, find-symbol, references, overview, annotations, stats). Defaults vary by operation.',
         ),
       },
       required: ['project_dir'],
     ),
     callback: (args, extra) =>
-        _handleCodeIndex(args, serverArgs, getDatabase, databases),
+        _handleCodeIndex(args, serverArgs, getResources),
   );
 
   final transport = StdioServerTransport();
@@ -250,61 +262,42 @@ Operations:
   logInfo('code-index', 'Code Index MCP Server running on stdio');
 }
 
-void _printUsage() {
-  stderr.writeln(
-      'Usage: code_index_mcp --planner-data-root=PATH --project-dir=PATH1 [--project-dir=PATH2 ...]');
-  stderr.writeln('');
-  stderr.writeln('Options:');
-  stderr.writeln(
-      '  --project-dir=PATH        Path to a project directory (required, can be repeated)');
-  stderr.writeln(
-      '  --planner-data-root=PATH  Root directory for planner data (required)');
-  stderr.writeln('  --help, -h                Show this help message');
-  stderr.writeln('');
-  stderr.writeln('Operations:');
-  stderr.writeln('  auto-index          Layer-aware indexing of a file');
-  stderr.writeln('  auto-scan           Scan directories and produce an indexing plan');
-  stderr.writeln('  get-file            Get a single file with layered data');
-  stderr.writeln('  get-files           Get multiple files with layered data');
-  stderr.writeln('  search              Search the index for files matching criteria');
-  stderr.writeln('  dependents          Find all files that import a given path');
-  stderr.writeln('  dependencies        Get all imports for a file');
-  stderr.writeln('  usages              Search external symbol usages');
-  stderr.writeln('  search-annotations  Search TODO/FIXME/HACK annotations');
-  stderr.writeln('  stats               Get aggregate statistics about the code index');
-  stderr.writeln('  diff                Scan directories and report changed/added/deleted files');
-  stderr.writeln('  overview            Get a compact overview of all indexed files');
-  stderr.writeln('  is-allowed          Check if a path is within the allowed paths');
-  stderr.writeln('');
-  stderr.writeln(
-      'DB paths are inferred as: [planner-data-root]/projects/[project-dir-name]/db/code_index.db');
-  stderr.writeln(
-      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
+/// Per-project cached resources: an open [Database] plus a warm
+/// [DartExtractor]. The database may be swapped after a `rebuild` scan.
+class _ProjectResources {
+  Database database;
+  final DartExtractor extractor;
+  final String dbPath;
+
+  _ProjectResources({
+    required this.database,
+    required this.extractor,
+    required this.dbPath,
+  });
 }
 
 const _validOperations = [
-  'auto-index',
-  'auto-scan',
+  'scan',
+  'index-files',
   'get-file',
   'get-files',
+  'overview',
   'search',
+  'find-symbol',
+  'references',
   'dependents',
   'dependencies',
-  'usages',
-  'search-annotations',
+  'annotations',
   'stats',
-  'diff',
-  'overview',
+  'project-info',
   'is-allowed',
 ];
 
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
   ServerArguments serverArgs,
-  Database Function(String projectDir) getDatabase,
-  Map<String, Database> databases,
+  _ProjectResources Function(String projectDir) getResources,
 ) async {
-  // Validate project_dir is present and valid
   final projectDir = args['project_dir'] as String?;
   if (requireString(projectDir, 'project_dir') case final error?) {
     return error;
@@ -321,12 +314,10 @@ Future<CallToolResult> _handleCodeIndex(
   }
 
   final workingDir = Directory(projectDir!);
-
-  // Resolve allowed paths from ProjectConfigService
   final allowedPaths =
       ProjectConfigService.getAllowedPaths(projectDir, 'code-index');
 
-  // Handle is-allowed without needing a database
+  // `is-allowed` needs no database.
   if (operation == 'is-allowed') {
     final path = args['path'] as String?;
     if (requireString(path, 'path') case final error?) {
@@ -348,66 +339,100 @@ Future<CallToolResult> _handleCodeIndex(
     });
   }
 
-  // Get or create database for this project
-  final database = getDatabase(projectDir);
-
-  // Create operation handlers for this project
-  final indexOps = IndexOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final searchOps = SearchOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final browseOps = BrowseOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final diffOps = DiffOperations(
-    database: database,
-    workingDir: workingDir,
-    allowedPaths: allowedPaths,
-  );
-  final autoScanOps = AutoScanOperations(
-    database: database,
-    workingDir: workingDir,
-    dbPath: serverArgs.codeIndexDbPath(projectDir),
-    allowedPaths: allowedPaths,
-    onDatabaseReplaced: (newDb) {
-      databases[projectDir] = newDb;
-    },
-  );
+  final _ProjectResources res;
+  try {
+    res = getResources(projectDir);
+  } on MetaMismatchError catch (e) {
+    return textResult('Error: ${e.message}');
+  }
 
   try {
     switch (operation) {
-      case 'auto-index':
-        return await indexOps.autoIndex(args);
-      case 'auto-scan':
-        return autoScanOps.autoScan(args);
+      case 'scan':
+        return ScanOperations(
+          database: res.database,
+          workingDir: workingDir,
+          dbPath: res.dbPath,
+          allowedPaths: allowedPaths,
+          onDatabaseReplaced: (newDb) => res.database = newDb,
+        ).scan(args);
+      case 'index-files':
+        return await WriteOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+          extractor: res.extractor,
+        ).indexFiles(args);
       case 'get-file':
-        return browseOps.getFile(args);
+        return BrowseOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+          dbPath: res.dbPath,
+        ).getFile(args);
       case 'get-files':
-        return browseOps.getFiles(args);
-      case 'search':
-        return searchOps.search(args);
-      case 'dependents':
-        return searchOps.dependents(args);
-      case 'dependencies':
-        return searchOps.dependencies(args);
-      case 'usages':
-        return searchOps.usages(args);
-      case 'search-annotations':
-        return searchOps.searchAnnotations(args);
-      case 'stats':
-        return searchOps.stats(args);
-      case 'diff':
-        return diffOps.diff(args);
+        return BrowseOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+          dbPath: res.dbPath,
+        ).getFiles(args);
       case 'overview':
-        return browseOps.overview(args);
+        return BrowseOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+          dbPath: res.dbPath,
+        ).overview(args);
+      case 'project-info':
+        return BrowseOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+          dbPath: res.dbPath,
+        ).projectInfo(args);
+      case 'search':
+        return SearchOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).search(args);
+      case 'stats':
+        return SearchOperations(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).stats(args);
+      case 'find-symbol':
+        return SymbolQueries(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).findSymbol(args);
+      case 'references':
+        return SymbolQueries(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).references(args);
+      case 'dependents':
+        return GraphQueries(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).dependents(args);
+      case 'dependencies':
+        return GraphQueries(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).dependencies(args);
+      case 'annotations':
+        return GraphQueries(
+          database: res.database,
+          workingDir: workingDir,
+          allowedPaths: allowedPaths,
+        ).annotations(args);
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
@@ -432,4 +457,37 @@ Future<CallToolResult> _handleCodeIndex(
       'operation': operation,
     });
   }
+}
+
+void _printUsage() {
+  stderr.writeln(
+      'Usage: code_index_mcp --project-dir=PATH1 [--project-dir=PATH2 ...] [--data-root=PATH]');
+  stderr.writeln('');
+  stderr.writeln('Options:');
+  stderr.writeln(
+      '  --project-dir=PATH   Path to a project directory (required, can be repeated)');
+  stderr.writeln(
+      '  --data-root=PATH     Root of the code-index store (optional, default ~/.code-index)');
+  stderr.writeln('  --help, -h           Show this help message');
+  stderr.writeln('');
+  stderr.writeln('Operations:');
+  stderr.writeln('  scan           Walk the tree, detect changes, return an indexing plan');
+  stderr.writeln('  index-files    Batched write of file records (1..N)');
+  stderr.writeln('  get-file       Get a single file with layered data');
+  stderr.writeln('  get-files      Get multiple files with layered data');
+  stderr.writeln('  overview       Compact listing: path, summary, tags, public symbols');
+  stderr.writeln('  search         FTS5 search across the index');
+  stderr.writeln('  find-symbol    Resolve a declaration to file + line range');
+  stderr.writeln('  references     Which files use a symbol (dot-path queries)');
+  stderr.writeln('  dependents     Which files import a given path');
+  stderr.writeln('  dependencies   What a file imports (internal/external)');
+  stderr.writeln('  annotations    TODO/FIXME/HACK/NOTE/DEPRECATED queries');
+  stderr.writeln('  stats          Aggregate statistics about the code index');
+  stderr.writeln('  project-info   Data dir, db path, registry entry, schema version');
+  stderr.writeln('  is-allowed     Check if a path is within the allowed paths');
+  stderr.writeln('');
+  stderr.writeln(
+      'The store lives at [data-root]/[basename]-[sha8] (default ~/.code-index).');
+  stderr.writeln(
+      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
 }
