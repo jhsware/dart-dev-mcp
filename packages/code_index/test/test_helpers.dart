@@ -1,209 +1,170 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:code_index_mcp/code_index_mcp.dart';
-import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
-import 'package:uuid/uuid.dart';
+import 'package:sqlite3/sqlite3.dart';
 
-final _uuid = Uuid();
+/// Decode the JSON payload carried by a [CallToolResult].
+Map<String, dynamic> jsonOf(CallToolResult r) =>
+    jsonDecode((r.content.first as TextContent).text) as Map<String, dynamic>;
 
-/// Test-only helpers for the code-index package.
+/// An isolated v2 code-index bound to a throwaway project directory and its
+/// own temp `--data-root`.
 ///
-/// The `indexFile` method used to live on [IndexOperations] as a legacy
-/// MCP operation. It was retired from the public surface during the
-/// layered-storage rewrite, but the test suite still benefits from a
-/// compact "write a synthetic row without touching the filesystem" path
-/// for setting up search / browse / diff scenarios. This extension keeps
-/// that ergonomic available exclusively inside the test directory.
-extension IndexOperationsTestHelpers on IndexOperations {
-  /// Insert or update a `files` row plus its `exports`, `variables`,
-  /// `imports`, `annotations`, and `code_search_fts` companions from the
-  /// supplied structural fields. Bypasses analyzer parsing and disk reads,
-  /// which makes it suitable for synthetic test data.
-  ///
-  /// Mirrors the original `IndexOperations.indexFile` MCP handler signature
-  /// so existing tests can keep calling `indexOps.indexFile({...})`.
-  CallToolResult indexFile(Map<String, dynamic>? args) {
-    final path = args?['path'] as String?;
-    final name = args?['name'] as String?;
-    final description = args?['description'] as String?;
-    final fileType = args?['file_type'] as String?;
-    final exports = args?['exports'] as List<dynamic>?;
-    final variables = args?['variables'] as List<dynamic>?;
-    final imports = args?['imports'] as List<dynamic>?;
-    final annotations = args?['annotations'] as List<dynamic>?;
+/// Every harness creates the project *and* the data directory under
+/// [Directory.systemTemp], so a test never reads or writes the real
+/// `~/.code-index`. Construct with [TestIndex.create] in `setUp` and call
+/// [dispose] in `tearDown`.
+///
+/// The [ScanOperations] `rebuild` path swaps the underlying [Database]; the
+/// harness re-wires every handler through `onDatabaseReplaced` so callers keep
+/// using `harness.search` / `harness.browse` after a rebuild.
+class TestIndex {
+  final Directory project;
+  final Directory dataRoot;
+  final String dbPath;
+  List<String> allowedPaths;
+  Database db;
 
-    if (requireString(path, 'path') case final error?) {
-      return error;
+  late WriteOperations write;
+  late ScanOperations scan;
+  late BrowseOperations browse;
+  late SearchOperations search;
+  late SymbolQueries symbols;
+  late GraphQueries graph;
+
+  TestIndex._(
+    this.project,
+    this.dataRoot,
+    this.dbPath,
+    this.db,
+    this.allowedPaths,
+  ) {
+    _wire();
+  }
+
+  /// Spin up an isolated index. When [copyFixture] points at a directory its
+  /// contents are recursively copied into the temp project so the analyzer
+  /// sees a real `pubspec.yaml` and resolvable imports.
+  factory TestIndex.create({
+    List<String> allowedPaths = const [],
+    String? copyFixture,
+  }) {
+    final project = Directory.systemTemp.createTempSync('ci_proj_');
+    final dataRoot = Directory.systemTemp.createTempSync('ci_data_');
+    if (copyFixture != null) {
+      _copyDir(Directory(copyFixture), project);
     }
+    final dbPath = p.join(dataRoot.path, 'code_index.db');
+    final db = initializeDatabase(dbPath);
+    return TestIndex._(project, dataRoot, dbPath, db, allowedPaths);
+  }
 
-    if (requireString(name, 'name') case final error?) {
-      return error;
-    }
-
-    final absolutePath = p.normalize(p.join(workingDir.path, path!));
-    final file = File(absolutePath);
-    if (!file.existsSync()) {
-      return validationError('path', 'File not found: $path');
-    }
-
-    if (allowedPaths.isNotEmpty && !isAllowedPath(allowedPaths, absolutePath)) {
-      return outOfScopeResponse(
-        path: path,
-        allowedPaths: getAllowedRelativePaths(workingDir, allowedPaths),
-      );
-    }
-
-    final fileHash = computeFileHash(file);
-    final now = DateTime.now().toUtc().toIso8601String();
-
-    final existing =
-        database.select('SELECT id FROM files WHERE path = ?', [path]);
-    final isUpdate = existing.isNotEmpty;
-    final fileId = isUpdate ? existing.first['id'] as String : _uuid.v4();
-    final message = isUpdate ? 'File index updated' : 'File indexed';
-
-    withRetryTransactionSync(database, () {
-      if (isUpdate) {
-        database.execute('DELETE FROM exports WHERE file_id = ?', [fileId]);
-        database.execute('DELETE FROM variables WHERE file_id = ?', [fileId]);
-        database.execute('DELETE FROM imports WHERE file_id = ?', [fileId]);
-        database
-            .execute('DELETE FROM code_search_fts WHERE file_id = ?', [fileId]);
-        database
-            .execute('DELETE FROM annotations WHERE file_id = ?', [fileId]);
-        database.execute(
-            'DELETE FROM external_symbol_usages WHERE file_id = ?', [fileId]);
-
-        database.execute('''
-          UPDATE files SET name = ?, description = ?, file_type = ?,
-            file_hash = ?, updated_at = ?
-          WHERE id = ?
-        ''', [name, description, fileType, fileHash, now, fileId]);
-      } else {
-        database.execute('''
-          INSERT INTO files (id, path, name, description, file_type, file_hash,
-            created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', [fileId, path, name, description, fileType, fileHash, now, now]);
-      }
-
-      if (exports != null) {
-        for (final export in exports) {
-          final e = export as Map<String, dynamic>;
-          database.execute('''
-            INSERT INTO exports (id, file_id, name, kind, parameters,
-              description, parent_name, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ''', [
-            _uuid.v4(),
-            fileId,
-            e['name'],
-            e['kind'],
-            e['parameters'],
-            e['description'],
-            e['parent_name'],
-            now,
-            now,
-          ]);
-        }
-      }
-
-      if (variables != null) {
-        for (final variable in variables) {
-          final v = variable as Map<String, dynamic>;
-          database.execute('''
-            INSERT INTO variables (id, file_id, name, description,
-              created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          ''', [
-            _uuid.v4(),
-            fileId,
-            v['name'],
-            v['description'],
-            now,
-            now,
-          ]);
-        }
-      }
-
-      if (imports != null) {
-        for (final importPath in imports) {
-          database.execute('''
-            INSERT INTO imports (id, file_id, import_path, created_at)
-            VALUES (?, ?, ?, ?)
-          ''', [
-            _uuid.v4(),
-            fileId,
-            importPath as String,
-            now,
-          ]);
-        }
-      }
-
-      if (annotations != null) {
-        for (final annotation in annotations) {
-          final a = annotation as Map<String, dynamic>;
-          database.execute('''
-            INSERT INTO annotations (id, file_id, kind, message, line, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-          ''', [
-            _uuid.v4(),
-            fileId,
-            a['kind'] as String,
-            a['message'],
-            a['line'],
-            now,
-          ]);
-        }
-      }
-
-      final exportNames = exports
-              ?.map((e) => (e as Map<String, dynamic>)['name'] as String?)
-              .where((n) => n != null)
-              .join(' ') ??
-          '';
-      final exportDescriptions = exports
-              ?.map((e) =>
-                  (e as Map<String, dynamic>)['description'] as String?)
-              .where((d) => d != null)
-              .join(' ') ??
-          '';
-      final variableNames = variables
-              ?.map((v) => (v as Map<String, dynamic>)['name'] as String?)
-              .where((n) => n != null)
-              .join(' ') ??
-          '';
-      database.execute('''
-        INSERT INTO code_search_fts (file_id, name, description, export_names,
-          export_descriptions, variable_names, file_path, external_symbols)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ''', [
-        fileId,
-        name,
-        description ?? '',
-        exportNames,
-        exportDescriptions,
-        variableNames,
-        path,
-        '',
-      ]);
-    });
-
-    return jsonResult({
-      'success': true,
-      'message': message,
-      'file': {
-        'id': fileId,
-        'path': path,
-        'name': name,
-        'file_hash': fileHash,
-        'export_count': exports?.length ?? 0,
-        'variable_count': variables?.length ?? 0,
-        'import_count': imports?.length ?? 0,
-        'annotation_count': annotations?.length ?? 0,
+  void _wire() {
+    write = WriteOperations(
+      database: db,
+      workingDir: project,
+      allowedPaths: allowedPaths,
+    );
+    scan = ScanOperations(
+      database: db,
+      workingDir: project,
+      dbPath: dbPath,
+      allowedPaths: allowedPaths,
+      onDatabaseReplaced: (newDb) {
+        db = newDb;
+        _wire();
       },
-    });
+    );
+    browse = BrowseOperations(
+      database: db,
+      workingDir: project,
+      dbPath: dbPath,
+      allowedPaths: allowedPaths,
+    );
+    search = SearchOperations(
+      database: db,
+      workingDir: project,
+      allowedPaths: allowedPaths,
+    );
+    symbols = SymbolQueries(
+      database: db,
+      workingDir: project,
+      allowedPaths: allowedPaths,
+    );
+    graph = GraphQueries(database: db, workingDir: project);
+  }
+
+  /// Write [contents] to `project/relPath`, creating parent directories.
+  File writeFile(String relPath, String contents) {
+    final f = File(p.join(project.path, relPath));
+    f.parent.createSync(recursive: true);
+    f.writeAsStringSync(contents);
+    return f;
+  }
+
+  /// Resolve a project-relative path to its on-disk [File].
+  File file(String relPath) => File(p.join(project.path, relPath));
+  /// Re-point the allow-list and re-wire every handler. The project path is
+  /// only known after [create], so scope tests seed files first, then call
+  /// this with an allow-list under [project].
+  void restrict(List<String> paths) {
+    allowedPaths = paths;
+    _wire();
+  }
+
+
+  /// `dart pub get` inside the temp project (required before the analyzer can
+  /// resolve `package:` imports for Dart extraction).
+  Future<void> pubGet() async {
+    final r = await Process.run(
+      'dart',
+      ['pub', 'get'],
+      workingDirectory: project.path,
+    );
+    if (r.exitCode != 0) {
+      throw StateError('pub get failed: ${r.stderr}');
+    }
+  }
+
+  /// Convenience wrapper over [WriteOperations.indexFiles].
+  Future<Map<String, dynamic>> indexFiles(
+    List<Map<String, dynamic>> files, {
+    bool refreshDependents = false,
+  }) async =>
+      jsonOf(await write.indexFiles({
+        'files': files,
+        'refresh_dependents': refreshDependents,
+      }));
+
+  /// Convenience wrapper over [ScanOperations.scan] (defaults to `['.']`).
+  Map<String, dynamic> scanDirs([Map<String, dynamic>? args]) => jsonOf(
+        scan.scan(
+          args ??
+              {
+                'directories': ['.'],
+              },
+        ),
+      );
+
+  void dispose() {
+    try {
+      db.dispose();
+    } catch (_) {}
+    if (project.existsSync()) project.deleteSync(recursive: true);
+    if (dataRoot.existsSync()) dataRoot.deleteSync(recursive: true);
+  }
+
+  static void _copyDir(Directory src, Directory dst) {
+    for (final entity in src.listSync(recursive: true)) {
+      final rel = p.relative(entity.path, from: src.path);
+      if (entity is File) {
+        final dest = File(p.join(dst.path, rel));
+        dest.parent.createSync(recursive: true);
+        entity.copySync(dest.path);
+      }
+    }
   }
 }

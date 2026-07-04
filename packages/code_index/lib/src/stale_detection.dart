@@ -31,10 +31,21 @@ class StaleDetector {
       if (!file.existsSync()) continue;
 
       final rows = database.select(
-        'SELECT file_hash, analysis_status FROM files WHERE path = ?',
+        'SELECT file_hash, mtime, size_bytes, analysis_status '
+        'FROM files WHERE path = ?',
         [relPath],
       );
       if (rows.isEmpty) continue;
+
+      // mtime+size short-circuit: skip hashing when the file is unchanged.
+      final stat = file.statSync();
+      if (isUnchanged(
+        storedMtimeIso: rows.first['mtime'] as String?,
+        storedSize: rows.first['size_bytes'] as int?,
+        stat: stat,
+      )) {
+        continue;
+      }
 
       final storedHash = rows.first['file_hash'] as String?;
       final currentHash = computeFileHash(file);

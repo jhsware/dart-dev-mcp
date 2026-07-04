@@ -9,124 +9,112 @@ agent: code-index-agent
 
 ## Purpose
 
-The code-index is a persistent, layered database of file metadata so you can explore and search the codebase without reading full source files. Querying the index costs ~30–400 tokens per file vs ~500–5000+ tokens for reading source.
+The code index is a persistent, layered database of file metadata. Querying it
+costs ~30–400 tokens per file versus ~500–5000+ for reading source. This is the
+**consumer** guide — how to *query*. Writing to the index lives in
+`code-index-agent`. Every operation requires `project_dir`.
 
-This skill is the **consumer-side** guide — it teaches you how to **query** the index. The indexing workflow (how to *write* to the index) lives in `code-index-agent`.
+## Query patterns (start here)
 
-## Layered Information Model
-
-Every indexed file stores five layers. Always start with the cheapest layer that answers your question.
-
-| Layer | Name | Tokens | What it tells you |
-|------:|------|-------:|-------------------|
-| 0 | Metadata | ~30–60 | Path, file type, size, hash, staleness |
-| 1 | Short summary | ~20–40 | One-sentence description of what the file does |
-| 2 | Declarations & usages | ~100–400 | All exports, imports, variables, annotations with signatures |
-| 3 | Per-symbol summaries | ~200–800 | One-sentence description per public symbol |
-| 4 | Public API | ~50–200 | Layer 2 filtered to public symbols only |
-
-**Cheap before expensive:** start with `overview` (layer 0+1 across files), then drill into `get-file` with layer 2/3 only when needed.
-
-## Layer Selection
-
-`get-file` accepts a `layers` parameter and defaults to `[0, 1, 4]` — enough for most decisions without pulling in every symbol description.
+**P1 — Orient** an unfamiliar area:
 
 ```
-code-index: get-file
-  path: "lib/src/database.dart"
-  layers: [0, 1]           # just metadata + summary
+code-index: overview path_pattern="lib/auth"
+→ path + summary + tags + public symbols per file, ~40 tokens each
 ```
 
-To get full detail including per-symbol summaries:
+**P2 — Concept search** (you know the idea, not the identifier):
 
 ```
-code-index: get-file
-  path: "lib/src/database.dart"
-  layers: [0, 1, 2, 3]
+code-index: search query="session expiry refresh"
+→ semantic tags match "auth"-style vocabulary even when the code says "signIn"
+→ miss? retry with synonyms, or check stats' tag cloud for the index vocabulary
 ```
 
-## Handling `needs_reindex`
-
-Every read response can include a `needs_reindex` array of files whose on-disk content has changed since they were last indexed:
-
-```json
-{
-  "data": { ... },
-  "needs_reindex": [
-    { "path": "lib/src/foo.dart", "reason": "changed" },
-    { "path": "lib/src/bar.dart", "reason": "changed" }
-  ]
-}
-```
-
-**Decision rule:** if correctness matters for the current question, spawn `code-index-agent` with the batch as input. Otherwise, continue with the stale data — it is usually close enough.
+**P3 — Jump to symbol → partial read** (the headline pattern):
 
 ```
-Spawn code-index-agent with:
-{
-  "needs_reindex": [
-    { "path": "lib/src/foo.dart", "reason": "changed" },
-    { "path": "lib/src/bar.dart", "reason": "changed" }
-  ]
-}
+code-index: find-symbol name="refresh" path_pattern="auth"
+→ { path: "lib/src/auth/session.dart", line: 57, end_line: 74 }
+filesystem: read-file path="lib/src/auth/session.dart" startLine=57 endLine=74
+→ the exact 18 lines, not the 500-line file
 ```
 
-## Handling `out_of_scope`
+**P4 — Impact analysis** (what breaks if I change this?):
 
-When you query a file outside the configured `code-index` allowed paths, you get a structured response:
-
-```json
-{ "status": "out_of_scope", "allowed_paths": ["lib", "bin", "test"] }
+```
+code-index: dependents path="lib/src/auth/session.dart"     # who imports it
+code-index: references symbol="SessionManager"              # who uses the symbol
+code-index: references dot_path_pattern="flutter.material"  # all uses from material
+code-index: references symbol="Widget" module="flutter" resolution="resolved"
+                                                            # analyzer-verified only
 ```
 
-This is normal. The index cannot answer about this file — read it yourself with `filesystem read-file`.
+**P5 — Debt sweep:**
 
-## When to Spawn `code-index-agent`
+```
+code-index: annotations kind="TODO" path_pattern="auth"
+```
 
-1. **Session start** — run `auto-scan` (with `rebuild: false` unless you need a full rebuild), then hand the returned plan to `code-index-agent`:
+**P6 — File facts** (line counts, sizes, freshness — no agent needed):
 
-   ```
-   code-index: auto-scan
-   # → { plan: [...], out_of_scope: [...], allowed_paths: [...] }
+```
+code-index: get-files paths=[...] layers=[0]
+code-index: stats
+```
 
-   Spawn code-index-agent with the plan object
-   ```
+## Cheap before expensive
 
-2. **On demand** — when `needs_reindex` is non-empty and freshness matters for your current question, spawn `code-index-agent` with the `needs_reindex` array.
+Every file stores layers; pick the cheapest that answers the question.
 
-3. **Routine reads** — do NOT spawn the agent. Just query the index directly.
+| Layer | What it gives you | Cost |
+|------:|-------------------|-----:|
+| 0 | metadata: path, type, size, hash, freshness | ~30–60 |
+| 1 | one-sentence summary + tags | ~20–40 |
+| 2 | symbols, imports, references, annotations | ~100–400 |
+| 3 | per-symbol summaries | ~200–800 |
+| 4 | public API (layer 2 filtered to public) | ~50–200 |
 
-## Operation Reference
+Start with `overview`/`search`. Request layer 2/3 via `get-file` only when
+needed. Read raw source last — and then only the line range from `find-symbol`.
+`get-file` defaults to `layers: [0, 1, 4]`.
 
-All operations require the `project_dir` parameter.
+## Operations
 
-### Querying
+| Op | Purpose | Key params |
+|----|---------|-----------|
+| `overview` | compact listing (layer 0+1 + public symbols) | `path_pattern`, `file_type`, `language`, `limit` |
+| `search` | FTS5 across names, summaries, tags, symbols, dot-paths | `query`, `tag`, `symbol_name`, `symbol_kind`, `path_pattern`, `import_pattern`, `file_type`, `language` |
+| `find-symbol` | resolve a declaration to file + line range | `name`, `match`, `kind`, `visibility`, `path_pattern` |
+| `get-file` | one file's layered data | `path`, `layers` |
+| `get-files` | batched `get-file` | `paths`, `layers` |
+| `references` | who uses a symbol (dot-path notation) | `symbol`, `module`, `dot_path_pattern`, `resolution`, `path_pattern` |
+| `dependents` | files that import a path | `path` |
+| `dependencies` | a file's imports (internal/external) | `path` |
+| `annotations` | TODO/FIXME/HACK/NOTE/DEPRECATED | `kind`, `message_pattern`, `path_pattern` |
+| `stats` | aggregate counts + tag cloud + freshness | `limit` |
+| `project-info` | does an index exist, schema, row counts | — |
+| `scan` | detect changes, return an indexing `plan` | `rebuild`, `since`, `verify` |
+| `is-allowed` | is a path within the allowed paths | `path` |
 
-| Operation | Description | Key parameters |
-|-----------|-------------|----------------|
-| `overview` | Compact listing of all indexed files (layer 0+1): path, description, file type, export names. | `path_pattern`, `file_type` |
-| `get-file` | Single file with selected layers. Default layers: `[0, 1, 4]`. | `path`, `layers` |
-| `get-files` | Batched `get-file` for multiple files at once. | `paths`, `layers` |
-| `search` | FTS5 keyword search across names, descriptions, exports, variables. Multi-word = AND. | `query`, `export_name`, `export_kind`, `file_type`, `path_pattern`, `import_pattern`, `description_pattern` |
-| `usages` | Find all usages of a symbol across indexed files. | `symbol` |
-| `dependents` | Find all files that import a given path. | `path` |
-| `dependencies` | Get a file's imports classified as internal or external. | `path` |
-| `search-annotations` | Find TODO/FIXME/HACK/NOTE/DEPRECATED across the codebase. | `kind`, `path_pattern`, `message_pattern`, `file_type` |
-| `stats` | Aggregate counts: files by type, exports by kind, top imports, annotations. | — |
-| `is-allowed` | Check whether a path is inside the `code-index` allowed paths. | `path` |
+`scan` and `index-files` feed the writer — see the freshness policy. Consumers
+never call `index-files`.
 
-### Scanning (triggers indexing via agent)
+## Freshness policy
 
-| Operation | Description | Key parameters |
-|-----------|-------------|----------------|
-| `auto-scan` | Walk the project, diff against the index, return a plan for `code-index-agent`. Does NOT index anything itself. | `rebuild`, `since` |
+- Every read may return `needs_reindex: [{ path, reason }]`. **Rule:** if
+  correctness matters for the current question, spawn `code-index-agent` with
+  that batch; otherwise continue — stale summaries are usually close enough.
+- **Session start:** run `scan` and, if the `plan` is non-empty, hand the
+  response to `code-index-agent` before heavy querying.
+- **Routine reads never spawn the agent.**
+- Re-indexing a changed Dart file auto-refreshes references of its direct
+  dependents — no need to re-index importers after a rename; check the agent's
+  `dependents_refreshed`.
 
-### Indexing (used by `code-index-agent`, not by consumers)
+## Boundaries
 
-| Operation | Description |
-|-----------|-------------|
-| `auto-index` | Write layers for a single file. Called by the agent, not by consumers. |
-
-## Tool Reference
-
-All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.
+- `out_of_scope` responses are normal: the index will not answer for that path —
+  fall back to `filesystem read-file`.
+- `project-info` tells you whether an index exists at all (fresh checkout → run
+  the `scan` flow first).

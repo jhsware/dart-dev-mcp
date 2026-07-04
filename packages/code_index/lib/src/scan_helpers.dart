@@ -6,22 +6,40 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'hash_utils.dart';
 
-/// Result of walking the filesystem and collecting file hashes.
-class ScanResult {
-  /// Relative path → file hash for files that passed all filters.
-  final Map<String, String> diskFiles;
+/// Stored change-detection metadata for an indexed file (design §4.2).
+class IndexedFileMeta {
+  final String hash;
+  final String? mtime;
+  final int? size;
 
-  /// Relative paths of files skipped because they are outside allowed paths.
+  IndexedFileMeta({required this.hash, this.mtime, this.size});
+}
+
+/// Result of walking the filesystem with the mtime+size short-circuit.
+class ScanResult {
+  /// Relative path → freshly-computed SHA-256 for files that were hashed
+  /// (stat mismatch, missing from index, or [verify] mode).
+  final Map<String, String> hashedFiles;
+
+  /// Relative paths short-circuited as unchanged (mtime+size matched the
+  /// stored values, so hashing was skipped).
+  final Set<String> unchanged;
+
+  /// Relative paths skipped because they are outside allowed paths.
   final List<String> outOfScope;
 
-  /// Count of files skipped because their mtime was older than [since].
+  /// Count of files skipped because their mtime was older than `since`.
   final int skippedBySince;
 
   ScanResult({
-    required this.diskFiles,
+    required this.hashedFiles,
+    required this.unchanged,
     required this.outOfScope,
     this.skippedBySince = 0,
   });
+
+  /// Every relative path seen on disk (hashed + short-circuited).
+  Iterable<String> get diskPaths => [...hashedFiles.keys, ...unchanged];
 }
 
 /// Result of comparing disk files against the index.
@@ -43,18 +61,24 @@ class DiffResult {
   });
 }
 
-/// Walk directories, filter files, and collect hashes.
+/// Walk directories, filter files, and apply the mtime+size short-circuit.
 ///
-/// If [since] is provided, files with mtime before [since] are skipped
-/// without hashing — they are counted in [ScanResult.skippedBySince].
+/// For each candidate file the stat is compared against the stored
+/// [indexedFiles] metadata: when mtime **and** size match (and [verify] is
+/// false) the file is treated as unchanged and hashing is skipped. Otherwise
+/// the SHA-256 is computed. Files with mtime before [since] are skipped
+/// without stat comparison and counted in [ScanResult.skippedBySince].
 ScanResult scanDisk({
   required Directory workingDir,
   required List<dynamic> directories,
   required List<String> allowedPaths,
+  required Map<String, IndexedFileMeta> indexedFiles,
   Set<String>? extensionFilter,
   DateTime? since,
+  bool verify = false,
 }) {
-  final diskFiles = <String, String>{};
+  final hashedFiles = <String, String>{};
+  final unchanged = <String>{};
   final outOfScope = <String>[];
   var skippedBySince = 0;
 
@@ -85,77 +109,105 @@ ScanResult scanDisk({
         if (!extensionFilter.contains(ext)) continue;
       }
 
+      final stat = entity.statSync();
+
       // Skip files older than `since` without hashing
-      if (since != null) {
-        final stat = entity.statSync();
-        if (stat.modified.isBefore(since)) {
-          skippedBySince++;
-          continue;
-        }
+      if (since != null && stat.modified.isBefore(since)) {
+        skippedBySince++;
+        continue;
       }
 
-      final hash = computeFileHash(entity);
-      diskFiles[relativePath] = hash;
+      // mtime+size short-circuit: skip hashing when the file is unchanged.
+      final meta = indexedFiles[relativePath];
+      if (!verify &&
+          meta != null &&
+          isUnchanged(
+            storedMtimeIso: meta.mtime,
+            storedSize: meta.size,
+            stat: stat,
+          )) {
+        unchanged.add(relativePath);
+        continue;
+      }
+
+      hashedFiles[relativePath] = computeFileHash(entity);
     }
   }
 
   return ScanResult(
-    diskFiles: diskFiles,
+    hashedFiles: hashedFiles,
+    unchanged: unchanged,
     outOfScope: outOfScope,
     skippedBySince: skippedBySince,
   );
 }
 
-/// Query the index for stored file hashes in the given directories.
-Map<String, String> queryIndexedFiles(
+/// Query the index for stored change-detection metadata in the given
+/// directories (path → hash/mtime/size).
+Map<String, IndexedFileMeta> queryIndexedFiles(
   Database database,
   List<dynamic> directories,
 ) {
-  final dirPatterns = directories.map((d) => '$d%').toList();
+  final dirPatterns = directories
+      .map((d) => (d == '.' || d == './') ? '%' : '$d%')
+      .toList();
   final placeholders = dirPatterns.map((_) => 'path LIKE ?').join(' OR ');
-  final indexedFiles = <String, String>{};
+  final indexedFiles = <String, IndexedFileMeta>{};
 
   final result = database.select(
-    'SELECT path, file_hash FROM files WHERE $placeholders',
+    'SELECT path, file_hash, mtime, size_bytes FROM files WHERE $placeholders',
     dirPatterns,
   );
   for (final row in result) {
-    indexedFiles[row['path'] as String] = row['file_hash'] as String;
+    indexedFiles[row['path'] as String] = IndexedFileMeta(
+      hash: row['file_hash'] as String,
+      mtime: row['mtime'] as String?,
+      size: row['size_bytes'] as int?,
+    );
   }
 
   return indexedFiles;
 }
 
-/// Compare disk files against indexed files and classify into
-/// added, changed, deleted, and unchanged.
+/// Compare a [scan] against stored [indexedFiles] and classify into
+/// added / changed / deleted / unchanged.
+///
+/// Short-circuited files are always unchanged. Hashed files are `added`
+/// when absent from the index, `changed` on digest mismatch, and unchanged
+/// (touched-but-identical) when the digest still matches.
+///
+/// Short-circuited files are always unchanged. Hashed files are `added`
+/// when absent from the index, `changed` on digest mismatch, and unchanged
+/// (touched-but-identical) when the digest still matches.
 DiffResult compareDiskToIndex({
   required ScanResult scan,
-  required Map<String, String> indexedFiles,
+  required Map<String, IndexedFileMeta> indexedFiles,
 }) {
-  final changed = <String>[];
   final added = <String>[];
+  final changed = <String>[];
   final deleted = <String>[];
-  var unchangedCount = 0;
+  var unchangedCount = scan.unchanged.length;
 
-  for (final entry in scan.diskFiles.entries) {
-    final indexedHash = indexedFiles[entry.key];
-    if (indexedHash == null) {
+  for (final entry in scan.hashedFiles.entries) {
+    final meta = indexedFiles[entry.key];
+    if (meta == null) {
       added.add(entry.key);
-    } else if (indexedHash != entry.value) {
+    } else if (meta.hash != entry.value) {
       changed.add(entry.key);
     } else {
       unchangedCount++;
     }
   }
 
+  final diskPaths = scan.diskPaths.toSet();
   for (final path in indexedFiles.keys) {
-    if (!scan.diskFiles.containsKey(path)) {
+    if (!diskPaths.contains(path)) {
       deleted.add(path);
     }
   }
 
-  changed.sort();
   added.sort();
+  changed.sort();
   deleted.sort();
   final outOfScope = scan.outOfScope..sort();
 
@@ -167,4 +219,19 @@ DiffResult compareDiskToIndex({
     unchangedCount: unchangedCount,
     skippedBySince: scan.skippedBySince,
   );
+}
+
+/// The language / file-type for a path, derived from its extension
+/// (lowercase, without the leading dot). Returns `null` when there is no
+/// extension.
+String? languageFor(String path) {
+  final ext = p.extension(path).toLowerCase();
+  return ext.isEmpty ? null : ext.substring(1);
+}
+
+/// Agent-produced layers wanted for a path, language-aware (design §7.1):
+/// Dart files need `[1, 3]` (the MCP computes their layer 2), every other
+/// file needs `[1, 2, 3]`.
+List<int> needsFor(String path) {
+  return languageFor(path) == 'dart' ? const [1, 3] : const [1, 2, 3];
 }

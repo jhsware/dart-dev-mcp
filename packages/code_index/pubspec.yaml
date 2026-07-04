@@ -10,12 +10,12 @@ resolution: workspace
 
 dependencies:
   analyzer: ^7.0.0
+  crypto: ^3.0.0
   jhsware_code_shared_libs:
     path: ../shared_libs
   mcp_dart: ^1.2.2
   path: ^1.9.0
   sqlite3: ^2.4.6
-  xxh3: ^1.1.0
   uuid: ^4.5.1
 
 dev_dependencies:
