@@ -59,7 +59,7 @@ Operations:
 - search-text: Search for text pattern (regex) in files
 - create-directory: Create a new directory
 - create-file: Create a new file with content
-- edit-file: Edit file content (overwrite, insert, or replace lines)
+- edit-file: Edit file content (overwrite, insert, or replace lines). When replacing, edit complete blocks including any closing statement/line to avoid double entries
 - extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)''',
     inputSchema: ToolInputSchema(
       properties: {
