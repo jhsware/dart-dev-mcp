@@ -22,6 +22,14 @@ When processing a step:
 
 Make sure the task memory is updated as we progress.
 
+## Resuming Parent Task – Verify Sub-Task Completeness
+When the parent task is resumed, verify that the dispatched sub-task is completed. Also verify that the sub-task step and task status has been updated. Verify that all changed files have been committed to the correct branch. If the sub-task wasn't properly completed, re-dispatch the sub-task to allow it to fix issues.
+
+## Working With Branches
+We have implemented git worktree support. Make sure you use the same worktree for all sub-tasks. Do not spawn new worktrees and if there is a worktree that is related to this parent task from a previous run, use that worktree instead of creating a new worktree.
+
+Using worktrees allows us to work on tasks in parallel. But creating a worktree comes at a cost so we don't want to create more than necessary.
+
 ## Tool Reference
 
 All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.
