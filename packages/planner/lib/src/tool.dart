@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:jhsware_code_shared_libs/shared_libs.dart'
+    show resolveProjectDirAlias;
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 
@@ -217,11 +219,15 @@ Future<CallToolResult> dispatchPlanner(
       return _text('Error: $e');
     }
   }
-  final projectDir = args['project_dir'] as String?;
-  if (projectDir == null || projectDir.isEmpty) {
+  final requestedDir = args['project_dir'] as String?;
+  if (requestedDir == null || requestedDir.isEmpty) {
     return _text('Error: project_dir is required');
   }
-  if (!config.projectDirs.contains(projectDir)) {
+  // Worktree aliases are accepted: a provisioned worktree path
+  // (`<repo>/.worktrees/<slug>`) resolves to its registered repository
+  // (see resolveProjectDirAlias).
+  final projectDir = resolveProjectDirAlias(requestedDir, config.projectDirs);
+  if (projectDir == null) {
     return _text(
         'Error: project_dir must be one of: ${config.projectDirs.join(', ')}');
   }

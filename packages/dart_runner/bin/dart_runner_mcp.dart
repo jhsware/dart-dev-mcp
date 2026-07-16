@@ -196,12 +196,16 @@ Future<CallToolResult> _handleDartRunner(
   ServerArguments serverArgs,
   SessionManager sessionManager,
 ) async {
-  // Validate project_dir is present and valid
-  final projectDir = args['project_dir'] as String?;
-  if (requireString(projectDir, 'project_dir') case final error?) {
+  // Validate project_dir is present and valid. Worktree aliases are
+  // accepted: the caller may pass the repository dir when its provisioned
+  // worktree is registered, or vice versa (see resolveProjectDirAlias).
+  final requestedDir = args['project_dir'] as String?;
+  if (requireString(requestedDir, 'project_dir') case final error?) {
     return error;
   }
-  if (!serverArgs.projectDirs.contains(projectDir)) {
+  final projectDir =
+      resolveProjectDirAlias(requestedDir!, serverArgs.projectDirs);
+  if (projectDir == null) {
     return validationError('project_dir',
         'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
   }
@@ -212,7 +216,7 @@ Future<CallToolResult> _handleDartRunner(
     return error;
   }
 
-  final projectRoot = Directory(projectDir!);
+  final projectRoot = Directory(projectDir);
   final allowFallback = serverArgs.allowToolchainFallback;
 
   // Resolve optional working_dir for command-executing operations

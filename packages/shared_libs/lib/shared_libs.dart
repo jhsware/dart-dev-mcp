@@ -12,6 +12,7 @@ export 'src/line_endings.dart';
 export 'src/logging.dart';
 export 'src/path_helpers.dart';
 export 'src/project_config.dart';
+export 'src/project_dir_resolver.dart';
 
 export 'src/prompt_pack_service.dart';
 export 'src/result_helpers.dart';
