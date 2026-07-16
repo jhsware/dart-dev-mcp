@@ -125,3 +125,61 @@ List<String> getAllowedRelativePaths(Directory workingDir, List<String> allowedP
 
   return (directory: Directory(resolvedAbs), error: null);
 }
+
+/// Build an actionable hint when [rawPath] cannot be served for
+/// [projectDir] but resolves inside a *different* registered project
+/// directory.
+///
+/// The MCP tools take `path` relative to `project_dir`, and reject
+/// absolute paths and `..` traversal outright. An agent that knows the
+/// absolute location of a file in another registered project — a common
+/// situation in multi-project sessions — would otherwise only be told
+/// "No absolute paths allowed" followed by the allowed paths of the
+/// *wrong* project, steering it further away from the correct call.
+///
+/// Returns:
+/// - a hint naming the registered directory to pass as `project_dir`
+///   (with the path respelled relative to it) when [rawPath] is absolute
+///   or escapes [projectDir] via `..` and lands inside another entry of
+///   [projectDirs];
+/// - a hint suggesting the relative spelling when an absolute [rawPath]
+///   points inside [projectDir] itself;
+/// - null when no better call can be suggested (the caller should fall
+///   through to its normal validation error).
+String? crossProjectPathHint({
+  required String rawPath,
+  required String projectDir,
+  required List<String> projectDirs,
+}) {
+  final projAbs = normalize(Directory(projectDir).absolute.path);
+
+  String resolvedAbs;
+  if (rawPath.startsWith('/')) {
+    resolvedAbs = normalize(rawPath);
+  } else if (rawPath.split('/').contains('..')) {
+    resolvedAbs = normalize('$projAbs/$rawPath');
+  } else {
+    return null; // ordinary relative path — nothing to suggest
+  }
+
+  String relTo(String root) =>
+      resolvedAbs == root ? '.' : resolvedAbs.substring(root.length + 1);
+
+  bool within(String root) =>
+      resolvedAbs == root || resolvedAbs.startsWith('$root$separator');
+
+  if (within(projAbs)) {
+    return 'Path resolves inside project_dir — pass it as a relative '
+        'path: "${relTo(projAbs)}"';
+  }
+
+  for (final dir in projectDirs) {
+    final dirAbs = normalize(Directory(dir).absolute.path);
+    if (dirAbs == projAbs) continue;
+    if (within(dirAbs)) {
+      return 'Path is inside another registered project directory. Call '
+          'again with project_dir="$dirAbs" and path="${relTo(dirAbs)}".';
+    }
+  }
+  return null;
+}

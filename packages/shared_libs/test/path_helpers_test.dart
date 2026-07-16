@@ -497,5 +497,82 @@ void main() {
     });
 
   });
+
+  group('crossProjectPathHint', () {
+    const projectA = '/Users/dev/business-app/jhsware_business';
+    const projectB = '/Users/dev/mcp-collection';
+    const registered = [projectA, projectB];
+
+    test('absolute path inside another registered project names it', () {
+      final hint = crossProjectPathHint(
+        rawPath: '/Users/dev/mcp-collection/packages/mcp_core/pubspec.yaml',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNotNull);
+      expect(hint, contains('project_dir="/Users/dev/mcp-collection"'));
+      expect(hint, contains('path="packages/mcp_core/pubspec.yaml"'));
+    });
+
+    test('absolute path equal to another registered project maps to "."', () {
+      final hint = crossProjectPathHint(
+        rawPath: '/Users/dev/mcp-collection',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNotNull);
+      expect(hint, contains('project_dir="/Users/dev/mcp-collection"'));
+      expect(hint, contains('path="."'));
+    });
+
+    test('absolute path inside the current project suggests relative form',
+        () {
+      final hint = crossProjectPathHint(
+        rawPath: '$projectA/lib/main.dart',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNotNull);
+      expect(hint, contains('relative path: "lib/main.dart"'));
+    });
+
+    test('.. traversal landing in another registered project names it', () {
+      final hint = crossProjectPathHint(
+        rawPath: '../../mcp-collection/packages/mcp_core/pubspec.yaml',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNotNull);
+      expect(hint, contains('project_dir="/Users/dev/mcp-collection"'));
+      expect(hint, contains('path="packages/mcp_core/pubspec.yaml"'));
+    });
+
+    test('does not match partial directory-name prefixes', () {
+      final hint = crossProjectPathHint(
+        rawPath: '/Users/dev/mcp-collection-backup/file.txt',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNull);
+    });
+
+    test('ordinary relative path yields no hint', () {
+      final hint = crossProjectPathHint(
+        rawPath: 'lib/main.dart',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNull);
+    });
+
+    test('absolute path outside every registered project yields no hint', () {
+      final hint = crossProjectPathHint(
+        rawPath: '/etc/hosts',
+        projectDir: projectA,
+        projectDirs: registered,
+      );
+      expect(hint, isNull);
+    });
+  });
 }
 

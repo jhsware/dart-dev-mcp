@@ -177,6 +177,31 @@ Future<CallToolResult> _handleFileSystem(
     return error;
   }
 
+  // Before dispatching: if the caller addressed a file by its absolute
+  // location (or escaped project_dir via `..`) and that location lies in
+  // a registered project directory, answer with the exact call to make
+  // instead of a generic rejection. Multi-project sessions hit this when
+  // an agent knows a file's absolute path but not which project_dir
+  // serves it.
+  final rawPaths = <String>[
+    if (operation == 'read-files')
+      ...path.split(',').map((p) => p.trim())
+    else
+      path,
+    if (operation == 'extract' && args['destination'] is String)
+      args['destination'] as String,
+  ];
+  for (final raw in rawPaths) {
+    final hint = crossProjectPathHint(
+      rawPath: raw,
+      projectDir: projectDir,
+      projectDirs: serverArgs.projectDirs,
+    );
+    if (hint != null) {
+      return validationError('path', hint);
+    }
+  }
+
   // Resolve allowed paths from ProjectConfigService
   final workingDir = Directory(projectDir);
   final allowedPaths =
