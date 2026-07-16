@@ -59,7 +59,7 @@ Operations:
 - search-text: Search for text pattern (regex) in files
 - create-directory: Create a new directory
 - create-file: Create a new file with content
-- edit-file: Edit file content (overwrite, insert, or replace lines). When replacing, edit complete blocks including any closing statement/line to avoid double entries
+- edit-file: Edit file content. Insert with insert_at (or startLine without endLine); replace with startLine+endLine (edit complete blocks including any closing statement/line to avoid double entries); omitting all line params overwrites the ENTIRE file
 - extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -110,7 +110,7 @@ For edit-file:
         ),
         'insert_at': JsonSchema.integer(
           description:
-              'Line number in destination file to insert at (1-indexed). For extract: omit to append to existing file or write from start of new file',
+              'Line number to insert at (1-indexed). For edit-file: insert content at this line (do not combine with startLine/endLine). For extract: position in destination file; omit to append to existing file or write from start of new file',
         ),
         'remove_from_source': JsonSchema.boolean(
           description:
@@ -218,7 +218,9 @@ Future<CallToolResult> _handleFileSystem(
         final content = args['content'] as String?;
         final startLine = args['startLine'] as int?;
         final endLine = args['endLine'] as int?;
-        return await writeOps.editFile(path, content, startLine, endLine);
+        final insertAt = args['insert_at'] as int?;
+        return await writeOps.editFile(path, content, startLine, endLine,
+            insertAt: insertAt);
       case 'extract':
         final destination = args['destination'] as String?;
         final startLine = args['startLine'] as int?;

@@ -74,12 +74,24 @@ class FileWriteOperations {
   }
 
   /// Edit file content (overwrite, insert, or replace lines).
+  ///
+  /// Modes:
+  /// - no line params: overwrite the entire file
+  /// - [insertAt], or [startLine] without [endLine]: insert at that line
+  /// - [startLine] and [endLine]: replace the line range
+  ///
+  /// [insertAt] is the schema-facing spelling of insert mode; internally it
+  /// maps to startLine-without-endLine. It cannot be combined with
+  /// [startLine] or [endLine]. Before it was honored here the argument was
+  /// silently ignored, so an edit-file call carrying only insert_at fell
+  /// through to overwrite mode and destroyed the file.
   Future<CallToolResult> editFile(
     String path,
     String? content,
     int? startLine,
-    int? endLine,
-  ) async {
+    int? endLine, {
+    int? insertAt,
+  }) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
       return validationError('path', '$pathError. $_allowedPathsHint');
@@ -100,6 +112,22 @@ class FileWriteOperations {
 
     if (requireString(content, 'content') case final error?) {
       return error;
+    }
+
+    // Map insert_at to insert mode. Reject ambiguous combinations instead
+    // of guessing.
+    if (insertAt != null) {
+      if (startLine != null || endLine != null) {
+        return validationError(
+          'insert_at',
+          'insert_at cannot be combined with startLine/endLine — use '
+          'insert_at alone (insert) or startLine/endLine (replace)',
+        );
+      }
+      if (insertAt < 1) {
+        return validationError('insert_at', 'insert_at must be >= 1');
+      }
+      startLine = insertAt;
     }
 
     // Validate line numbers

@@ -1,7 +1,17 @@
 import 'dart:io';
 
 import 'package:filesystem_mcp/src/write_operations.dart';
+import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
+
+/// Extract the text content from a CallToolResult.
+String resultText(CallToolResult result) {
+  final content = result.content.first;
+  if (content is TextContent) {
+    return content.text;
+  }
+  throw StateError('Expected TextContent, got ${content.runtimeType}');
+}
 
 void main() {
   late Directory tempDir;
@@ -52,6 +62,69 @@ void main() {
     });
   });
 
+  group('editFile insert_at parameter', () {
+    test('inserts at the given line (regression: was silently ignored '
+        'and overwrote the entire file)', () async {
+      final file = File('${libDir.path}/foo.dart');
+      await file.writeAsString('line1\nline2\nline3\n');
+
+      final result = await writeOps.editFile(
+          'lib/foo.dart', 'newLine\n', null, null,
+          insertAt: 2);
+
+      expect(resultText(result), contains('Inserted'));
+      expect(await file.readAsString(), 'line1\nnewLine\nline2\nline3\n');
+    });
+
+    test('inserting after the last line appends', () async {
+      final file = File('${libDir.path}/foo.dart');
+      await file.writeAsString('line1\nline2\n');
+
+      await writeOps.editFile('lib/foo.dart', 'line3\n', null, null,
+          insertAt: 3);
+
+      expect(await file.readAsString(), 'line1\nline2\nline3\n');
+    });
+
+    test('combined with startLine is rejected and file is untouched',
+        () async {
+      final file = File('${libDir.path}/foo.dart');
+      await file.writeAsString('line1\nline2\n');
+
+      final result = await writeOps.editFile(
+          'lib/foo.dart', 'x\n', 1, null,
+          insertAt: 2);
+
+      expect(resultText(result),
+          contains('insert_at cannot be combined with startLine/endLine'));
+      expect(await file.readAsString(), 'line1\nline2\n');
+    });
+
+    test('combined with endLine is rejected and file is untouched', () async {
+      final file = File('${libDir.path}/foo.dart');
+      await file.writeAsString('line1\nline2\n');
+
+      final result = await writeOps.editFile(
+          'lib/foo.dart', 'x\n', null, 2,
+          insertAt: 2);
+
+      expect(resultText(result),
+          contains('insert_at cannot be combined with startLine/endLine'));
+      expect(await file.readAsString(), 'line1\nline2\n');
+    });
+
+    test('insert_at < 1 is rejected and file is untouched', () async {
+      final file = File('${libDir.path}/foo.dart');
+      await file.writeAsString('line1\nline2\n');
+
+      final result = await writeOps.editFile(
+          'lib/foo.dart', 'x\n', null, null,
+          insertAt: 0);
+
+      expect(resultText(result), contains('insert_at must be >= 1'));
+      expect(await file.readAsString(), 'line1\nline2\n');
+    });
+  });
   group('editFile replace mode', () {
     test('content with trailing newline does NOT add a blank line', () async {
       final file = File('${libDir.path}/foo.dart');
