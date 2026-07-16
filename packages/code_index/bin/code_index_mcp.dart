@@ -298,11 +298,16 @@ Future<CallToolResult> _handleCodeIndex(
   ServerArguments serverArgs,
   _ProjectResources Function(String projectDir) getResources,
 ) async {
-  final projectDir = args['project_dir'] as String?;
-  if (requireString(projectDir, 'project_dir') case final error?) {
+  // Worktree aliases are accepted: the caller may pass the repository dir
+  // when its provisioned worktree is registered, or vice versa (see
+  // resolveProjectDirAlias).
+  final requestedDir = args['project_dir'] as String?;
+  if (requireString(requestedDir, 'project_dir') case final error?) {
     return error;
   }
-  if (!serverArgs.projectDirs.contains(projectDir)) {
+  final projectDir =
+      resolveProjectDirAlias(requestedDir!, serverArgs.projectDirs);
+  if (projectDir == null) {
     return validationError('project_dir',
         'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
   }
@@ -313,7 +318,7 @@ Future<CallToolResult> _handleCodeIndex(
     return error;
   }
 
-  final workingDir = Directory(projectDir!);
+  final workingDir = Directory(projectDir);
   final allowedPaths =
       ProjectConfigService.getAllowedPaths(projectDir, 'code-index');
 
