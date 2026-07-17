@@ -10,3 +10,7 @@ shortcuts.md
 bin/*
 agentic-personas/*.zip
 agentic-plugins/*.zip
+
+# Dart kernel compilation caches
+*.dill
+*.dill.sdk
