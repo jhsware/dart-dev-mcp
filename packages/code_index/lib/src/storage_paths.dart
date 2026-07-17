@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:path/path.dart' as p;
 
 /// Pure path-derivation helpers for the standalone `~/.code-index` store
@@ -17,17 +18,25 @@ String sanitizeBasename(String basename) {
   return basename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
 }
 
-/// The canonical form of a project path: absolute, normalized, and with
-/// symlinks resolved. Falls back to the normalized absolute path when the
-/// directory does not exist on disk (so derivation stays deterministic in
-/// tests and for not-yet-created projects).
+/// The canonical form of a project path: absolute, normalized, with any git
+/// worktree infix stripped (`<root>/.worktrees/<slug>/<rest>` →
+/// `<root>/<rest>`, see [stripWorktreeInfix]), and symlinks resolved. Falls
+/// back to the unresolved path when the directory does not exist on disk
+/// (so derivation stays deterministic in tests and for not-yet-created
+/// projects).
+///
+/// Stripping the worktree infix gives a provisioned worktree the same
+/// canonical identity — and therefore the same data directory and database —
+/// as its main checkout, so worktree sessions reuse the main repo's index
+/// instead of starting from an empty store.
 String canonicalProjectPath(String projectDir) {
   final absolute = p.normalize(p.absolute(projectDir));
-  final dir = Directory(absolute);
-  if (dir.existsSync()) {
-    return dir.resolveSymbolicLinksSync();
-  }
-  return absolute;
+  final repoSide = stripWorktreeInfix(absolute) ?? absolute;
+  final dir = Directory(repoSide);
+  final resolved = dir.existsSync() ? dir.resolveSymbolicLinksSync() : repoSide;
+  // Symlink resolution may surface a worktree segment the raw path did not
+  // show; strip again (a no-op for repository-side paths).
+  return stripWorktreeInfix(resolved) ?? resolved;
 }
 
 /// First 8 hex characters of the SHA-256 of [input].
@@ -37,7 +46,8 @@ String sha8(String input) {
 }
 
 /// The directory name for a project: `<sanitizedBasename>-<sha8>` where the
-/// hash is taken over the canonical (symlink-resolved) project path.
+/// hash is taken over the canonical (worktree-stripped, symlink-resolved)
+/// project path.
 String dataDirNameFor(String projectDir) {
   final canonical = canonicalProjectPath(projectDir);
   final base = sanitizeBasename(p.basename(canonical));
