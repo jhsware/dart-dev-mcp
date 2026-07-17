@@ -59,7 +59,7 @@ Operations:
 - search-text: Search for text pattern (regex) in files
 - create-directory: Create a new directory
 - create-file: Create a new file with content
-- edit-file: Edit file content. Insert with insert_at (or startLine without endLine); replace with startLine+endLine (edit complete blocks including any closing statement/line to avoid double entries); omitting all line params overwrites the ENTIRE file
+- edit-file: Edit file content. Insert with insert_at (or startLine without endLine); replace with startLine+endLine (edit complete blocks including any closing statement/line to avoid double entries); omitting all line params overwrites the ENTIRE file. Snake_case aliases (start_line/end_line) are accepted; unrecognized line-param spellings are rejected instead of silently ignored
 - extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)''',
     inputSchema: ToolInputSchema(
       properties: {
@@ -90,7 +90,7 @@ Operations:
         ),
         'startLine': JsonSchema.integer(
           description:
-              '''Starting line number (1-indexed). Used by read-file and edit-file.
+              '''Starting line number (1-indexed, alias: start_line). Used by read-file and edit-file.
 For read-file:
 - If not provided: reads entire file
 - If provided without endLine: reads from startLine to end of file
@@ -102,7 +102,7 @@ For edit-file:
         ),
         'endLine': JsonSchema.integer(
           description:
-              'Ending line number (1-indexed, inclusive). Used by read-file and edit-file.',
+              'Ending line number (1-indexed, inclusive, alias: end_line). Used by read-file and edit-file.',
         ),
         'destination': JsonSchema.string(
           description:
@@ -110,7 +110,7 @@ For edit-file:
         ),
         'insert_at': JsonSchema.integer(
           description:
-              'Line number to insert at (1-indexed). For edit-file: insert content at this line (do not combine with startLine/endLine). For extract: position in destination file; omit to append to existing file or write from start of new file',
+              'Line number to insert at (1-indexed, alias: insertAt). For edit-file: insert content at this line (do not combine with startLine/endLine). For extract: position in destination file; omit to append to existing file or write from start of new file',
         ),
         'remove_from_source': JsonSchema.boolean(
           description:
@@ -222,8 +222,11 @@ Future<CallToolResult> _handleFileSystem(
       case 'list-content':
         return await readOps.listContent(path);
       case 'read-file':
-        final startLine = args['startLine'] as int?;
-        final endLine = args['endLine'] as int?;
+        if (unrecognizedLineParam(args) case final bad?) {
+          return lineParamError(bad);
+        }
+        final startLine = lineArg(args, 'startLine');
+        final endLine = lineArg(args, 'endLine');
         return await readOps.readFile(path,
             startLine: startLine, endLine: endLine);
       case 'read-files':
@@ -240,17 +243,23 @@ Future<CallToolResult> _handleFileSystem(
         final content = args['content'] as String?;
         return await writeOps.createFile(path, content);
       case 'edit-file':
+        if (unrecognizedLineParam(args) case final bad?) {
+          return lineParamError(bad);
+        }
         final content = args['content'] as String?;
-        final startLine = args['startLine'] as int?;
-        final endLine = args['endLine'] as int?;
-        final insertAt = args['insert_at'] as int?;
+        final startLine = lineArg(args, 'startLine');
+        final endLine = lineArg(args, 'endLine');
+        final insertAt = lineArg(args, 'insert_at');
         return await writeOps.editFile(path, content, startLine, endLine,
             insertAt: insertAt);
       case 'extract':
+        if (unrecognizedLineParam(args) case final bad?) {
+          return lineParamError(bad);
+        }
         final destination = args['destination'] as String?;
-        final startLine = args['startLine'] as int?;
-        final endLine = args['endLine'] as int?;
-        final insertAt = args['insert_at'] as int?;
+        final startLine = lineArg(args, 'startLine');
+        final endLine = lineArg(args, 'endLine');
+        final insertAt = lineArg(args, 'insert_at');
         final removeFromSource = args['remove_from_source'] as bool? ?? true;
         return await writeOps.extractLines(
           path,
@@ -269,4 +278,18 @@ Future<CallToolResult> _handleFileSystem(
       'path': path,
     });
   }
+}
+
+/// Validation error for a line-parameter spelling that is not recognized.
+///
+/// Ignoring such a key would be destructive: edit-file without line params
+/// overwrites the entire file, so a misspelled parameter must fail loudly.
+CallToolResult lineParamError(String key) {
+  return validationError(
+    key,
+    'Unrecognized line parameter "$key". Use startLine/endLine (aliases: '
+    'start_line/end_line) or insert_at (alias: insertAt). Refusing to '
+    'proceed: ignoring a line parameter would change the operation — for '
+    'edit-file it would overwrite the entire file.',
+  );
 }
