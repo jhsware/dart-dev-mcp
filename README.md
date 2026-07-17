@@ -71,6 +71,7 @@ Layered code indexing for token-efficient codebase exploration. Maintains a pers
 - `stats` - Aggregate index statistics
 - `diff` - Report changed/added/deleted files
 - `is-allowed` - Check if a path is within allowed paths
+- `prune-stores` - Report/remove orphaned stores under the data root
 ### 5. Dart Runner MCP (`packages/dart_runner/bin/dart_runner_mcp.dart`)
 Run Dart programs with polling for long-running processes:
 - `analyze` - Run `dart analyze`
