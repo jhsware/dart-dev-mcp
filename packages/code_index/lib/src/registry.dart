@@ -128,3 +128,65 @@ void assertMetaMatches(String dataDir, String projectPath) {
     );
   }
 }
+
+/// Scan [dataRoot] for store directories whose recorded source project no
+/// longer exists on disk (orphans left behind by merged worktree families,
+/// deleted projects, and the like).
+///
+/// Only directories with a readable `meta.json` recording `project_path`
+/// can be identified; directories without one are reported as
+/// `unidentified` and never touched. With [delete] false (the default)
+/// this is a dry run that only reports. With [delete] true the orphaned
+/// store directories are removed together with their `registry.json`
+/// entries.
+Map<String, dynamic> pruneOrphanedStores(String dataRoot,
+    {bool delete = false}) {
+  final root = Directory(dataRoot);
+  final orphans = <Map<String, dynamic>>[];
+  final unidentified = <String>[];
+  var keptCount = 0;
+
+  if (root.existsSync()) {
+    for (final entity in root.listSync()) {
+      if (entity is! Directory) continue;
+      final meta = readMeta(entity.path);
+      final projectPath = meta?['project_path'];
+      if (projectPath is! String) {
+        unidentified.add(p.basename(entity.path));
+        continue;
+      }
+      if (Directory(projectPath).existsSync()) {
+        keptCount++;
+        continue;
+      }
+      orphans.add({
+        'dir': p.basename(entity.path),
+        'project_path': projectPath,
+      });
+      if (delete) {
+        entity.deleteSync(recursive: true);
+      }
+    }
+  }
+
+  if (delete && orphans.isNotEmpty) {
+    _removeRegistryEntries(
+        dataRoot, orphans.map((o) => o['project_path'] as String).toSet());
+  }
+
+  return {
+    'deleted': delete,
+    'orphans': orphans,
+    'kept_count': keptCount,
+    'unidentified': unidentified,
+  };
+}
+
+/// Drop registry entries whose canonical project path is in [projectPaths].
+void _removeRegistryEntries(String dataRoot, Set<String> projectPaths) {
+  final registry = _readRegistry(dataRoot);
+  final projects = (registry['projects'] as Map).cast<String, dynamic>();
+  projects.removeWhere((path, _) => projectPaths.contains(path));
+  registry['projects'] = projects;
+  _writeRegistryAtomic(dataRoot, registry);
+}
