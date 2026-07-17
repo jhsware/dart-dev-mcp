@@ -146,12 +146,29 @@ void main() {
   });
 
   group('editFile overwrite mode', () {
-    test('Mode 1 is unchanged', () async {
+    test('without overwrite:true is rejected and file is untouched',
+        () async {
       final file = File('${libDir.path}/foo.dart');
       await file.writeAsString('old\n');
 
-      await writeOps.editFile('lib/foo.dart', 'new\n', null, null);
+      final result =
+          await writeOps.editFile('lib/foo.dart', 'new\n', null, null);
 
+      expect(resultText(result), contains('Pass overwrite:true'));
+      expect(await file.readAsString(), 'old\n');
+    });
+
+    test('with overwrite:true replaces the file and reports the delta',
+        () async {
+      final file = File('${libDir.path}/foo.dart');
+      await file.writeAsString('a\nb\nc\n');
+
+      final result = await writeOps.editFile(
+          'lib/foo.dart', 'new\n', null, null,
+          overwrite: true);
+
+      expect(resultText(result),
+          contains('Overwrote entire file (3 lines → 1 lines)'));
       expect(await file.readAsString(), 'new\n');
     });
   });

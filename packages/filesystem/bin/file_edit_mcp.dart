@@ -59,8 +59,10 @@ Operations:
 - search-text: Search for text pattern (regex) in files
 - create-directory: Create a new directory
 - create-file: Create a new file with content
-- edit-file: Edit file content. Insert with insert_at (or startLine without endLine); replace with startLine+endLine (edit complete blocks including any closing statement/line to avoid double entries); omitting all line params overwrites the ENTIRE file. Snake_case aliases (start_line/end_line) are accepted; unrecognized line-param spellings are rejected instead of silently ignored
-- extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)''',
+- edit-file: Edit file content. Insert with insert_at (or startLine without endLine); replace with startLine+endLine (edit complete blocks including any closing statement/line to avoid double entries); overwriting the ENTIRE file requires omitting line params AND passing overwrite:true. Snake_case aliases (start_line/end_line) are accepted
+- extract: Extract lines from one file and insert into another (cut/copy refactoring without passing content to LLM)
+
+Unknown or misspelled arguments are rejected with a validation error listing the recognized arguments for the operation.''',
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
@@ -96,7 +98,7 @@ For read-file:
 - If provided without endLine: reads from startLine to end of file
 - If provided with endLine: reads lines startLine to endLine
 For edit-file:
-- If not provided: overwrites entire file
+- If not provided (and no insert_at): whole-file overwrite — requires overwrite:true
 - If provided without endLine: inserts at this line
 - If provided with endLine: replaces lines startLine to endLine''',
         ),
@@ -115,6 +117,10 @@ For edit-file:
         'remove_from_source': JsonSchema.boolean(
           description:
               'For extract: whether to remove extracted lines from source file. Default: true (cut). Set false to copy.',
+        ),
+        'overwrite': JsonSchema.boolean(
+          description:
+              'For edit-file: confirm replacing the ENTIRE file when no line parameters are given. Default: false — whole-file overwrite without overwrite:true is rejected.',
         ),
       },
       required: ['project_dir'],
@@ -151,6 +157,34 @@ const _validOperations = [
   'extract',
 ];
 
+const _commonArgs = {'project_dir', 'operation', 'path'};
+const _lineArgs = {'startLine', 'start_line', 'endLine', 'end_line'};
+const _insertArgs = {'insert_at', 'insertAt'};
+
+/// Recognized argument keys per operation, enforced via checkUnknownArgs.
+final _allowedArgsByOperation = <String, Set<String>>{
+  'list-content': _commonArgs,
+  'read-file': {..._commonArgs, ..._lineArgs},
+  'read-files': _commonArgs,
+  'search-text': {..._commonArgs, 'pattern', 'file-pattern', 'case-sensitive'},
+  'create-directory': _commonArgs,
+  'create-file': {..._commonArgs, 'content'},
+  'edit-file': {
+    ..._commonArgs,
+    'content',
+    ..._lineArgs,
+    ..._insertArgs,
+    'overwrite',
+  },
+  'extract': {
+    ..._commonArgs,
+    'destination',
+    ..._lineArgs,
+    ..._insertArgs,
+    'remove_from_source',
+  },
+};
+
 Future<CallToolResult> _handleFileSystem(
   Map<String, dynamic> args,
   ServerArguments serverArgs,
@@ -173,6 +207,14 @@ Future<CallToolResult> _handleFileSystem(
   final path = args['path'] as String? ?? '.';
 
   if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  // Reject unknown or misspelled arguments before dispatch — a silently
+  // ignored argument can change an operation's meaning (a missing line
+  // parameter used to turn edit-file into a whole-file overwrite).
+  if (checkUnknownArgs(args, operation!, _allowedArgsByOperation[operation]!)
       case final error?) {
     return error;
   }
@@ -222,9 +264,6 @@ Future<CallToolResult> _handleFileSystem(
       case 'list-content':
         return await readOps.listContent(path);
       case 'read-file':
-        if (unrecognizedLineParam(args) case final bad?) {
-          return lineParamError(bad);
-        }
         final startLine = lineArg(args, 'startLine');
         final endLine = lineArg(args, 'endLine');
         return await readOps.readFile(path,
@@ -243,19 +282,14 @@ Future<CallToolResult> _handleFileSystem(
         final content = args['content'] as String?;
         return await writeOps.createFile(path, content);
       case 'edit-file':
-        if (unrecognizedLineParam(args) case final bad?) {
-          return lineParamError(bad);
-        }
         final content = args['content'] as String?;
         final startLine = lineArg(args, 'startLine');
         final endLine = lineArg(args, 'endLine');
         final insertAt = lineArg(args, 'insert_at');
+        final overwrite = args['overwrite'] as bool? ?? false;
         return await writeOps.editFile(path, content, startLine, endLine,
-            insertAt: insertAt);
+            insertAt: insertAt, overwrite: overwrite);
       case 'extract':
-        if (unrecognizedLineParam(args) case final bad?) {
-          return lineParamError(bad);
-        }
         final destination = args['destination'] as String?;
         final startLine = lineArg(args, 'startLine');
         final endLine = lineArg(args, 'endLine');
@@ -278,18 +312,4 @@ Future<CallToolResult> _handleFileSystem(
       'path': path,
     });
   }
-}
-
-/// Validation error for a line-parameter spelling that is not recognized.
-///
-/// Ignoring such a key would be destructive: edit-file without line params
-/// overwrites the entire file, so a misspelled parameter must fail loudly.
-CallToolResult lineParamError(String key) {
-  return validationError(
-    key,
-    'Unrecognized line parameter "$key". Use startLine/endLine (aliases: '
-    'start_line/end_line) or insert_at (alias: insertAt). Refusing to '
-    'proceed: ignoring a line parameter would change the operation — for '
-    'edit-file it would overwrite the entire file.',
-  );
 }
