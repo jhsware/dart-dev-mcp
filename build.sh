@@ -119,8 +119,8 @@ do_clean() {
   [ -d "bin/macos" ] && rm -rf "bin/macos" && echo "  Removed bin/macos/"
   [ -d "bin/linux" ] && rm -rf "bin/linux" && echo "  Removed bin/linux/"
   
-  # Remove .dill files (test compilation cache)
-  find bin -name "*.dill" -delete 2>/dev/null && echo "  Removed .dill files"
+  # Remove .dill kernel caches (dart run / test compilation caches)
+  find bin packages/*/bin \( -name "*.dill" -o -name "*.dill.sdk" \) -delete 2>/dev/null && echo "  Removed .dill files"
   
   # Remove installer package
   [ -d "bin/dart-dev-mcp-installer" ] && rm -rf "bin/dart-dev-mcp-installer" && echo "  Removed bin/dart-dev-mcp-installer/"
