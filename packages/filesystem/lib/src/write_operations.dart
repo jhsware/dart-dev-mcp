@@ -76,7 +76,8 @@ class FileWriteOperations {
   /// Edit file content (overwrite, insert, or replace lines).
   ///
   /// Modes:
-  /// - no line params: overwrite the entire file
+  /// - no line params: overwrite the entire file — requires [overwrite]
+  ///   true, otherwise a validation error is returned
   /// - [insertAt], or [startLine] without [endLine]: insert at that line
   /// - [startLine] and [endLine]: replace the line range
   ///
@@ -84,13 +85,15 @@ class FileWriteOperations {
   /// maps to startLine-without-endLine. It cannot be combined with
   /// [startLine] or [endLine]. Before it was honored here the argument was
   /// silently ignored, so an edit-file call carrying only insert_at fell
-  /// through to overwrite mode and destroyed the file.
+  /// through to overwrite mode and destroyed the file — that incident is
+  /// also why whole-file overwrite is now opt-in via [overwrite].
   Future<CallToolResult> editFile(
     String path,
     String? content,
     int? startLine,
     int? endLine, {
     int? insertAt,
+    bool overwrite = false,
   }) async {
     final pathError = validateRelativePath(path);
     if (pathError != null) {
@@ -144,6 +147,18 @@ class FileWriteOperations {
       return validationError('endLine', 'endLine must be >= startLine');
     }
 
+    // Whole-file overwrite must be explicit: with no line parameters the
+    // operation would silently replace the entire file — the most
+    // destructive mode must not be reachable by omission.
+    if (startLine == null && !overwrite) {
+      return validationError(
+        'overwrite',
+        'edit-file without line parameters overwrites the entire file. '
+        'Pass overwrite:true to confirm, or use startLine+endLine to '
+        'replace a line range, or insert_at to insert.',
+      );
+    }
+
     // Read existing content and detect line endings
     final existingContent = await file.readAsString();
     final lineEndingStyle = existingContent.isNotEmpty
@@ -161,9 +176,14 @@ class FileWriteOperations {
     String operationDesc;
 
     if (startLine == null) {
-      // Mode 1: Overwrite entire file
+      // Mode 1: Overwrite entire file (explicitly confirmed via overwrite).
+      // Report the size delta so an unintended overwrite is visible at a
+      // glance in the result message.
+      final existingLogicalLength =
+          existingLines.length - (normalizedExisting.endsWith('\n') ? 1 : 0);
       resultContent = normalizedNew;
-      operationDesc = 'Overwrote entire file';
+      operationDesc =
+          'Overwrote entire file ($existingLogicalLength lines → ${newLines.length} lines)';
     } else if (endLine == null) {
       // Mode 2: Insert at line
       final insertIndex = startLine - 1;

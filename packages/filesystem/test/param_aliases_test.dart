@@ -2,8 +2,9 @@ import 'package:filesystem_mcp/filesystem_mcp.dart';
 import 'package:test/test.dart';
 
 /// Tests for tolerant line-parameter reading. A misread line parameter is
-/// destructive for edit-file (no line params = overwrite entire file), so
-/// both spellings must resolve and near-miss spellings must be detected.
+/// destructive for edit-file, so both spellings must resolve to the same
+/// value. Unrecognized spellings are rejected by the dispatcher's
+/// per-operation unknown-argument check (see shared_libs checkUnknownArgs).
 void main() {
   group('lineArg', () {
     test('reads canonical spellings', () {
@@ -31,37 +32,6 @@ void main() {
 
     test('converts JSON doubles to int', () {
       expect(lineArg({'startLine': 3.0}, 'startLine'), 3);
-    });
-  });
-
-  group('unrecognizedLineParam', () {
-    test('accepts recognized spellings and unrelated keys', () {
-      expect(
-        unrecognizedLineParam({
-          'project_dir': '/x',
-          'operation': 'edit-file',
-          'path': 'a.txt',
-          'content': 'hi',
-          'startLine': 1,
-          'end_line': 2,
-          'insert_at': null,
-        }),
-        isNull,
-      );
-    });
-
-    test('flags near-miss spellings that would otherwise be ignored', () {
-      expect(unrecognizedLineParam({'start-line': 1}), 'start-line');
-      expect(unrecognizedLineParam({'Start_Line': 1}), 'Start_Line');
-      expect(unrecognizedLineParam({'end-line': 2}), 'end-line');
-      expect(unrecognizedLineParam({'INSERTAT': 3}), 'INSERTAT');
-    });
-
-    test('does not flag unrelated keys', () {
-      expect(
-        unrecognizedLineParam({'destination': 'b.txt', 'pattern': 'line'}),
-        isNull,
-      );
     });
   });
 }

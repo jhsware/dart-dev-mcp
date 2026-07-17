@@ -14,7 +14,7 @@ File system operations with restricted access to allowed paths:
 - `search-text` - Search for text patterns in files
 - `create-directory` - Create directories
 - `create-file` - Create new files
-- `edit-file` - Edit existing files (overwrite, insert, or replace lines)
+- `edit-file` - Edit existing files (insert or replace lines; whole-file overwrite requires `overwrite: true`)
 - `extract` - Extract lines from one file and insert into another
 
 ### 2. Git MCP (`packages/git/bin/git_mcp.dart`)
