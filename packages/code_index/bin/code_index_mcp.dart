@@ -302,6 +302,71 @@ const _validOperations = [
   'prune-stores',
 ];
 
+const _commonArgs = {'project_dir', 'operation'};
+
+/// Recognized argument keys per operation, enforced via checkUnknownArgs.
+final _allowedArgsByOperation = <String, Set<String>>{
+  'scan': {
+    ..._commonArgs,
+    'directories',
+    'extensions',
+    'since',
+    'rebuild',
+    'remove_deleted',
+    'verify',
+  },
+  'index-files': {..._commonArgs, 'files', 'refresh_dependents'},
+  'get-file': {..._commonArgs, 'path', 'layers'},
+  'get-files': {..._commonArgs, 'paths', 'layers'},
+  'overview': {..._commonArgs, 'path_pattern', 'file_type', 'language', 'limit'},
+  'search': {
+    ..._commonArgs,
+    'query',
+    'file_type',
+    'language',
+    'path_pattern',
+    'tag',
+    'symbol_name',
+    'symbol_kind',
+    'import_pattern',
+    'limit',
+  },
+  'find-symbol': {
+    ..._commonArgs,
+    'name',
+    'match',
+    'kind',
+    'visibility',
+    'path_pattern',
+    'limit',
+  },
+  'references': {
+    ..._commonArgs,
+    'symbol',
+    'module',
+    'source_path',
+    'dot_path_pattern',
+    'kind',
+    'resolution',
+    'path_pattern',
+    'limit',
+  },
+  'dependents': {..._commonArgs, 'path'},
+  'dependencies': {..._commonArgs, 'path'},
+  'annotations': {
+    ..._commonArgs,
+    'kind',
+    'message_pattern',
+    'path_pattern',
+    'file_type',
+    'limit',
+  },
+  'stats': {..._commonArgs, 'limit'},
+  'project-info': _commonArgs,
+  'is-allowed': {..._commonArgs, 'path'},
+  'prune-stores': {..._commonArgs, 'delete'},
+};
+
 Future<CallToolResult> _handleCodeIndex(
   Map<String, dynamic> args,
   ServerArguments serverArgs,
@@ -323,6 +388,14 @@ Future<CallToolResult> _handleCodeIndex(
 
   final operation = args['operation'] as String?;
   if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  // Reject unknown or misspelled arguments before dispatch — a silently
+  // ignored argument would change the operation's behavior (e.g. a
+  // misspelled remove_deleted on scan would let deletions proceed).
+  if (checkUnknownArgs(args, operation!, _allowedArgsByOperation[operation]!)
       case final error?) {
     return error;
   }

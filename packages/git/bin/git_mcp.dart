@@ -183,6 +183,29 @@ const _validOperations = [
   'signing-status',
 ];
 
+const _commonGitArgs = {'project_dir', 'operation'};
+
+/// Recognized argument keys per operation, enforced via checkUnknownArgs.
+final _allowedArgsByOperation = <String, Set<String>>{
+  'status': _commonGitArgs,
+  'branch-create': {..._commonGitArgs, 'branch', 'from'},
+  'branch-list': _commonGitArgs,
+  'branch-switch': {..._commonGitArgs, 'branch'},
+  'merge': {..._commonGitArgs, 'branch'},
+  'add': {..._commonGitArgs, 'files', 'all'},
+  'commit': {..._commonGitArgs, 'message', 'sign'},
+  'stash': {..._commonGitArgs, 'message', 'include_untracked'},
+  'stash-list': _commonGitArgs,
+  'stash-apply': {..._commonGitArgs, 'stash_index'},
+  'stash-pop': {..._commonGitArgs, 'stash_index'},
+  'tag-create': {..._commonGitArgs, 'tag', 'message', 'annotated'},
+  'tag-list': _commonGitArgs,
+  'remote-list': _commonGitArgs,
+  'log': {..._commonGitArgs, 'max_count'},
+  'diff': {..._commonGitArgs, 'target'},
+  'signing-status': _commonGitArgs,
+};
+
 Future<CallToolResult> _handleGit(
   Map<String, dynamic> args,
   ServerArguments serverArgs,
@@ -204,6 +227,13 @@ Future<CallToolResult> _handleGit(
 
   final operation = args['operation'] as String?;
   if (requireStringOneOf(operation, 'operation', _validOperations)
+      case final error?) {
+    return error;
+  }
+
+  // Reject unknown or misspelled arguments before dispatch — a silently
+  // ignored argument would change the operation's behavior.
+  if (checkUnknownArgs(args, operation!, _allowedArgsByOperation[operation]!)
       case final error?) {
     return error;
   }
