@@ -115,7 +115,10 @@ Operations:
 - annotations: TODO/FIXME/HACK/NOTE/DEPRECATED queries with by_kind counts. Params: kind, message_pattern, path_pattern, file_type, limit.
 - stats: Aggregate counts, tag cloud, and freshness summary. Params: limit.
 - project-info: Data dir, db path, registry entry, schema version, row counts, last scan.
-- is-allowed: Check if a path is within the allowed paths for this project. Params: path.''',
+- is-allowed: Check if a path is within the allowed paths for this project. Params: path.
+- prune-stores: Report stores under the data root whose source project no longer exists on disk; pass delete:true to remove them (default is a dry run). Params: delete.
+
+Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so worktree sessions reuse the existing index.''',
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
@@ -176,6 +179,11 @@ Operations:
         'verify': JsonSchema.boolean(
           description:
               'Force full hashing even when mtime+size are unchanged (for scan, default false).',
+        ),
+        // ── prune-stores params ──────────────────────────────────────────
+        'delete': JsonSchema.boolean(
+          description:
+              'Actually delete orphaned stores (for prune-stores). Default false = dry-run report.',
         ),
         // ── search params ────────────────────────────────────────────────
         'query': JsonSchema.string(
@@ -291,6 +299,7 @@ const _validOperations = [
   'stats',
   'project-info',
   'is-allowed',
+  'prune-stores',
 ];
 
 Future<CallToolResult> _handleCodeIndex(
@@ -344,6 +353,13 @@ Future<CallToolResult> _handleCodeIndex(
     });
   }
 
+  // `prune-stores` operates on the data root as a whole, not a project
+  // database — handle it before opening project resources.
+  if (operation == 'prune-stores') {
+    final delete = args['delete'] as bool? ?? false;
+    return jsonResult(
+        pruneOrphanedStores(serverArgs.dataRoot, delete: delete));
+  }
   final _ProjectResources res;
   try {
     res = getResources(projectDir);
@@ -490,9 +506,12 @@ void _printUsage() {
   stderr.writeln('  stats          Aggregate statistics about the code index');
   stderr.writeln('  project-info   Data dir, db path, registry entry, schema version');
   stderr.writeln('  is-allowed     Check if a path is within the allowed paths');
+  stderr.writeln('  prune-stores   Report/remove orphaned stores under the data root');
   stderr.writeln('');
   stderr.writeln(
       'The store lives at [data-root]/[basename]-[sha8] (default ~/.code-index).');
+  stderr.writeln(
+      "Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store.");
   stderr.writeln(
       'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
 }

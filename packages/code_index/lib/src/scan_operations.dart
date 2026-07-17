@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 import 'database.dart';
@@ -102,6 +103,26 @@ class ScanOperations {
             [path],
           );
           _db.execute('DELETE FROM files WHERE path = ?', [path]);
+        }
+      });
+    }
+
+    // Touched-but-identical files were hashed because their stat changed —
+    // e.g. a fresh worktree checkout resets every mtime — but their digest
+    // is unchanged. Refresh the stored mtime+size so the next scan
+    // short-circuits on stat instead of re-hashing the whole tree again.
+    final touchedIdentical = scanResult.hashedFiles.entries
+        .where((e) => indexedFiles[e.key]?.hash == e.value)
+        .map((e) => e.key)
+        .toList();
+    if (touchedIdentical.isNotEmpty) {
+      withRetryTransactionSync(_db, () {
+        for (final path in touchedIdentical) {
+          final stat = File(p.join(workingDir.path, path)).statSync();
+          _db.execute(
+            'UPDATE files SET mtime = ?, size_bytes = ? WHERE path = ?',
+            [stat.modified.toUtc().toIso8601String(), stat.size, path],
+          );
         }
       });
     }

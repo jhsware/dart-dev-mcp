@@ -59,6 +59,14 @@ class StaleDetector {
           );
         }
         results.add({'path': relPath, 'reason': 'changed'});
+      } else {
+        // Touched but identical — e.g. a fresh worktree checkout reset the
+        // mtime. Refresh the stored stat so future reads short-circuit on
+        // mtime+size instead of re-hashing.
+        database.execute(
+          'UPDATE files SET mtime = ?, size_bytes = ? WHERE path = ?',
+          [stat.modified.toUtc().toIso8601String(), stat.size, relPath],
+        );
       }
     }
 

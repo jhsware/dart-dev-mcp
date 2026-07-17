@@ -15,10 +15,22 @@ The store is a standalone directory tree, independent of the planner. Each proje
 ```
 
 - `[data-root]` defaults to `~/.code-index` and is overridable with `--data-root=PATH`.
-- `[basename]` is the project directory's name; `[sha8]` is the first 8 hex chars of the SHA-256 of the canonical (symlink-resolved) project path — so two projects that share a basename still get distinct directories.
+- `[basename]` is the project directory's name; `[sha8]` is the first 8 hex chars of the SHA-256 of the canonical project path (symlink-resolved, with any git-worktree infix stripped — see [Git Worktrees](#git-worktrees)) — so two projects that share a basename still get distinct directories.
 - `[data-root]/registry.json` lists every known project with `created_at` / `last_opened_at`; each data directory holds a `meta.json` marker that pins it to its project (guarding against hash-prefix collisions).
 
 The database uses a clean-rebuild strategy: if the `schema_version` on disk differs from the expected version, the database is discarded and rebuilt from scratch (no migrations).
+
+## Git Worktrees
+
+Provisioned git worktrees (`<root>/.worktrees/<branch-slug>`) share their main checkout's store: the worktree infix is stripped before the canonical path is hashed, so `/repo/.worktrees/<slug>/pkg` maps to `/repo/pkg`'s data directory. A worktree session therefore starts from the existing index and only re-indexes what the branch actually changed, instead of rebuilding an empty store per branch.
+
+Consequences of the shared store:
+
+- **Concurrency** — the database runs in WAL mode with a 5 s busy timeout and retrying transactions, so a main-checkout session and a worktree session (or two worktree families) can read and write the same store concurrently. Writers serialize on the SQLite write lock; readers are not blocked.
+- **Fresh checkouts** — a new checkout resets every mtime, so the first `scan` misses the mtime+size short-circuit and re-hashes the tree once (a single SHA-256 pass over file contents). Files whose digest is unchanged are not re-indexed, and their stored stat is refreshed so subsequent scans short-circuit again. When two checkouts of the same project alternate, each side re-hashes at most once after the other side scanned.
+- **Branch drift** — indexing from a worktree overwrites rows with that branch's content; a checkout with different content re-indexes those files on its next scan. Only files that differ between branches are ever re-indexed.
+
+Stores created by older versions for individual worktrees (named `<branch-slug>-<sha8>`) become orphaned once their worktree is removed. Use `prune-stores` to list them (`delete: false`, the default) and remove them (`delete: true`); a store counts as orphaned when the project path recorded in its `meta.json` no longer exists on disk.
 
 ## Layered Information Model
 
@@ -71,6 +83,7 @@ A single MCP tool `code-index`, multiplexed by `operation`. `project_dir` is req
 |-----------|------------|-------------|
 | `project-info` | — | Data dir, db path, `registry.json` entry, schema version, row counts, last scan. |
 | `is-allowed` | `path` | Check if a path is within the `code-index` allowed paths (works without a database). |
+| `prune-stores` | `delete` | Report stores under the data root whose recorded source project no longer exists on disk; `delete: true` removes them together with their `registry.json` entries (default is a dry run). Data-root-scoped, works without a database. |
 
 ## SHA-256 Change Detection
 
