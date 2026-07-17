@@ -335,6 +335,58 @@ class GitOperations {
     return textResult(output);
   }
 
+  /// List remotes with their URLs.
+  ///
+  /// Parses `git remote -v` into name + URL pairs. When a remote's fetch
+  /// and push URLs are identical it is listed once; otherwise each role
+  /// is labeled explicitly.
+  Future<CallToolResult> remoteList() async {
+    final result = await runGit(workingDir, ['remote', '-v']);
+
+    if (result.exitCode != 0) {
+      return textResult('Error: ${result.stderr}');
+    }
+
+    final output = result.stdout as String;
+    if (output.trim().isEmpty) {
+      return textResult('No remotes');
+    }
+
+    // Lines look like: "origin<TAB>git@host:user/repo.git (fetch)"
+    final lineFormat = RegExp(r'^(\S+)\s+(\S+)\s+\((fetch|push)\)$');
+    final fetchUrls = <String, String>{};
+    final pushUrls = <String, String>{};
+
+    for (final line in output.split('\n')) {
+      final match = lineFormat.firstMatch(line.trim());
+      if (match == null) continue;
+      final name = match.group(1)!;
+      final url = match.group(2)!;
+      if (match.group(3) == 'fetch') {
+        fetchUrls[name] = url;
+      } else {
+        pushUrls[name] = url;
+      }
+    }
+
+    final names = {...fetchUrls.keys, ...pushUrls.keys};
+    final buffer = StringBuffer();
+    for (final name in names) {
+      final fetch = fetchUrls[name];
+      final push = pushUrls[name];
+      if (fetch != null && (push == null || push == fetch)) {
+        buffer.writeln('$name\t$fetch');
+      } else if (fetch == null) {
+        buffer.writeln('$name\t$push (push)');
+      } else {
+        buffer.writeln('$name\t$fetch (fetch)');
+        buffer.writeln('$name\t$push (push)');
+      }
+    }
+
+    return textResult(buffer.toString().trim());
+  }
+
   /// Show commit log.
   Future<CallToolResult> log(int maxCount) async {
     final result = await runGit(workingDir, [

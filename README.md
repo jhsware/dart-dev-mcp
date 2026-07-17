@@ -32,6 +32,7 @@ Git version control operations with SSH/GPG signing support:
 - `stash-pop` - Apply and remove a stash
 - `tag-create` - Create a new tag
 - `tag-list` - List all tags
+- `remote-list` - List remotes with their fetch/push URLs
 - `log` - Show commit history
 - `diff` - Show changes
 - `signing-status` - Check SSH/GPG signing configuration

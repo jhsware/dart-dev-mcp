@@ -75,6 +75,7 @@ Operations:
 - stash-pop: Apply and remove a stash
 - tag-create: Create a new tag
 - tag-list: List all tags
+- remote-list: List remotes with their fetch/push URLs
 - log: Show commit history
 - diff: Show changes (optionally compare branches/commits with target parameter)
 - signing-status: Check SSH/GPG signing configuration and status''',
@@ -176,6 +177,7 @@ const _validOperations = [
   'stash-pop',
   'tag-create',
   'tag-list',
+  'remote-list',
   'log',
   'diff',
   'signing-status',
@@ -275,6 +277,8 @@ Future<CallToolResult> _handleGit(
             args['message'] as String?, args['annotated'] as bool? ?? false);
       case 'tag-list':
         return gitOps.tagList();
+      case 'remote-list':
+        return gitOps.remoteList();
       case 'log':
         return gitOps.log((args['max_count'] as num?)?.toInt() ?? 10);
       case 'diff':
