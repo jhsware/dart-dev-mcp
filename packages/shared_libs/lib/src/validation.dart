@@ -165,3 +165,35 @@ CallToolResult? requirePositiveInt(int? value, String fieldName) {
   }
   return null;
 }
+
+/// Validates that every non-null argument key is recognized for [operation].
+///
+/// Unknown keys are silently ignored by plain map lookups, which can flip an
+/// operation into a different — possibly destructive — mode (e.g. a
+/// misspelled line parameter turning edit-file into a whole-file overwrite).
+/// Keys carrying null are skipped: clients may send the full schema with
+/// nulls for unused fields, and a null never changes behavior versus the
+/// key being absent.
+///
+/// Example:
+/// ```dart
+/// if (checkUnknownArgs(args, operation, allowedKeys) case final error?) {
+///   return error;
+/// }
+/// ```
+CallToolResult? checkUnknownArgs(
+  Map<String, dynamic> args,
+  String operation,
+  Set<String> allowedKeys,
+) {
+  final unknown = args.keys
+      .where((k) => args[k] != null && !allowedKeys.contains(k))
+      .toList();
+  if (unknown.isEmpty) return null;
+  final recognized = allowedKeys.toList()..sort();
+  return validationError(
+    unknown.first,
+    'Unknown argument(s) for $operation: ${unknown.join(", ")}. '
+    'Recognized arguments: ${recognized.join(", ")}',
+  );
+}
