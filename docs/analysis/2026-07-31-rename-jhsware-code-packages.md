@@ -173,3 +173,99 @@ directions, and cache invalidation when the preferred file appears.
   current pinned SDK is newer than the one used for the last format commit,
   so it reformatted ~100 files repo-wide. This churn is committed separately
   (`style:` commit) to keep the rename diff reviewable.
+
+## Inventory: references to the old mcp__dart-dev-mcp-* ids (2026-07-31)
+
+Search across all project directories registered with this session's
+filesystem server (pattern `dart-dev-mcp` / `mcp__dart`, case-insensitive).
+These references break when the new `jhsware_code_<tool>` server keys are in
+use, so they must be updated in sync with the switch.
+
+### jhsware_code (this repo)
+
+Clean. No `dart-dev-mcp` references remain in packages, plugins, personas,
+scripts or docs (historical design docs in `packages/code_index/docs` were
+left as records and contain none either).
+
+### builder_server (~/DEV/agentic-coding/builder/builder_server)
+
+Functional code:
+- `lib/src/agent/mcp_config_builder.dart` L118-119 — writes the
+  `dart-dev-mcp-planner` server key into generated mcp configs.
+- `lib/src/persona/mcp_inventory_service.dart` L101 —
+  `_plannerServerName = 'dart-dev-mcp-planner'`.
+
+Prompts:
+- `lib/src/prompts/templates/app_prompt_shared.md` L24-31 and the generated
+  `lib/src/prompts/prompt_pack_defaults.g.dart` L128-135 — text references
+  `dart-dev-mcp-planner/fs/git/flutter-runner/dart-runner`.
+
+Docs: `docs/design/persona-mcp-env-vars.md` L94.
+
+Tests (assert the old names): `test/mcp_handlers_test.dart`,
+`test/config/server_config_planner_mcp_test.dart`,
+`test/mcp_config_env_injection_test.dart`, `test/agent/mcp_readiness_test.dart`
+(also full ids `mcp__dart-dev-mcp-planner__planner`,
+`mcp__dart-dev-mcp-fs__filesystem`), `test/agent/mcp_config_server_names_test.dart`,
+`test/agent/mcp_config_builder_test.dart`, `test/mcp_inventory_test.dart`.
+
+### builder_app (~/DEV/agentic-coding/builder/builder_app)
+
+- `lib/ui/widgets/chat/tool_bubble/renderers/tool_renderer_registry.dart` L39 —
+  functional renderer key `'mcp__dart-dev-mcp-planner__planner'`.
+- `lib/ui/widgets/chat/tool_bubble/renderers/planner_tool_renderer.dart` L16
+  and `lib/utils/tool_name_formatter.dart` L4-8 — comments/examples.
+
+### planner_app (~/DEV/agentic-coding/planner/planner_app)
+
+- `packages/planner_models/lib/src/mcp_server_config.dart` L585-678 —
+  functional default server definitions: `dart-dev-mcp-planner`, `-fs`,
+  `-git`, `-flutter`, `-convert`, `-fetch`. Note: `-flutter` and `-convert`
+  were already stale before this rename (claude.sh used `-flutter-runner`;
+  convert was merged into fetch).
+- `packages/task_views/lib/src/prompt_resolver.dart` L73 — prompt text
+  `planner (dart-dev-mcp-planner)`.
+- `docs/schema_docs.md` — schema examples with the old server names.
+
+### sysops_server (~/DEV/agentic-coding/sysops/sysops_server)
+
+- `lib/src/agent/agent_runner.dart` L1443 — functional allow-list entry
+  `'mcp__dart-dev-mcp-git__git'`.
+- `packages/planner_mcp/skills/planner-plan/SKILL.md` L283-285 — vendored
+  skill copy referencing `dart-dev-mcp-fs/git/fetch`.
+
+### sysops_app (~/DEV/agentic-coding/sysops/sysops_app)
+
+- `packages/chat_ui_component/lib/src/widgets/tool_bubble/renderers/tool_renderer_registry.dart`
+  L18 — functional renderer key `'mcp__dart-dev-mcp-planner__planner'`.
+- `packages/agent_chat_ui/test/tool_content_parser_test.dart` L7 — test
+  expects `mcp__dart-dev-mcp-fs__filesystem` → `Filesystem`.
+- `tool_name_formatter.dart` doc comments in both packages.
+
+### Clean (searched, no hits)
+
+builder_server/bin, planner_server, sysops_app/lib+docs, sysops_server/lib
+(other than above), nix-infra, mcp-collection, jhsware_business (+ AGENTS.md,
+docs, packages), jhsware_business_desktop_app, veckoappen backend projects,
+veckoappen app docs, gardsman server/app docs, nasp-waves projects,
+whisper_ggml_plus, bmd_switcher_sdk docs, nix-pretty src, agriculture.
+
+### Not reachable from this session (check manually)
+
+- `/Users/jhsware/DEV/agentic-coding/personas` — the external persona builder
+  repo is not registered with the filesystem server.
+- Hidden locations: per-project `.claude/settings*.json` and `.mcp.json`,
+  `~/.claude`, `agentic-plugins/jhsware-code/.claude-plugin/plugin.json`, and
+  installed plugin/skill copies under application-support directories.
+- Suggested manual check:
+  `grep -rn --exclude-dir=node_modules "dart-dev-mcp" ~/DEV ~/RESEARCH ~/.claude`
+
+### Suggested update order
+
+1. Switch jhsware_code (this branch) and rebuild binaries.
+2. Update the functional integration points that generate or match server
+   keys: builder_server `mcp_config_builder.dart` + `mcp_inventory_service.dart`,
+   planner_app `mcp_server_config.dart` defaults, sysops_server
+   `agent_runner.dart` allow-list, and the two chat renderer registries
+   (builder_app, sysops_app chat_ui_component).
+3. Update prompts, skills, docs and tests in those projects.
