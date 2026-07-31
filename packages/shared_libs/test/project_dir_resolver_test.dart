@@ -32,19 +32,17 @@ void main() {
     });
 
     test('exact match wins when both repo and worktree are registered', () {
+      expect(resolveProjectDirAlias(repo, [worktree, repo]), equals(repo));
       expect(
-          resolveProjectDirAlias(repo, [worktree, repo]), equals(repo));
-      expect(resolveProjectDirAlias(worktree, [repo, worktree]),
-          equals(worktree));
+        resolveProjectDirAlias(worktree, [repo, worktree]),
+        equals(worktree),
+      );
     });
 
     test('ambiguous repo→worktree alias is rejected', () {
       const secondWorktree =
           '/Users/dev/business-app/jhsware_business/.worktrees/task-other-456';
-      expect(
-        resolveProjectDirAlias(repo, [worktree, secondWorktree]),
-        isNull,
-      );
+      expect(resolveProjectDirAlias(repo, [worktree, secondWorktree]), isNull);
     });
 
     test('unrelated dir does not resolve', () {
@@ -55,17 +53,13 @@ void main() {
     });
 
     test('sibling of .worktrees does not resolve to the repository', () {
-      expect(
-        resolveProjectDirAlias('$repo/packages/mcp', [repo]),
-        isNull,
-      );
+      expect(resolveProjectDirAlias('$repo/packages/mcp', [repo]), isNull);
     });
 
     test('a repo whose name prefixes another does not match', () {
       // `/a/repo2` must not be treated as inside `/a/repo/.worktrees`.
       expect(
-        resolveProjectDirAlias(
-            '$repo/.worktrees-backup/x', [repo]),
+        resolveProjectDirAlias('$repo/.worktrees-backup/x', [repo]),
         isNull,
       );
     });
@@ -105,8 +99,7 @@ void main() {
       );
     });
 
-    test('path inside the registered worktree project dir resolves to it',
-        () {
+    test('path inside the registered worktree project dir resolves to it', () {
       expect(
         resolveProjectDirAlias('$wtProject/lib/src', [wtProject]),
         equals(wtProject),
@@ -115,17 +108,12 @@ void main() {
 
     test('checkout root resolves to the single registered project dir '
         'inside it', () {
-      expect(resolveProjectDirAlias(checkout, [wtProject]),
-          equals(wtProject));
+      expect(resolveProjectDirAlias(checkout, [wtProject]), equals(wtProject));
     });
 
-    test('checkout root with two registered projects inside is ambiguous',
-        () {
+    test('checkout root with two registered projects inside is ambiguous', () {
       const wtSibling = '$checkout/builder_app';
-      expect(
-        resolveProjectDirAlias(checkout, [wtProject, wtSibling]),
-        isNull,
-      );
+      expect(resolveProjectDirAlias(checkout, [wtProject, wtSibling]), isNull);
     });
 
     test('a sibling project in the same worktree does not alias', () {
@@ -138,8 +126,9 @@ void main() {
     test('a worktree of another branch still resolves to the registered '
         'project dir', () {
       expect(
-        resolveProjectDirAlias(
-            '$root/.worktrees/task-bar-456/builder_server', [project]),
+        resolveProjectDirAlias('$root/.worktrees/task-bar-456/builder_server', [
+          project,
+        ]),
         equals(project),
       );
     });
@@ -168,10 +157,7 @@ void main() {
 
   group('stripWorktreeInfix', () {
     test('maps a checkout root to the repository root', () {
-      expect(
-        stripWorktreeInfix('/a/repo/.worktrees/slug'),
-        equals('/a/repo'),
-      );
+      expect(stripWorktreeInfix('/a/repo/.worktrees/slug'), equals('/a/repo'));
     });
 
     test('maps a path inside a checkout to its repo-side counterpart', () {
@@ -194,10 +180,7 @@ void main() {
     });
 
     test('normalizes the input (trailing slash)', () {
-      expect(
-        stripWorktreeInfix('/a/repo/.worktrees/slug/'),
-        equals('/a/repo'),
-      );
+      expect(stripWorktreeInfix('/a/repo/.worktrees/slug/'), equals('/a/repo'));
     });
   });
 }

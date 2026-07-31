@@ -6,7 +6,6 @@
 // Phase 3: BM25 classification across all fetched emails.
 // Results are written to session chunks for polling.
 
-
 import 'dart:convert';
 
 import 'package:bm25/bm25.dart';
@@ -14,8 +13,6 @@ import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
 import '../batch_helpers.dart';
-
-
 
 /// Batched classify-emails handler with progress between phases.
 ///
@@ -70,7 +67,6 @@ Future<void> runBatchedClassifyEmails({
   // --- Phase 2: Batch-fetch metadata via mdls and .emlx parsing ---
   final emails = await fetchEmailMetadata(files);
 
-
   if (emails.isEmpty) {
     // Check if empty results are due to missing Full Disk Access
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
@@ -88,9 +84,12 @@ Future<void> runBatchedClassifyEmails({
   }
 
   // --- Phase 3: BM25 classification ---
-  await extra.sendProgress(0,
-      message: 'Fetched ${emails.length} emails, running classification '
-          'across ${classifiers.length} categories...');
+  await extra.sendProgress(
+    0,
+    message:
+        'Fetched ${emails.length} emails, running classification '
+        'across ${classifiers.length} categories...',
+  );
 
   final documents = <BM25Document>[];
   for (var i = 0; i < emails.length; i++) {

@@ -10,12 +10,12 @@
 ///   if (requireString(operation, 'operation') case final error?) {
 ///     return error;
 ///   }
-///   
+///
 ///   final status = args?['status'] as String?;
 ///   if (requireOneOf(status, 'status', validStatuses) case final error?) {
 ///     return error;
 ///   }
-///   
+///
 ///   // Continue with validated inputs...
 /// }
 /// ```
@@ -117,7 +117,7 @@ CallToolResult? requireIntInRange(
   int? max,
 }) {
   if (value == null) return null; // Optional field not provided
-  
+
   if (min != null && value < min) {
     return validationError(fieldName, '$fieldName must be at least $min');
   }

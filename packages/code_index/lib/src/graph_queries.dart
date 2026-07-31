@@ -43,13 +43,16 @@ class GraphQueries {
     if (requireString(importPath, 'path') case final error?) return error;
     if (_checkAllowed(importPath!) case final error?) return error;
 
-    final result = database.select('''
+    final result = database.select(
+      '''
       SELECT DISTINCT f.id, f.path, f.summary, f.file_type
       FROM files f
       JOIN imports i ON i.file_id = f.id
       WHERE i.import_path LIKE ?
       ORDER BY f.path
-    ''', ['%$importPath%']);
+    ''',
+      ['%$importPath%'],
+    );
 
     final files = <Map<String, dynamic>>[];
     final filePaths = <String>[];
@@ -72,8 +75,9 @@ class GraphQueries {
         'path': filePath,
         'summary': row['summary'],
         'file_type': row['file_type'],
-        'matching_imports':
-            matching.map((i) => i['import_path'] as String).toList(),
+        'matching_imports': matching
+            .map((i) => i['import_path'] as String)
+            .toList(),
         'symbols': symbols.map((s) => s['name'] as String).toList(),
       });
     }
@@ -128,15 +132,13 @@ class GraphQueries {
           'file_type': f['file_type'],
         });
       } else {
-        deps.add({
-          'import_path': importPath,
-          'classification': 'external',
-        });
+        deps.add({'import_path': importPath, 'classification': 'external'});
       }
     }
 
-    final internal =
-        deps.where((d) => d['classification'] == 'internal').length;
+    final internal = deps
+        .where((d) => d['classification'] == 'internal')
+        .length;
     final external = deps.length - internal;
 
     final needsReindex = _staleDetector.checkPaths([path]);
@@ -193,17 +195,21 @@ class GraphQueries {
       filters['file_type'] = fileType;
     }
 
-    final whereClause =
-        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final whereClause = conditions.isEmpty
+        ? ''
+        : 'WHERE ${conditions.join(' AND ')}';
 
-    final result = database.select('''
+    final result = database.select(
+      '''
       SELECT a.kind, a.message, a.line, f.path, f.file_type
       FROM annotations a
       JOIN files f ON a.file_id = f.id
       $whereClause
       ORDER BY f.path, a.line
       LIMIT ?
-    ''', [...values, limit]);
+    ''',
+      [...values, limit],
+    );
 
     final items = <Map<String, dynamic>>[];
     final filePaths = <String>{};

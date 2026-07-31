@@ -41,7 +41,8 @@ class PlannerApiClient {
   }
 
   static http.Client _buildClient(PlannerConfig config) {
-    final needsCustom = config.insecure ||
+    final needsCustom =
+        config.insecure ||
         config.caCertPath != null ||
         config.clientCertPath != null;
     if (!needsCustom) return http.Client();
@@ -67,7 +68,12 @@ class PlannerApiClient {
     String path, {
     Map<String, dynamic>? body,
   }) async {
-    final resp = await _send(method, path, body: body, accept: 'application/json');
+    final resp = await _send(
+      method,
+      path,
+      body: body,
+      accept: 'application/json',
+    );
     if (resp.body.trim().isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(resp.body);
     if (decoded is Map<String, dynamic>) return decoded;

@@ -37,30 +37,26 @@ class HttpClientConfig {
     int? maxRetries,
     Duration? initialRetryDelay,
     Duration? maxRetryDelay,
-  })  : timeout = timeout ?? _defaultTimeout,
-        connectionTimeout = connectionTimeout ?? _defaultConnectionTimeout,
-        userAgent = userAgent ?? _defaultUserAgent,
-        maxRetries = maxRetries ?? _defaultMaxRetries,
-        initialRetryDelay = initialRetryDelay ?? _defaultInitialRetryDelay,
-        maxRetryDelay = maxRetryDelay ?? _defaultMaxRetryDelay;
+  }) : timeout = timeout ?? _defaultTimeout,
+       connectionTimeout = connectionTimeout ?? _defaultConnectionTimeout,
+       userAgent = userAgent ?? _defaultUserAgent,
+       maxRetries = maxRetries ?? _defaultMaxRetries,
+       initialRetryDelay = initialRetryDelay ?? _defaultInitialRetryDelay,
+       maxRetryDelay = maxRetryDelay ?? _defaultMaxRetryDelay;
 
   /// Creates config from environment variables.
   factory HttpClientConfig.fromEnvironment({String? userAgent}) {
-    final timeoutSeconds = int.tryParse(
-          Platform.environment['MCP_HTTP_TIMEOUT'] ?? '',
-        ) ??
-        30;
-    final connectionTimeoutSeconds = int.tryParse(
+    final timeoutSeconds =
+        int.tryParse(Platform.environment['MCP_HTTP_TIMEOUT'] ?? '') ?? 30;
+    final connectionTimeoutSeconds =
+        int.tryParse(
           Platform.environment['MCP_HTTP_CONNECTION_TIMEOUT'] ?? '',
         ) ??
         10;
-    final maxRetries = int.tryParse(
-          Platform.environment['MCP_HTTP_MAX_RETRIES'] ?? '',
-        ) ??
-        3;
-    final retryDelayMs = int.tryParse(
-          Platform.environment['MCP_HTTP_RETRY_DELAY'] ?? '',
-        ) ??
+    final maxRetries =
+        int.tryParse(Platform.environment['MCP_HTTP_MAX_RETRIES'] ?? '') ?? 3;
+    final retryDelayMs =
+        int.tryParse(Platform.environment['MCP_HTTP_RETRY_DELAY'] ?? '') ??
         1000;
 
     return HttpClientConfig(
@@ -202,8 +198,9 @@ class HttpFetchException implements Exception {
 
   /// Creates a user-friendly error message with actionable advice.
   String toUserMessage() {
-    final attemptsSuffix =
-        attemptsCount > 1 ? ' (after $attemptsCount attempts)' : '';
+    final attemptsSuffix = attemptsCount > 1
+        ? ' (after $attemptsCount attempts)'
+        : '';
 
     switch (type) {
       case HttpErrorType.timeout:
@@ -246,18 +243,23 @@ class HttpFetchException implements Exception {
 
   /// Create a copy with updated attempts count.
   HttpFetchException withAttempts(int attempts) => HttpFetchException(
-        type: type,
-        message: message,
-        cause: cause,
-        statusCode: statusCode,
-        retryAfterSeconds: retryAfterSeconds,
-        attemptsCount: attempts,
-      );
+    type: type,
+    message: message,
+    cause: cause,
+    statusCode: statusCode,
+    retryAfterSeconds: retryAfterSeconds,
+    attemptsCount: attempts,
+  );
 }
 
 /// Callback for logging retry attempts.
-typedef RetryLogger = void Function(int attempt, int maxAttempts,
-    HttpFetchException error, Duration nextDelay);
+typedef RetryLogger =
+    void Function(
+      int attempt,
+      int maxAttempts,
+      HttpFetchException error,
+      Duration nextDelay,
+    );
 
 /// Fetches a URL with timeout support and error categorization.
 ///
@@ -270,14 +272,10 @@ Future<HttpFetchResult> fetchUrl(
 }) async {
   final cfg = config ?? HttpClientConfig.fromEnvironment();
 
-  final headers = {
-    'User-Agent': cfg.userAgent,
-    ...?additionalHeaders,
-  };
+  final headers = {'User-Agent': cfg.userAgent, ...?additionalHeaders};
 
   try {
-    final response =
-        await http.get(uri, headers: headers).timeout(cfg.timeout);
+    final response = await http.get(uri, headers: headers).timeout(cfg.timeout);
 
     final result = HttpFetchResult(
       statusCode: response.statusCode,

@@ -25,12 +25,19 @@ void main() {
       final text = extractText(result);
       expect(text, contains('Mail Accounts:'));
       // At least one account line
-      final accountLines =
-          text.split('\n').where((l) => l.trimLeft().startsWith('- '));
-      expect(accountLines, isNotEmpty,
-          reason: 'Should list at least one account');
-      expect(elapsed, lessThan(maxSimpleOpDuration),
-          reason: 'list-accounts should complete within time limit');
+      final accountLines = text
+          .split('\n')
+          .where((l) => l.trimLeft().startsWith('- '));
+      expect(
+        accountLines,
+        isNotEmpty,
+        reason: 'Should list at least one account',
+      );
+      expect(
+        elapsed,
+        lessThan(maxSimpleOpDuration),
+        reason: 'list-accounts should complete within time limit',
+      );
     });
 
     test('get-unread-count returns counts per account', () async {
@@ -42,8 +49,11 @@ void main() {
       final text = extractText(result);
       expect(text, contains('Unread Email Counts:'));
       // Should have at least one account with a count
-      expect(text, matches(RegExp(r'\d+ unread')),
-          reason: 'Should contain at least one unread count');
+      expect(
+        text,
+        matches(RegExp(r'\d+ unread')),
+        reason: 'Should contain at least one unread count',
+      );
       expect(elapsed, lessThan(maxSimpleOpDuration));
     });
 
@@ -99,10 +109,7 @@ void main() {
 
     test('list-emails returns valid JSON with pagination', () async {
       final (result, elapsed) = await timeOperation(
-        () => inboxHandlers['list-emails']!({
-          'account': account,
-          'limit': 5,
-        }),
+        () => inboxHandlers['list-emails']!({'account': account, 'limit': 5}),
       );
 
       assertSuccessResult(result);
@@ -153,8 +160,7 @@ void main() {
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
 
-    test('list-emails with custom fields returns requested fields',
-        () async {
+    test('list-emails with custom fields returns requested fields', () async {
       final (result, elapsed) = await timeOperation(
         () => inboxHandlers['list-emails']!({
           'account': account,

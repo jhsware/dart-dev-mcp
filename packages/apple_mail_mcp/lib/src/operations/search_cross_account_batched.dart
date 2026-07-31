@@ -9,7 +9,6 @@
 // - search-all-accounts: Cross-account unified search (INBOX only)
 // - get-newsletters: Newsletter detection across accounts (INBOX only)
 
-
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
@@ -73,7 +72,8 @@ Future<void> runBatchedSearchBySender({
         if (mailbox == 'All') {
           scopeDir = entry.value;
         } else {
-          scopeDir = await findMailboxDirectory(
+          scopeDir =
+              await findMailboxDirectory(
                 accountPath: entry.value,
                 mailbox: mailbox,
               ) ??
@@ -103,7 +103,6 @@ Future<void> runBatchedSearchBySender({
   // Get metadata from mdfind results
   final allMetadata = await fetchEmailMetadata(files);
 
-
   if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
@@ -118,8 +117,10 @@ Future<void> runBatchedSearchBySender({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allMetadata.length} messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} messages, processing...',
+  );
 
   // Process metadata in batches
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -153,9 +154,12 @@ Future<void> runBatchedSearchBySender({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages, '
-            'found $matchedCount matches');
+    await extra.sendProgress(
+      0,
+      message:
+          'Processed $scanned of ${allMetadata.length} messages, '
+          'found $matchedCount matches',
+    );
   }
 
   session.chunks.add(
@@ -185,16 +189,12 @@ Future<void> runBatchedSearchAllAccounts({
   final daysBack = args['days_back'] as int? ?? 7;
   final maxResults = args['max_results'] as int? ?? 30;
 
-  session.chunks.add(
-    '=== Cross-Account Search Results ===\n---\n\n',
-  );
+  session.chunks.add('=== Cross-Account Search Results ===\n---\n\n');
 
   await extra.sendProgress(0, message: 'Searching via Spotlight...');
 
   // Build mdfind query with optional keyword/sender filters
-  final conditions = <String>[
-    'kMDItemContentType == "$emlxContentType"',
-  ];
+  final conditions = <String>['kMDItemContentType == "$emlxContentType"'];
 
   if (subjectKeyword != null) {
     final escaped = _escapeSpotlight(subjectKeyword);
@@ -233,7 +233,6 @@ Future<void> runBatchedSearchAllAccounts({
   // Get metadata from mdfind results
   final allMetadata = await fetchEmailMetadata(files);
 
-
   if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
@@ -245,8 +244,10 @@ Future<void> runBatchedSearchAllAccounts({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allMetadata.length} messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} messages, processing...',
+  );
 
   // Process metadata in batches
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -263,8 +264,7 @@ Future<void> runBatchedSearchAllAccounts({
     for (final meta in batch) {
       totalResults++;
       if (totalResults <= maxResults) {
-        final readStatus =
-            meta['read_status'] == 'read' ? 'Read' : 'UNREAD';
+        final readStatus = meta['read_status'] == 'read' ? 'Read' : 'UNREAD';
         batchOutput.writeln('Account: ${meta['account']}');
         batchOutput.writeln('Subject: ${meta['subject']}');
         batchOutput.writeln('From: ${meta['sender']}');
@@ -279,8 +279,10 @@ Future<void> runBatchedSearchAllAccounts({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages');
+    await extra.sendProgress(
+      0,
+      message: 'Processed $scanned of ${allMetadata.length} messages',
+    );
   }
 
   if (totalResults == 0) {
@@ -288,9 +290,7 @@ Future<void> runBatchedSearchAllAccounts({
       'No emails found matching your criteria across all accounts.\n',
     );
   } else {
-    session.chunks.add(
-      '\nFound $totalResults email(s)\n',
-    );
+    session.chunks.add('\nFound $totalResults email(s)\n');
   }
   session.isComplete = true;
   await extra.sendProgress(1, message: 'search-all-accounts completed');
@@ -378,7 +378,6 @@ Future<void> runBatchedGetNewsletters({
   // Get metadata from mdfind results
   final allMetadata = await fetchEmailMetadata(files);
 
-
   if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
@@ -392,8 +391,10 @@ Future<void> runBatchedGetNewsletters({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allMetadata.length} messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} messages, processing...',
+  );
 
   // Process metadata in batches
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -424,8 +425,10 @@ Future<void> runBatchedGetNewsletters({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages');
+    await extra.sendProgress(
+      0,
+      message: 'Processed $scanned of ${allMetadata.length} messages',
+    );
   }
 
   session.chunks.add(

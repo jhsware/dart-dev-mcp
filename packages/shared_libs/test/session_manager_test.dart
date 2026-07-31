@@ -102,40 +102,28 @@ void main() {
       final session = sessionManager.getSession(id)!;
 
       // Session should be active initially
-      expect(
-        sessionManager.activeSessions.any((s) => s.id == id),
-        isTrue,
-      );
+      expect(sessionManager.activeSessions.any((s) => s.id == id), isTrue);
 
       // Mark as complete
       session.isComplete = true;
 
       // Session should no longer be active
-      expect(
-        sessionManager.activeSessions.any((s) => s.id == id),
-        isFalse,
-      );
+      expect(sessionManager.activeSessions.any((s) => s.id == id), isFalse);
     });
   });
 
   group('runCommand', () {
     test('runs echo command successfully', () async {
-      final result = await runCommand(
-        Directory.current,
-        'echo',
-        ['hello'],
-      );
+      final result = await runCommand(Directory.current, 'echo', ['hello']);
 
       expect(result.exitCode, 0);
       expect((result.stdout as String).trim(), 'hello');
     });
 
     test('returns non-zero exit code for failing command', () async {
-      final result = await runCommand(
-        Directory.current,
-        'ls',
-        ['/nonexistent/path/that/does/not/exist'],
-      );
+      final result = await runCommand(Directory.current, 'ls', [
+        '/nonexistent/path/that/does/not/exist',
+      ]);
 
       expect(result.exitCode, isNot(0));
     });
@@ -145,11 +133,10 @@ void main() {
     test('streams command output', () async {
       final chunks = <String>[];
 
-      await for (final chunk in streamCommand(
-        Directory.current,
-        'echo',
-        ['hello', 'world'],
-      )) {
+      await for (final chunk in streamCommand(Directory.current, 'echo', [
+        'hello',
+        'world',
+      ])) {
         chunks.add(chunk);
       }
 
@@ -161,11 +148,9 @@ void main() {
     test('reports completion', () async {
       final chunks = <String>[];
 
-      await for (final chunk in streamCommand(
-        Directory.current,
-        'echo',
-        ['test'],
-      )) {
+      await for (final chunk in streamCommand(Directory.current, 'echo', [
+        'test',
+      ])) {
         chunks.add(chunk);
       }
 

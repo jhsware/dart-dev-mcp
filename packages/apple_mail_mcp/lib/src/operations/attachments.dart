@@ -24,7 +24,8 @@ String _expandHome(String path) {
 /// Saves a specific attachment from an email to disk (read from mail,
 /// write to filesystem — does NOT modify the email).
 Future<CallToolResult> handleSaveEmailAttachment(
-    Map<String, dynamic> args) async {
+  Map<String, dynamic> args,
+) async {
   final messageId = args['message_id'] as String?;
   if (messageId == null || messageId.isEmpty) {
     return actionableError(
@@ -34,8 +35,7 @@ Future<CallToolResult> handleSaveEmailAttachment(
   }
 
   final attachmentName = args['attachment_name'] as String? ?? '';
-  final savePath =
-      args['save_directory'] as String? ?? '~/Desktop';
+  final savePath = args['save_directory'] as String? ?? '~/Desktop';
   final expandedPath = _expandHome(savePath);
 
   final escapedMessageId = escapeAppleScript(messageId);
@@ -44,7 +44,8 @@ Future<CallToolResult> handleSaveEmailAttachment(
 
   final skipCondition = skipFoldersCondition();
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set outputText to ""
     set foundMessage to false
@@ -133,7 +134,8 @@ end tell
 ///
 /// Lists attachments with names and sizes for an email identified by message ID.
 Future<CallToolResult> handleListEmailAttachments(
-    Map<String, dynamic> args) async {
+  Map<String, dynamic> args,
+) async {
   final messageId = args['message_id'] as String?;
   if (messageId == null || messageId.isEmpty) {
     return actionableError(
@@ -146,7 +148,8 @@ Future<CallToolResult> handleListEmailAttachments(
 
   final skipCondition = skipFoldersCondition();
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set outputText to ""
     set foundMessage to false
@@ -236,7 +239,8 @@ end tell
 /// Finds an email by message ID, saves the specified attachment to a
 /// temporary directory, and returns the file path.
 Future<CallToolResult> handleGetEmailAttachment(
-    Map<String, dynamic> args) async {
+  Map<String, dynamic> args,
+) async {
   final messageId = args['message_id'] as String?;
   if (messageId == null || messageId.isEmpty) {
     return actionableError(
@@ -263,7 +267,8 @@ Future<CallToolResult> handleGetEmailAttachment(
 
   final skipCondition = skipFoldersCondition();
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set outputText to ""
     set foundMessage to false
@@ -351,12 +356,10 @@ end tell
   }
 }
 
-
 /// Handles the get-statistics operation.
 ///
 /// Three sub-modes: account_overview, sender_stats, mailbox_breakdown.
-Future<CallToolResult> handleGetStatistics(
-    Map<String, dynamic> args) async {
+Future<CallToolResult> handleGetStatistics(Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
     return actionableError(
@@ -371,10 +374,8 @@ Future<CallToolResult> handleGetStatistics(
   final daysBack = args['days_back'] as int? ?? 30;
 
   final escapedAccount = escapeAppleScript(account);
-  final escapedSender =
-      sender != null ? escapeAppleScript(sender) : null;
-  final escapedMailbox =
-      mailbox != null ? escapeAppleScript(mailbox) : null;
+  final escapedSender = sender != null ? escapeAppleScript(sender) : null;
+  final escapedMailbox = mailbox != null ? escapeAppleScript(mailbox) : null;
 
   final dateFilter = daysBack > 0
       ? 'set targetDate to (current date) - ($daysBack * days)'
@@ -384,7 +385,8 @@ Future<CallToolResult> handleGetStatistics(
   String script;
 
   if (scope == 'account_overview') {
-    script = '''
+    script =
+        '''
 tell application "Mail"
     set outputText to "╔══════════════════════════════════════════╗" & return
     set outputText to outputText & "║      EMAIL STATISTICS - $escapedAccount       ║" & return
@@ -510,7 +512,8 @@ end tell
       );
     }
 
-    script = '''
+    script =
+        '''
 tell application "Mail"
     set outputText to "SENDER STATISTICS" & return & return
     set outputText to outputText & "Sender: $escapedSender" & return
@@ -563,7 +566,8 @@ end tell
   } else if (scope == 'mailbox_breakdown') {
     final mailboxParam = escapedMailbox ?? 'INBOX';
 
-    script = '''
+    script =
+        '''
 tell application "Mail"
     set outputText to "MAILBOX STATISTICS" & return & return
     set outputText to outputText & "Mailbox: $mailboxParam" & return
@@ -610,8 +614,7 @@ end tell
 /// Handles the export-emails operation.
 ///
 /// Exports emails to files for backup or analysis.
-Future<CallToolResult> handleExportEmails(
-    Map<String, dynamic> args) async {
+Future<CallToolResult> handleExportEmails(Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
     return actionableError(
@@ -651,7 +654,8 @@ Future<CallToolResult> handleExportEmails(
 
     final safeSubjectKeyword = escapeAppleScript(subjectKeyword);
 
-    script = '''
+    script =
+        '''
 tell application "Mail"
     set outputText to "EXPORTING EMAIL" & return & return
 
@@ -735,7 +739,8 @@ tell application "Mail"
 end tell
 ''';
   } else if (scope == 'entire_mailbox') {
-    script = '''
+    script =
+        '''
 tell application "Mail"
     set outputText to "EXPORTING MAILBOX" & return & return
 
@@ -826,7 +831,7 @@ end tell
 
 /// Returns the dispatch map for all attachment & analytics operations.
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
-    getAttachmentOperations() {
+getAttachmentOperations() {
   return {
     'save-email-attachment': handleSaveEmailAttachment,
     'list-email-attachments': handleListEmailAttachments,

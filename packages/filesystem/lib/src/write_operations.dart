@@ -124,7 +124,7 @@ class FileWriteOperations {
         return validationError(
           'insert_at',
           'insert_at cannot be combined with startLine/endLine — use '
-          'insert_at alone (insert) or startLine/endLine (replace)',
+              'insert_at alone (insert) or startLine/endLine (replace)',
         );
       }
       if (insertAt < 1) {
@@ -154,8 +154,8 @@ class FileWriteOperations {
       return validationError(
         'overwrite',
         'edit-file without line parameters overwrites the entire file. '
-        'Pass overwrite:true to confirm, or use startLine+endLine to '
-        'replace a line range, or insert_at to insert.',
+            'Pass overwrite:true to confirm, or use startLine+endLine to '
+            'replace a line range, or insert_at to insert.',
       );
     }
 

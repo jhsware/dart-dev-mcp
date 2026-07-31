@@ -58,7 +58,6 @@ class ServerArguments {
   static String _defaultDataRoot() =>
       _normalizeToAbsolutePath(p.join('~', '.code-index'));
 
-
   /// Infer planner DB path for a given project directory.
   ///
   /// Returns: `[plannerDataRoot]/projects/[basename(projectDir)]/db/planner.db`
@@ -69,7 +68,12 @@ class ServerArguments {
     }
     final projectName = p.basename(projectDir);
     return p.join(
-        plannerDataRoot!, 'projects', projectName, 'db', 'planner.db');
+      plannerDataRoot!,
+      'projects',
+      projectName,
+      'db',
+      'planner.db',
+    );
   }
 
   /// Infer code_index DB path for a given project directory.
@@ -82,7 +86,12 @@ class ServerArguments {
     }
     final projectName = p.basename(projectDir);
     return p.join(
-        plannerDataRoot!, 'projects', projectName, 'db', 'code_index.db');
+      plannerDataRoot!,
+      'projects',
+      projectName,
+      'db',
+      'code_index.db',
+    );
   }
 
   /// Parse server arguments from command-line arguments list.
@@ -172,7 +181,6 @@ class ServerArguments {
     );
   }
 
-
   /// Normalize a path to absolute (handles ~, relative paths).
   static String _normalizeToAbsolutePath(String inputPath) {
     String expandedPath = inputPath;
@@ -195,4 +203,3 @@ class ServerArguments {
         'unknownArguments: $unknownArguments)';
   }
 }
-

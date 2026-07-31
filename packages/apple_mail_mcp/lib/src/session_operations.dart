@@ -17,8 +17,7 @@ CallToolResult handleGetOutput(
   if (requireString(sessionId, 'session_id') case final error?) return error;
 
   final chunkIndex = (args['chunk_index'] as num?)?.toInt() ?? 0;
-  final maxChunks =
-      ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
+  final maxChunks = ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
 
   final session = sessionManager.getSession(sessionId!);
   if (session == null) return notFoundError('Session', sessionId);
@@ -62,19 +61,20 @@ CallToolResult handleListSessions(SessionManager sessionManager) {
   sessionManager.cleanupOldSessions();
 
   final sessions = sessionManager.allSessions
-      .map((s) => {
-            'session_id': s.id,
-            'operation': s.operation,
-            'is_complete': s.isComplete,
-            'chunks_collected': s.chunks.length,
-            'started_at': s.startedAt.toIso8601String(),
-          })
+      .map(
+        (s) => {
+          'session_id': s.id,
+          'operation': s.operation,
+          'is_complete': s.isComplete,
+          'chunks_collected': s.chunks.length,
+          'started_at': s.startedAt.toIso8601String(),
+        },
+      )
       .toList();
 
-  return textResult(jsonEncode({
-    'sessions': sessions,
-    'total': sessions.length,
-  }));
+  return textResult(
+    jsonEncode({'sessions': sessions, 'total': sessions.length}),
+  );
 }
 
 /// Cancel a running session.
@@ -90,9 +90,11 @@ Future<CallToolResult> handleCancelSession(
 
   await sessionManager.removeSession(sessionId);
 
-  return textResult(jsonEncode({
-    'status': 'cancelled',
-    'session_id': sessionId,
-    'message': 'Session cancelled and removed.',
-  }));
+  return textResult(
+    jsonEncode({
+      'status': 'cancelled',
+      'session_id': sessionId,
+      'message': 'Session cancelled and removed.',
+    }),
+  );
 }

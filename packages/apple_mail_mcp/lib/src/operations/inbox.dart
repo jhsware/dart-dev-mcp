@@ -23,7 +23,6 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
   final endDate = args['end_date'] as String?;
   final fieldsStr = args['fields'] as String?;
 
-
   // Validate and parse fields
   final requestedFields = fieldsStr != null
       ? fieldsStr.split(',').map((f) => f.trim()).toList()
@@ -60,7 +59,6 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
     }
   }
 
-
   final escapedMailbox = escapeAppleScript(mailbox);
 
   // Build field extraction AppleScript snippets
@@ -69,16 +67,20 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
     switch (field) {
       case 'sender':
         fieldExtractions.add(
-            'set emailRecord to emailRecord & "From: " & sender of aMessage & linefeed');
+          'set emailRecord to emailRecord & "From: " & sender of aMessage & linefeed',
+        );
       case 'subject':
         fieldExtractions.add(
-            'set emailRecord to emailRecord & "Subject: " & subject of aMessage & linefeed');
+          'set emailRecord to emailRecord & "Subject: " & subject of aMessage & linefeed',
+        );
       case 'date':
         fieldExtractions.add(
-            'set emailRecord to emailRecord & "Date: " & (date received of aMessage as string) & linefeed');
+          'set emailRecord to emailRecord & "Date: " & (date received of aMessage as string) & linefeed',
+        );
       case 'message_id':
         fieldExtractions.add(
-            'set emailRecord to emailRecord & "ID: " & message id of aMessage & linefeed');
+          'set emailRecord to emailRecord & "ID: " & message id of aMessage & linefeed',
+        );
       case 'read_status':
         fieldExtractions.add('''
                         if read status of aMessage then
@@ -87,11 +89,13 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
                             set emailRecord to emailRecord & "ReadStatus: unread" & linefeed
                         end if''');
       case 'mailbox':
-        fieldExtractions
-            .add('set emailRecord to emailRecord & "Mailbox: " & mailboxName & linefeed');
+        fieldExtractions.add(
+          'set emailRecord to emailRecord & "Mailbox: " & mailboxName & linefeed',
+        );
       case 'account':
         fieldExtractions.add(
-            'set emailRecord to emailRecord & "Account: " & accountName & linefeed');
+          'set emailRecord to emailRecord & "Account: " & accountName & linefeed',
+        );
       case 'attachments':
         fieldExtractions.add('''
                         try
@@ -138,20 +142,21 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
       timeSeconds: 86399, // end of day
     );
 
-    dateCheck += '''
+    dateCheck +=
+        '''
                         ${startDate == null ? 'set msgDate to date received of aMessage' : ''}
                         if msgDate > endFilterDate then
                             set skipMsg to true
                         end if''';
   }
 
-
   // Build account loop
   String accountLoopStart;
   String accountLoopEnd;
   if (account != null) {
     final escapedAccount = escapeAppleScript(account);
-    accountLoopStart = '''
+    accountLoopStart =
+        '''
         try
             set anAccount to account "$escapedAccount"
         on error
@@ -190,7 +195,8 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
                 end try
             end try''';
   } else {
-    mailboxResolution = '''
+    mailboxResolution =
+        '''
             try
                 set targetMailbox to mailbox "$escapedMailbox" of anAccount
             on error
@@ -201,7 +207,8 @@ Future<CallToolResult> handleListEmails(Map<String, dynamic> args) async {
 
   final totalLimit = offset + limit;
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set outputText to ""
     set collectedCount to 0
@@ -291,7 +298,6 @@ end tell
         current = {
           'subject': trimmed.length >= 2 ? trimmed.substring(2).trim() : '',
         };
-
       } else if (current != null) {
         if (trimmed.startsWith('From: ')) {
           current['sender'] = trimmed.substring(6).trim();
@@ -328,7 +334,6 @@ end tell
   }
 }
 
-
 /// Handles the get-email-by-id operation.
 ///
 /// Fetches a specific email by its Apple Mail message ID, searching across
@@ -352,7 +357,8 @@ Future<CallToolResult> handleGetEmailById(Map<String, dynamic> args) async {
   String accountLoopEnd;
   if (account != null) {
     final escapedAccount = escapeAppleScript(account);
-    accountLoopStart = '''
+    accountLoopStart =
+        '''
         try
             set anAccount to account "$escapedAccount"
         on error
@@ -376,7 +382,8 @@ Future<CallToolResult> handleGetEmailById(Map<String, dynamic> args) async {
 ''';
   }
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set foundMessage to false
     set outputText to ""
@@ -515,12 +522,10 @@ end tell
   }
 }
 
-
 /// Handles the list-inbox-emails operation.
 ///
 /// Lists all inbox emails across all accounts or a specific one.
-Future<CallToolResult> handleListInboxEmails(
-    Map<String, dynamic> args) async {
+Future<CallToolResult> handleListInboxEmails(Map<String, dynamic> args) async {
   final maxEmails = args['max_emails'] as int? ?? 0;
   final includeRead = args['include_read'] as bool? ?? true;
   final startDate = args['start_date'] as String?;
@@ -566,7 +571,8 @@ Future<CallToolResult> handleListInboxEmails(
                         end if''';
   }
 
-  final script = '''
+  final script =
+      '''
 
 tell application "Mail"
     set outputText to "INBOX EMAILS - ALL ACCOUNTS" & return & return
@@ -645,9 +651,9 @@ end tell
 /// Handles the get-unread-count operation.
 ///
 /// Returns unread count per account as structured text.
-Future<CallToolResult> handleGetUnreadCount(
-    Map<String, dynamic> args) async {
-  final script = '''
+Future<CallToolResult> handleGetUnreadCount(Map<String, dynamic> args) async {
+  final script =
+      '''
 tell application "Mail"
     set resultList to {}
     set allAccounts to every account
@@ -686,15 +692,13 @@ end tell
     }
   }
 
-  return CallToolResult.fromContent(
-      [TextContent(text: buffer.toString())]);
+  return CallToolResult.fromContent([TextContent(text: buffer.toString())]);
 }
 
 /// Handles the list-accounts operation.
 ///
 /// Returns a list of all Mail account names.
-Future<CallToolResult> handleListAccounts(
-    Map<String, dynamic> args) async {
+Future<CallToolResult> handleListAccounts(Map<String, dynamic> args) async {
   final script = '''
 tell application "Mail"
     set accountNames to {}
@@ -718,15 +722,13 @@ end tell
     buffer.writeln('  - $account');
   }
 
-  return CallToolResult.fromContent(
-      [TextContent(text: buffer.toString())]);
+  return CallToolResult.fromContent([TextContent(text: buffer.toString())]);
 }
 
 /// Handles the get-recent-emails operation.
 ///
 /// Gets N most recent emails from a specific account.
-Future<CallToolResult> handleGetRecentEmails(
-    Map<String, dynamic> args) async {
+Future<CallToolResult> handleGetRecentEmails(Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   if (account == null) {
     return actionableError(
@@ -738,7 +740,8 @@ Future<CallToolResult> handleGetRecentEmails(
   final count = args['count'] as int? ?? 10;
   final escapedAccount = escapeAppleScript(account);
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set outputText to "RECENT EMAILS - $escapedAccount" & return & return
 
@@ -793,8 +796,7 @@ end tell
 /// Handles the list-mailboxes operation.
 ///
 /// Lists all mailboxes/folders with optional message counts.
-Future<CallToolResult> handleListMailboxes(
-    Map<String, dynamic> args) async {
+Future<CallToolResult> handleListMailboxes(Map<String, dynamic> args) async {
   final account = args['account'] as String?;
   final includeCounts = args['include_counts'] as bool? ?? true;
 
@@ -827,7 +829,8 @@ Future<CallToolResult> handleListMailboxes(
       : '';
   final accountFilterEnd = account != null ? 'end if' : '';
 
-  final script = '''
+  final script =
+      '''
 tell application "Mail"
     set outputText to "MAILBOXES" & return & return
     set allAccounts to every account
@@ -884,9 +887,9 @@ end tell
 ///
 /// Comprehensive dashboard: unread counts, mailbox structure, recent emails,
 /// and action suggestions.
-Future<CallToolResult> handleGetInboxOverview(
-    Map<String, dynamic> args) async {
-  final script = '''
+Future<CallToolResult> handleGetInboxOverview(Map<String, dynamic> args) async {
+  final script =
+      '''
 tell application "Mail"
     set outputText to "╔══════════════════════════════════════════╗" & return
     set outputText to outputText & "║      EMAIL INBOX OVERVIEW                ║" & return
@@ -1060,7 +1063,7 @@ end tell
 
 /// Returns the dispatch map for all inbox operations.
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
-    getInboxOperations() {
+getInboxOperations() {
   return {
     'list-emails': handleListEmails,
     'get-email-by-id': handleGetEmailById,

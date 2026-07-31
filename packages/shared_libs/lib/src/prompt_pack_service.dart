@@ -48,7 +48,7 @@ class PromptPackService {
   /// templates from that YAML file during [initialize]. Templates from the
   /// file override defaults; missing templates fall back to defaults.
   PromptPackService({this.promptsFilePath})
-      : _promptPack = PromptPack.defaults();
+    : _promptPack = PromptPack.defaults();
 
   /// The current prompt pack.
   PromptPack get promptPack => _promptPack;
@@ -74,8 +74,10 @@ class PromptPackService {
 
     final file = File(promptsFilePath!);
     if (!file.existsSync()) {
-      logWarning('prompt-pack',
-          'Prompts file not found: $promptsFilePath, using defaults');
+      logWarning(
+        'prompt-pack',
+        'Prompts file not found: $promptsFilePath, using defaults',
+      );
       _promptPack = PromptPack.defaults();
       return;
     }
@@ -85,11 +87,15 @@ class PromptPackService {
       final filePack = PromptPack.fromYamlString(content);
       _promptPack = _mergeWithDefaults(filePack);
       _lastModified = file.lastModifiedSync();
-      logInfo('prompt-pack',
-          'Loaded ${filePack.templates.length} templates from $promptsFilePath');
+      logInfo(
+        'prompt-pack',
+        'Loaded ${filePack.templates.length} templates from $promptsFilePath',
+      );
     } catch (e) {
-      logWarning('prompt-pack',
-          'Failed to parse prompts file: $promptsFilePath ($e), using defaults');
+      logWarning(
+        'prompt-pack',
+        'Failed to parse prompts file: $promptsFilePath ($e), using defaults',
+      );
       _promptPack = PromptPack.defaults();
     }
   }
@@ -125,12 +131,16 @@ class PromptPackService {
         },
         onError: (error) {
           logWarning(
-              'prompt-pack', 'File watcher error: $error, relying on polling');
+            'prompt-pack',
+            'File watcher error: $error, relying on polling',
+          );
         },
       );
     } catch (e) {
       logWarning(
-          'prompt-pack', 'Could not set up file watcher: $e, relying on polling');
+        'prompt-pack',
+        'Could not set up file watcher: $e, relying on polling',
+      );
     }
 
     // Set up fallback poll timer
@@ -179,8 +189,9 @@ class PromptPackService {
   }) {
     final title = task['title'] as String? ?? '';
     final isParentTask = title.startsWith('Parent:');
-    final templateName =
-        isParentTask ? 'copy_parent_task_prompt' : 'copy_task_prompt';
+    final templateName = isParentTask
+        ? 'copy_parent_task_prompt'
+        : 'copy_task_prompt';
 
     // Format steps into a readable numbered list
     final formattedSteps = _formatSteps(steps);
@@ -206,8 +217,7 @@ class PromptPackService {
         'id: ${step['id'] ?? 'unknown'}',
         'title: ${step['title'] ?? 'untitled'}',
       ];
-      if (step['details'] != null &&
-          (step['details'] as String).isNotEmpty) {
+      if (step['details'] != null && (step['details'] as String).isNotEmpty) {
         parts.add('details: ${step['details']}');
       }
       parts.add('status: ${step['status'] ?? 'unknown'}');

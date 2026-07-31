@@ -18,22 +18,22 @@ bool isHiddenPath(String path) {
 /// or is a child/descendant of any allowed path.
 bool isAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = normalize(path);
-  
+
   return allowedPaths.any((String allowedRoot) {
     final normalizedRoot = normalize(allowedRoot);
-    
+
     // Exact match
     if (normalizedPath == normalizedRoot) {
       return true;
     }
-    
+
     // Check if path is a child of the allowed root
     // Ensure we match complete path segments (not partial names)
     // e.g., /lib should match /lib/models but NOT /library
     final rootWithSep = normalizedRoot.endsWith(separator)
         ? normalizedRoot
         : normalizedRoot + separator;
-    
+
     return normalizedPath.startsWith(rootWithSep);
   });
 }
@@ -68,14 +68,15 @@ String formatAllowedPathsHint(Directory workingDir, List<String> allowedPaths) {
 /// Compute relative allowed paths from absolute allowed paths and working directory.
 ///
 /// Returns a list of relative path strings suitable for display in error messages.
-List<String> getAllowedRelativePaths(Directory workingDir, List<String> allowedPaths) {
+List<String> getAllowedRelativePaths(
+  Directory workingDir,
+  List<String> allowedPaths,
+) {
   final prefix = '${workingDir.path}/';
   return allowedPaths.map((p) {
     return p.startsWith(prefix) ? p.substring(prefix.length) : p;
   }).toList();
 }
-
-
 
 /// Resolve an optional [workingDir] relative to [projectDir].
 ///
@@ -86,7 +87,9 @@ List<String> getAllowedRelativePaths(Directory workingDir, List<String> allowedP
 ///
 /// Returns a record with either a resolved [Directory] or an error message.
 ({Directory? directory, String? error}) resolveWorkingDir(
-    Directory projectDir, String? workingDir) {
+  Directory projectDir,
+  String? workingDir,
+) {
   if (workingDir == null || workingDir.trim().isEmpty) {
     return (directory: projectDir, error: null);
   }
@@ -117,10 +120,7 @@ List<String> getAllowedRelativePaths(Directory workingDir, List<String> allowedP
     return (directory: null, error: 'working_dir does not exist: $trimmed');
   }
   if (stat.type != FileSystemEntityType.directory) {
-    return (
-      directory: null,
-      error: 'working_dir is not a directory: $trimmed',
-    );
+    return (directory: null, error: 'working_dir is not a directory: $trimmed');
   }
 
   return (directory: Directory(resolvedAbs), error: null);

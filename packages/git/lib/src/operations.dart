@@ -109,13 +109,18 @@ class GitOperations {
 
     if (!hasCommits) {
       // Create an empty initial commit to enable proper merge
-      final initResult = await runGit(workingDir,
-          ['commit', '--allow-empty', '-m', 'Initial commit (created for merge)']);
+      final initResult = await runGit(workingDir, [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'Initial commit (created for merge)',
+      ]);
 
       if (initResult.exitCode != 0) {
         return textResult(
-            'Error: Current branch has no commits and failed to create initial commit.\n'
-            'Error: ${initResult.stderr}');
+          'Error: Current branch has no commits and failed to create initial commit.\n'
+          'Error: ${initResult.stderr}',
+        );
       }
     }
 
@@ -130,12 +135,18 @@ class GitOperations {
 
       if (stderr.contains('CONFLICT') || stdout.contains('CONFLICT')) {
         return textResult(
-            'Merge conflict detected. Resolve conflicts and commit.\n\n$stdout\n$stderr');
+          'Merge conflict detected. Resolve conflicts and commit.\n\n$stdout\n$stderr',
+        );
       }
 
       // Handle case where branches have unrelated histories
       if (stderr.contains('refusing to merge unrelated histories')) {
-        final retryArgs = ['merge', '--no-ff', '--allow-unrelated-histories', branch];
+        final retryArgs = [
+          'merge',
+          '--no-ff',
+          '--allow-unrelated-histories',
+          branch,
+        ];
         final retryResult = await runGit(workingDir, retryArgs);
 
         if (retryResult.exitCode != 0) {
@@ -144,13 +155,15 @@ class GitOperations {
           if (retryStderr.contains('CONFLICT') ||
               retryStdout.contains('CONFLICT')) {
             return textResult(
-                'Merge conflict detected. Resolve conflicts and commit.\n\n$retryStdout\n$retryStderr');
+              'Merge conflict detected. Resolve conflicts and commit.\n\n$retryStdout\n$retryStderr',
+            );
           }
           return textResult('Error merging: $retryStderr');
         }
 
         return textResult(
-            'Merged $branch into current branch (with unrelated histories)\n\n${retryResult.stdout}');
+          'Merged $branch into current branch (with unrelated histories)\n\n${retryResult.stdout}',
+        );
       }
 
       return textResult('Error merging: $stderr');
@@ -211,7 +224,11 @@ class GitOperations {
         return textResult(msg);
       }
 
-      final result = await runGit(workingDir, ['add', '--verbose', ...absFilesToAdd]);
+      final result = await runGit(workingDir, [
+        'add',
+        '--verbose',
+        ...absFilesToAdd,
+      ]);
 
       if (result.exitCode != 0) {
         return textResult('Error staging files: ${result.stderr}');
@@ -266,13 +283,17 @@ class GitOperations {
       return validationError(
         'files',
         'None of the specified files are within allowed paths.\n'
-        'Denied: ${deniedFiles.join(", ")}\n\n'
-        'Allowed paths:\n  ${allowedPaths.join('\n  ')}',
+            'Denied: ${deniedFiles.join(", ")}\n\n'
+            'Allowed paths:\n  ${allowedPaths.join('\n  ')}',
       );
     }
 
     // Pass absolute paths to git so CWD doesn't affect resolution
-    final result = await runGit(workingDir, ['add', '--verbose', ...absFilesToAdd]);
+    final result = await runGit(workingDir, [
+      'add',
+      '--verbose',
+      ...absFilesToAdd,
+    ]);
 
     if (result.exitCode != 0) {
       return textResult('Error staging files: ${result.stderr}');
@@ -283,18 +304,26 @@ class GitOperations {
     if (verboseOutput.isNotEmpty) {
       output.writeln(verboseOutput);
     }
-    output.writeln('Staged files: ${absFilesToAdd.map((f) => p.relative(f, from: projectDir.path)).join(", ")}');
+    output.writeln(
+      'Staged files: ${absFilesToAdd.map((f) => p.relative(f, from: projectDir.path)).join(", ")}',
+    );
 
     if (deniedFiles.isNotEmpty) {
       output.writeln('');
-      output.writeln('Skipped (outside allowed paths): ${deniedFiles.join(", ")}');
+      output.writeln(
+        'Skipped (outside allowed paths): ${deniedFiles.join(", ")}',
+      );
     }
 
     return textResult(output.toString().trim());
   }
 
   /// Create a tag.
-  Future<CallToolResult> tagCreate(String? tag, String? message, bool annotated) async {
+  Future<CallToolResult> tagCreate(
+    String? tag,
+    String? message,
+    bool annotated,
+  ) async {
     if (requireString(tag, 'tag') case final error?) {
       return error;
     }

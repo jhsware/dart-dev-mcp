@@ -40,10 +40,9 @@ const validOperations = [
   'get-audit-trail',
 ];
 
-CallToolResult _json(Map<String, dynamic> data) =>
-    CallToolResult.fromContent([
-      TextContent(text: const JsonEncoder.withIndent('  ').convert(data)),
-    ]);
+CallToolResult _json(Map<String, dynamic> data) => CallToolResult.fromContent([
+  TextContent(text: const JsonEncoder.withIndent('  ').convert(data)),
+]);
 
 CallToolResult _text(String text) =>
     CallToolResult.fromContent([TextContent(text: text)]);
@@ -101,80 +100,108 @@ Parent task pattern: Prefix parent task title with "Parent:". Each step referenc
     inputSchema: ToolInputSchema(
       properties: {
         'project_dir': JsonSchema.string(
-            description:
-                'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects and create-project.'),
+          description:
+              'Project directory path. Must match one of the registered --project-dir values. Required for every operation EXCEPT list-projects and create-project.',
+        ),
         'operation': JsonSchema.string(
-            description: 'The operation to perform', enumValues: validOperations),
+          description: 'The operation to perform',
+          enumValues: validOperations,
+        ),
         'local_path': JsonSchema.string(
-            description:
-                'Absolute path to the project local files folder (create-project).'),
+          description:
+              'Absolute path to the project local files folder (create-project).',
+        ),
         'name': JsonSchema.string(
-            description:
-                'Optional project name (create-project); defaults to folder basename.'),
+          description:
+              'Optional project name (create-project); defaults to folder basename.',
+        ),
         'id': JsonSchema.string(
-            description: 'Task or step ID (for show/update/audit-trail)'),
+          description: 'Task or step ID (for show/update/audit-trail)',
+        ),
         'task_id': JsonSchema.string(
-            description: 'Parent task ID (for add-step, log-commit, log-merge)'),
+          description: 'Parent task ID (for add-step, log-commit, log-merge)',
+        ),
         'title': JsonSchema.string(description: 'Title for task or step'),
-        'details':
-            JsonSchema.string(description: 'Detailed description for task or step'),
+        'details': JsonSchema.string(
+          description: 'Detailed description for task or step',
+        ),
         'sub_task_id': JsonSchema.string(
-            description: 'Optional reference to another task ID (sub-task).'),
+          description: 'Optional reference to another task ID (sub-task).',
+        ),
         'status': JsonSchema.string(
-            description:
-                'Status for tasks/steps/items/slates. Also used for list filters.',
-            enumValues: [
-              'backlog',
-              'todo',
-              'draft',
-              'started',
-              'canceled',
-              'done',
-              'merged',
-              'open',
-              'closed',
-              'archived',
-              'released'
-            ]),
-        'memory': JsonSchema.string(description: 'Memory/notes content for task'),
+          description:
+              'Status for tasks/steps/items/slates. Also used for list filters.',
+          enumValues: [
+            'backlog',
+            'todo',
+            'draft',
+            'started',
+            'canceled',
+            'done',
+            'merged',
+            'open',
+            'closed',
+            'archived',
+            'released',
+          ],
+        ),
+        'memory': JsonSchema.string(
+          description: 'Memory/notes content for task',
+        ),
         'entity_type': JsonSchema.string(
-            description: "Entity type: 'task', 'step', 'item', or 'slate'",
-            enumValues: ['task', 'step', 'item', 'slate']),
+          description: "Entity type: 'task', 'step', 'item', or 'slate'",
+          enumValues: ['task', 'step', 'item', 'slate'],
+        ),
         'limit': JsonSchema.integer(description: 'Maximum entries to return.'),
-        'start_at':
-            JsonSchema.integer(description: 'Zero-based offset for list ops.'),
+        'start_at': JsonSchema.integer(
+          description: 'Zero-based offset for list ops.',
+        ),
         'before': JsonSchema.string(
-            description: 'Return entries before this ISO datetime (get-timeline)'),
+          description: 'Return entries before this ISO datetime (get-timeline)',
+        ),
         'after': JsonSchema.string(
-            description: 'Return entries after this ISO datetime (get-timeline)'),
-        'commit_hash':
-            JsonSchema.string(description: 'Git commit hash (log-commit/merge)'),
-        'branch': JsonSchema.string(description: 'Git branch name (log-commit)'),
-        'source_branch':
-            JsonSchema.string(description: 'Source branch (log-merge)'),
-        'target_branch':
-            JsonSchema.string(description: 'Target branch (log-merge)'),
-        'message': JsonSchema.string(description: 'Commit message (log-commit)'),
+          description: 'Return entries after this ISO datetime (get-timeline)',
+        ),
+        'commit_hash': JsonSchema.string(
+          description: 'Git commit hash (log-commit/merge)',
+        ),
+        'branch': JsonSchema.string(
+          description: 'Git branch name (log-commit)',
+        ),
+        'source_branch': JsonSchema.string(
+          description: 'Source branch (log-merge)',
+        ),
+        'target_branch': JsonSchema.string(
+          description: 'Target branch (log-merge)',
+        ),
+        'message': JsonSchema.string(
+          description: 'Commit message (log-commit)',
+        ),
         'step_id': JsonSchema.string(description: 'Step ID (log-commit)'),
         'type': JsonSchema.string(
-            description: 'Item type',
-            enumValues: [
-              'feature',
-              'improvement',
-              'bug',
-              'change',
-              'investigation'
-            ]),
+          description: 'Item type',
+          enumValues: [
+            'feature',
+            'improvement',
+            'bug',
+            'change',
+            'investigation',
+          ],
+        ),
         'notes': JsonSchema.string(description: 'Slate notes (markdown)'),
-        'search_query':
-            JsonSchema.string(description: 'Search query for list-items'),
+        'search_query': JsonSchema.string(
+          description: 'Search query for list-items',
+        ),
         'release_id': JsonSchema.string(
-            description: 'Slate ID (for add/remove-item-to/from-slate)'),
+          description: 'Slate ID (for add/remove-item-to/from-slate)',
+        ),
         'item_id': JsonSchema.string(description: 'Item ID (for linkage ops)'),
         'release_date': JsonSchema.string(
-            description: 'Target slate date in ISO 8601 (add/update-slate)'),
+          description: 'Target slate date in ISO 8601 (add/update-slate)',
+        ),
         'backlog_only': JsonSchema.boolean(
-            description: 'list-items: only items not in any slate'),
+          description: 'list-items: only items not in any slate',
+        ),
       },
       required: [],
     ),
@@ -191,7 +218,9 @@ Future<CallToolResult> dispatchPlanner(
 ) async {
   final operation = args['operation'] as String?;
   if (operation == null || !validOperations.contains(operation)) {
-    return _text('Error: operation must be one of: ${validOperations.join(', ')}');
+    return _text(
+      'Error: operation must be one of: ${validOperations.join(', ')}',
+    );
   }
 
   if (operation == 'list-projects') {
@@ -229,7 +258,8 @@ Future<CallToolResult> dispatchPlanner(
   final projectDir = resolveProjectDirAlias(requestedDir, config.projectDirs);
   if (projectDir == null) {
     return _text(
-        'Error: project_dir must be one of: ${config.projectDirs.join(', ')}');
+      'Error: project_dir must be one of: ${config.projectDirs.join(', ')}',
+    );
   }
   final proj = Uri.encodeComponent(p.basename(projectDir));
 
@@ -242,9 +272,9 @@ Future<CallToolResult> dispatchPlanner(
   }
 
   Map<String, dynamic> pick(List<String> keys) => {
-        for (final k in keys)
-          if (args.containsKey(k) && args[k] != null) k: args[k],
-      };
+    for (final k in keys)
+      if (args.containsKey(k) && args[k] != null) k: args[k],
+  };
 
   String query(Map<String, String?> params) {
     final entries = params.entries
@@ -257,142 +287,177 @@ Future<CallToolResult> dispatchPlanner(
   try {
     switch (operation) {
       case 'get-project-instructions':
-        final r =
-            await client.requestJson('GET', '/projects/$proj/instructions');
+        final r = await client.requestJson(
+          'GET',
+          '/projects/$proj/instructions',
+        );
         final content = (r['instructions'] as String?) ?? '';
-        return _text('Project dir: $projectDir\n\n'
-            '${content.isEmpty ? 'No project instructions found.' : content}');
+        return _text(
+          'Project dir: $projectDir\n\n'
+          '${content.isEmpty ? 'No project instructions found.' : content}',
+        );
 
       case 'add-task':
         return _inject(
-            await client.requestJson('POST', '/projects/$proj/tasks',
-                body: pick(['title', 'details', 'status', 'memory'])),
-            projectDir);
+          await client.requestJson(
+            'POST',
+            '/projects/$proj/tasks',
+            body: pick(['title', 'details', 'status', 'memory']),
+          ),
+          projectDir,
+        );
 
       case 'show-task':
         return _inject(
-            await client.requestJson(
-                'GET', '/projects/$proj/tasks/${_id(args)}'),
-            projectDir);
+          await client.requestJson('GET', '/projects/$proj/tasks/${_id(args)}'),
+          projectDir,
+        );
 
       case 'update-task':
         return _inject(
-            await client.requestJson('PATCH', '/projects/$proj/tasks/${_id(args)}',
-                body: pick(['title', 'details', 'status'])),
-            projectDir);
+          await client.requestJson(
+            'PATCH',
+            '/projects/$proj/tasks/${_id(args)}',
+            body: pick(['title', 'details', 'status']),
+          ),
+          projectDir,
+        );
 
       case 'show-task-memory':
         return _inject(
-            await client.requestJson(
-                'GET', '/projects/$proj/tasks/${_id(args)}/memory'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/tasks/${_id(args)}/memory',
+          ),
+          projectDir,
+        );
 
       case 'update-task-memory':
         return _inject(
-            await client.requestJson(
-                'PUT', '/projects/$proj/tasks/${_id(args)}/memory',
-                body: {'memory': s('memory')}),
-            projectDir);
+          await client.requestJson(
+            'PUT',
+            '/projects/$proj/tasks/${_id(args)}/memory',
+            body: {'memory': s('memory')},
+          ),
+          projectDir,
+        );
 
       case 'list-tasks':
         return _inject(
-            await client.requestJson(
-                'GET',
-                '/projects/$proj/tasks${query({
-                  'status': s('status'),
-                  'start_at': intArg('start_at')?.toString(),
-                  'limit': intArg('limit')?.toString(),
-                })}'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/tasks${query({'status': s('status'), 'start_at': intArg('start_at')?.toString(), 'limit': intArg('limit')?.toString()})}',
+          ),
+          projectDir,
+        );
 
       case 'add-step':
         final taskId = requireArg(args, 'task_id');
         if (taskId == null) return _text('Error: task_id is required');
         return _inject(
-            await client.requestJson(
-                'POST', '/projects/$proj/tasks/$taskId/steps',
-                body: pick(['title', 'details', 'sub_task_id', 'status'])),
-            projectDir);
+          await client.requestJson(
+            'POST',
+            '/projects/$proj/tasks/$taskId/steps',
+            body: pick(['title', 'details', 'sub_task_id', 'status']),
+          ),
+          projectDir,
+        );
 
       case 'show-step':
         return _inject(
-            await client.requestJson(
-                'GET', '/projects/$proj/steps/${_id(args)}'),
-            projectDir);
+          await client.requestJson('GET', '/projects/$proj/steps/${_id(args)}'),
+          projectDir,
+        );
 
       case 'update-step':
         return _inject(
-            await client.requestJson('PATCH', '/projects/$proj/steps/${_id(args)}',
-                body: pick(['title', 'details', 'status', 'sub_task_id'])),
-            projectDir);
+          await client.requestJson(
+            'PATCH',
+            '/projects/$proj/steps/${_id(args)}',
+            body: pick(['title', 'details', 'status', 'sub_task_id']),
+          ),
+          projectDir,
+        );
 
       case 'get-subtask-prompt':
         final text = await client.requestText(
-            'GET', '/projects/$proj/steps/${_id(args)}/subtask-prompt');
+          'GET',
+          '/projects/$proj/steps/${_id(args)}/subtask-prompt',
+        );
         return _text('Project dir: $projectDir\n\n$text');
 
       case 'add-item':
         return _inject(
-            await client.requestJson('POST', '/projects/$proj/items',
-                body: pick(['title', 'details', 'type', 'status'])),
-            projectDir);
+          await client.requestJson(
+            'POST',
+            '/projects/$proj/items',
+            body: pick(['title', 'details', 'type', 'status']),
+          ),
+          projectDir,
+        );
 
       case 'show-item':
         return _inject(
-            await client.requestJson(
-                'GET', '/projects/$proj/items/${_id(args)}'),
-            projectDir);
+          await client.requestJson('GET', '/projects/$proj/items/${_id(args)}'),
+          projectDir,
+        );
 
       case 'update-item':
         return _inject(
-            await client.requestJson('PATCH', '/projects/$proj/items/${_id(args)}',
-                body: pick(['title', 'details', 'type', 'status'])),
-            projectDir);
+          await client.requestJson(
+            'PATCH',
+            '/projects/$proj/items/${_id(args)}',
+            body: pick(['title', 'details', 'type', 'status']),
+          ),
+          projectDir,
+        );
 
       case 'list-items':
         return _inject(
-            await client.requestJson(
-                'GET',
-                '/projects/$proj/items${query({
-                  'search_query': s('search_query'),
-                  'type': s('type'),
-                  'status': s('status'),
-                  'backlog_only':
-                      args['backlog_only'] == true ? 'true' : null,
-                  'start_at': intArg('start_at')?.toString(),
-                  'limit': intArg('limit')?.toString(),
-                })}'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/items${query({'search_query': s('search_query'), 'type': s('type'), 'status': s('status'), 'backlog_only': args['backlog_only'] == true ? 'true' : null, 'start_at': intArg('start_at')?.toString(), 'limit': intArg('limit')?.toString()})}',
+          ),
+          projectDir,
+        );
 
       case 'add-slate':
         return _inject(
-            await client.requestJson('POST', '/projects/$proj/slates',
-                body: pick(['title', 'notes', 'status', 'release_date'])),
-            projectDir);
+          await client.requestJson(
+            'POST',
+            '/projects/$proj/slates',
+            body: pick(['title', 'notes', 'status', 'release_date']),
+          ),
+          projectDir,
+        );
 
       case 'show-slate':
         return _inject(
-            await client.requestJson(
-                'GET', '/projects/$proj/slates/${_id(args)}'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/slates/${_id(args)}',
+          ),
+          projectDir,
+        );
 
       case 'update-slate':
         return _inject(
-            await client.requestJson(
-                'PATCH', '/projects/$proj/slates/${_id(args)}',
-                body: pick(['title', 'notes', 'status', 'release_date'])),
-            projectDir);
+          await client.requestJson(
+            'PATCH',
+            '/projects/$proj/slates/${_id(args)}',
+            body: pick(['title', 'notes', 'status', 'release_date']),
+          ),
+          projectDir,
+        );
 
       case 'list-slates':
         return _inject(
-            await client.requestJson(
-                'GET',
-                '/projects/$proj/slates${query({
-                  'status': s('status'),
-                  'start_at': intArg('start_at')?.toString(),
-                  'limit': intArg('limit')?.toString(),
-                })}'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/slates${query({'status': s('status'), 'start_at': intArg('start_at')?.toString(), 'limit': intArg('limit')?.toString()})}',
+          ),
+          projectDir,
+        );
 
       case 'add-item-to-slate':
         final slateId = requireArg(args, 'release_id');
@@ -401,9 +466,12 @@ Future<CallToolResult> dispatchPlanner(
           return _text('Error: release_id and item_id are required');
         }
         return _inject(
-            await client.requestJson(
-                'PUT', '/projects/$proj/slates/$slateId/items/$itemId'),
-            projectDir);
+          await client.requestJson(
+            'PUT',
+            '/projects/$proj/slates/$slateId/items/$itemId',
+          ),
+          projectDir,
+        );
 
       case 'remove-item-from-slate':
         final slateId = requireArg(args, 'release_id');
@@ -412,9 +480,12 @@ Future<CallToolResult> dispatchPlanner(
           return _text('Error: release_id and item_id are required');
         }
         return _inject(
-            await client.requestJson(
-                'DELETE', '/projects/$proj/slates/$slateId/items/$itemId'),
-            projectDir);
+          await client.requestJson(
+            'DELETE',
+            '/projects/$proj/slates/$slateId/items/$itemId',
+          ),
+          projectDir,
+        );
 
       case 'add-item-to-task':
         final taskId = requireArg(args, 'task_id');
@@ -423,9 +494,12 @@ Future<CallToolResult> dispatchPlanner(
           return _text('Error: task_id and item_id are required');
         }
         return _inject(
-            await client.requestJson(
-                'PUT', '/projects/$proj/tasks/$taskId/items/$itemId'),
-            projectDir);
+          await client.requestJson(
+            'PUT',
+            '/projects/$proj/tasks/$taskId/items/$itemId',
+          ),
+          projectDir,
+        );
 
       case 'remove-item-from-task':
         final taskId = requireArg(args, 'task_id');
@@ -434,39 +508,52 @@ Future<CallToolResult> dispatchPlanner(
           return _text('Error: task_id and item_id are required');
         }
         return _inject(
-            await client.requestJson(
-                'DELETE', '/projects/$proj/tasks/$taskId/items/$itemId'),
-            projectDir);
+          await client.requestJson(
+            'DELETE',
+            '/projects/$proj/tasks/$taskId/items/$itemId',
+          ),
+          projectDir,
+        );
 
       case 'log-commit':
         return _inject(
-            await client.requestJson('POST', '/projects/$proj/timeline/commit',
-                body: pick(
-                    ['commit_hash', 'branch', 'task_id', 'step_id', 'message'])),
-            projectDir);
+          await client.requestJson(
+            'POST',
+            '/projects/$proj/timeline/commit',
+            body: pick([
+              'commit_hash',
+              'branch',
+              'task_id',
+              'step_id',
+              'message',
+            ]),
+          ),
+          projectDir,
+        );
 
       case 'log-merge':
         return _inject(
-            await client.requestJson('POST', '/projects/$proj/timeline/merge',
-                body: pick([
-                  'commit_hash',
-                  'source_branch',
-                  'target_branch',
-                  'task_id'
-                ])),
-            projectDir);
+          await client.requestJson(
+            'POST',
+            '/projects/$proj/timeline/merge',
+            body: pick([
+              'commit_hash',
+              'source_branch',
+              'target_branch',
+              'task_id',
+            ]),
+          ),
+          projectDir,
+        );
 
       case 'get-timeline':
         return _inject(
-            await client.requestJson(
-                'GET',
-                '/projects/$proj/timeline${query({
-                  'limit': intArg('limit')?.toString(),
-                  'entity_type': s('entity_type'),
-                  'before': s('before'),
-                  'after': s('after'),
-                })}'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/timeline${query({'limit': intArg('limit')?.toString(), 'entity_type': s('entity_type'), 'before': s('before'), 'after': s('after')})}',
+          ),
+          projectDir,
+        );
 
       case 'get-audit-trail':
         final entityType = requireArg(args, 'entity_type');
@@ -475,12 +562,12 @@ Future<CallToolResult> dispatchPlanner(
           return _text('Error: entity_type and id are required');
         }
         return _inject(
-            await client.requestJson(
-                'GET',
-                '/projects/$proj/audit/$entityType/$id${query({
-                  'limit': intArg('limit')?.toString(),
-                })}'),
-            projectDir);
+          await client.requestJson(
+            'GET',
+            '/projects/$proj/audit/$entityType/$id${query({'limit': intArg('limit')?.toString()})}',
+          ),
+          projectDir,
+        );
 
       default:
         return _text('Error: unknown operation: $operation');

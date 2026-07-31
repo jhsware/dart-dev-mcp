@@ -31,16 +31,11 @@ Future<void> runBatchedListEmailAttachments({
   final escapedKeyword = escapeAppleScript(subjectKeyword);
 
   // Write header chunk
-  session.chunks.add(
-    'ATTACHMENTS FOR: $subjectKeyword\n\n',
-  );
+  session.chunks.add('ATTACHMENTS FOR: $subjectKeyword\n\n');
 
   // Fetch message IDs from INBOX
   await extra.sendProgress(0, message: 'Fetching message IDs...');
-  final allIds = await fetchMessageIds(
-    account: account,
-    mailbox: 'INBOX',
-  );
+  final allIds = await fetchMessageIds(account: account, mailbox: 'INBOX');
 
   if (allIds.isEmpty) {
     session.chunks.add(
@@ -53,8 +48,10 @@ Future<void> runBatchedListEmailAttachments({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allIds.length} messages to search');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allIds.length} messages to search',
+  );
 
   // Process in batches
   final batches = batchList(allIds, _batchSize);
@@ -72,7 +69,8 @@ Future<void> runBatchedListEmailAttachments({
     // and returns their attachment details in pipe-delimited format.
     // Each matching email outputs one line:
     //   subject|sender|date|attachmentCount|att1Name:att1SizeKB,att2Name:att2SizeKB,...
-    final script = '''
+    final script =
+        '''
 $lowercaseHandler
 
 tell application "Mail"
@@ -130,8 +128,7 @@ end tell
             final senderVal = parts[1];
             final date = parts[2];
             final attachmentCount = parts[3];
-            final attachmentDetails =
-                parts.length > 4 ? parts[4] : '';
+            final attachmentDetails = parts.length > 4 ? parts[4] : '';
 
             batchOutput.writeln('✉ $subject');
             batchOutput.writeln('   From: $senderVal');
@@ -139,8 +136,7 @@ end tell
             batchOutput.writeln();
 
             if (attachmentCount != '0' && attachmentDetails.isNotEmpty) {
-              batchOutput
-                  .writeln('   Attachments ($attachmentCount):');
+              batchOutput.writeln('   Attachments ($attachmentCount):');
               // Parse attachment details: "name:sizeKB,name:sizeKB,"
               final attachments = attachmentDetails
                   .split(',')
@@ -148,11 +144,9 @@ end tell
               for (final att in attachments) {
                 final attParts = att.split(':');
                 final name = attParts[0];
-                final sizeKB =
-                    attParts.length > 1 ? attParts[1] : '0';
+                final sizeKB = attParts.length > 1 ? attParts[1] : '0';
                 if (sizeKB != '0') {
-                  batchOutput
-                      .writeln('   📎 $name ($sizeKB KB)');
+                  batchOutput.writeln('   📎 $name ($sizeKB KB)');
                 } else {
                   batchOutput.writeln('   📎 $name');
                 }
@@ -174,9 +168,12 @@ end tell
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Scanned $scanned of ${allIds.length} messages, '
-            'found $resultCount matches');
+    await extra.sendProgress(
+      0,
+      message:
+          'Scanned $scanned of ${allIds.length} messages, '
+          'found $resultCount matches',
+    );
   }
 
   session.chunks.add(

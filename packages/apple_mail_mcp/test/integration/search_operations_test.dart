@@ -30,8 +30,11 @@ void main() {
       expect(text, contains('FOUND:'));
       final foundCount = extractFoundCount(text);
       if (foundCount != null) {
-        expectNonZeroIfFdaGranted(foundCount,
-            reason: 'search-emails with "the" should find emails when FDA is granted');
+        expectNonZeroIfFdaGranted(
+          foundCount,
+          reason:
+              'search-emails with "the" should find emails when FDA is granted',
+        );
       }
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -52,8 +55,11 @@ void main() {
         expect(text, contains('SEARCH RESULTS'));
         final foundCount = extractFoundCount(text);
         if (foundCount != null) {
-          expectNonZeroIfFdaGranted(foundCount,
-              reason: 'search-emails AND with "the and" should find emails when FDA is granted');
+          expectNonZeroIfFdaGranted(
+            foundCount,
+            reason:
+                'search-emails AND with "the and" should find emails when FDA is granted',
+          );
         }
       }
       expect(elapsed, lessThan(maxBatchedOpDuration));
@@ -139,8 +145,11 @@ void main() {
       expect(text, contains('CONTENT SEARCH'));
       final foundCount = extractFoundCount(text);
       if (foundCount != null) {
-        expectNonZeroIfFdaGranted(foundCount,
-            reason: 'search-email-content with "the" should find emails when FDA is granted');
+        expectNonZeroIfFdaGranted(
+          foundCount,
+          reason:
+              'search-email-content with "the" should find emails when FDA is granted',
+        );
       }
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -191,8 +200,11 @@ void main() {
       expect(text, contains('FOUND:'));
       final foundCount = extractFoundCount(text);
       if (foundCount != null) {
-        expectNonZeroIfFdaGranted(foundCount,
-            reason: 'multi-search with common words should find emails when FDA is granted');
+        expectNonZeroIfFdaGranted(
+          foundCount,
+          reason:
+              'multi-search with common words should find emails when FDA is granted',
+        );
       }
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });

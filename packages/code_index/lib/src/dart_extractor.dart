@@ -132,8 +132,9 @@ class DartExtractor {
   /// missing `package_config.json` never loses declarations.
   Future<ExtractedFile> extractFile(String absolutePath) async {
     final context = _contexts.contextFor(absolutePath);
-    final unitResult =
-        await context.currentSession.getResolvedUnit(absolutePath);
+    final unitResult = await context.currentSession.getResolvedUnit(
+      absolutePath,
+    );
 
     if (unitResult is! ResolvedUnitResult) {
       final source = File(absolutePath).existsSync()
@@ -218,8 +219,8 @@ class DartExtractor {
       final kind = decl.isGetter
           ? 'getter'
           : decl.isSetter
-              ? 'setter'
-              : 'function';
+          ? 'setter'
+          : 'function';
       final sig = decl.isGetter || decl.isSetter
           ? null
           : _paramsText(decl.functionExpression.parameters);
@@ -241,28 +242,52 @@ class DartExtractor {
     for (final member in members) {
       if (member is ConstructorDeclaration) {
         final nameToken = member.name;
-        final name =
-            nameToken != null ? '$parent.${nameToken.lexeme}' : parent;
-        out.add(_symbol(name, 'constructor', lineInfo, member,
-            parent: parent, signature: _paramsText(member.parameters)));
+        final name = nameToken != null ? '$parent.${nameToken.lexeme}' : parent;
+        out.add(
+          _symbol(
+            name,
+            'constructor',
+            lineInfo,
+            member,
+            parent: parent,
+            signature: _paramsText(member.parameters),
+          ),
+        );
       } else if (member is MethodDeclaration) {
         final name = member.name.lexeme;
         if (member.isOperator) {
-          out.add(_symbol('operator $name', 'method', lineInfo, member,
-              parent: parent, signature: _paramsText(member.parameters)));
+          out.add(
+            _symbol(
+              'operator $name',
+              'method',
+              lineInfo,
+              member,
+              parent: parent,
+              signature: _paramsText(member.parameters),
+            ),
+          );
         } else if (member.isGetter) {
           out.add(_symbol(name, 'getter', lineInfo, member, parent: parent));
         } else if (member.isSetter) {
           out.add(_symbol(name, 'setter', lineInfo, member, parent: parent));
         } else {
-          out.add(_symbol(name, 'method', lineInfo, member,
-              parent: parent, signature: _paramsText(member.parameters)));
+          out.add(
+            _symbol(
+              name,
+              'method',
+              lineInfo,
+              member,
+              parent: parent,
+              signature: _paramsText(member.parameters),
+            ),
+          );
         }
       } else if (member is FieldDeclaration) {
         final kind = member.fields.isConst ? 'constant' : 'variable';
         for (final v in member.fields.variables) {
-          out.add(_symbol(v.name.lexeme, kind, lineInfo, member,
-              parent: parent));
+          out.add(
+            _symbol(v.name.lexeme, kind, lineInfo, member, parent: parent),
+          );
         }
       }
     }
@@ -312,20 +337,21 @@ class DartExtractor {
 
   static List<SymbolReference> _resolvedReferences(ResolvedUnitResult result) {
     final acc = <String, _RefAccumulator>{};
-    result.unit.accept(_ReferenceVisitor(
-      currentLibrary: result.libraryElement,
-      acc: acc,
-    ));
+    result.unit.accept(
+      _ReferenceVisitor(currentLibrary: result.libraryElement, acc: acc),
+    );
     return acc.values
-        .map((a) => SymbolReference(
-              symbol: a.symbol,
-              module: a.module,
-              sourcePath: a.sourcePath,
-              dotPath: a.dotPath,
-              symbolKind: a.symbolKind,
-              resolution: 'resolved',
-              count: a.count,
-            ))
+        .map(
+          (a) => SymbolReference(
+            symbol: a.symbol,
+            module: a.module,
+            sourcePath: a.sourcePath,
+            dotPath: a.dotPath,
+            symbolKind: a.symbolKind,
+            resolution: 'resolved',
+            count: a.count,
+          ),
+        )
         .toList();
   }
 

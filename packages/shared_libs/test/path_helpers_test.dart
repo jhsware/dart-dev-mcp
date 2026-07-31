@@ -8,22 +8,22 @@ import 'package:test/test.dart';
 /// to ensure consistent behavior across implementations
 bool gitMcpIsAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = p.normalize(path);
-  
+
   return allowedPaths.any((String allowedRoot) {
     final normalizedRoot = p.normalize(allowedRoot);
-    
+
     // Exact match
     if (normalizedPath == normalizedRoot) {
       return true;
     }
-    
+
     // Check if path is a child of the allowed root
     // Ensure we match complete path segments (not partial names)
     // e.g., /lib should match /lib/models but NOT /library
-    final rootWithSep = normalizedRoot.endsWith(p.separator) 
-        ? normalizedRoot 
+    final rootWithSep = normalizedRoot.endsWith(p.separator)
+        ? normalizedRoot
         : normalizedRoot + p.separator;
-    
+
     return normalizedPath.startsWith(rootWithSep);
   });
 }
@@ -83,7 +83,10 @@ void main() {
 
       test('allows exact match of allowed file', () {
         final allowed = ['/home/user/project/pubspec.yaml'];
-        expect(isAllowedPath(allowed, '/home/user/project/pubspec.yaml'), isTrue);
+        expect(
+          isAllowedPath(allowed, '/home/user/project/pubspec.yaml'),
+          isTrue,
+        );
       });
 
       test('allows path matching any of multiple allowed paths', () {
@@ -118,12 +121,18 @@ void main() {
 
       test('allows deeply nested file', () {
         final allowed = ['/project/lib'];
-        expect(isAllowedPath(allowed, '/project/lib/src/models/entities/user.dart'), isTrue);
+        expect(
+          isAllowedPath(allowed, '/project/lib/src/models/entities/user.dart'),
+          isTrue,
+        );
       });
 
       test('allows file in any of multiple allowed paths', () {
         final allowed = ['/project/lib', '/project/bin', '/project/test'];
-        expect(isAllowedPath(allowed, '/project/test/utils/helpers_test.dart'), isTrue);
+        expect(
+          isAllowedPath(allowed, '/project/test/utils/helpers_test.dart'),
+          isTrue,
+        );
       });
     });
 
@@ -184,7 +193,10 @@ void main() {
 
       test('handles paths with double slashes', () {
         final allowed = ['/project/lib'];
-        expect(isAllowedPath(allowed, '/project/lib//models/file.dart'), isTrue);
+        expect(
+          isAllowedPath(allowed, '/project/lib//models/file.dart'),
+          isTrue,
+        );
       });
     });
 
@@ -193,23 +205,35 @@ void main() {
         // This was the original failing case
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
         expect(
-          isAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart'),
+          isAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart',
+          ),
           isTrue,
         );
       });
 
-      test('allows lib/mcp_server/utils/path_helpers.dart when ./lib is allowed', () {
-        final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
-        expect(
-          isAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/mcp_server/utils/path_helpers.dart'),
-          isTrue,
-        );
-      });
+      test(
+        'allows lib/mcp_server/utils/path_helpers.dart when ./lib is allowed',
+        () {
+          final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
+          expect(
+            isAllowedPath(
+              allowed,
+              '/Users/jhsware/DEV/dart_dev_mcp/lib/mcp_server/utils/path_helpers.dart',
+            ),
+            isTrue,
+          );
+        },
+      );
 
       test('allows test/utils/path_helpers_test.dart when ./test is allowed', () {
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/test'];
         expect(
-          isAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/test/utils/path_helpers_test.dart'),
+          isAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/test/utils/path_helpers_test.dart',
+          ),
           isTrue,
         );
       });
@@ -217,7 +241,10 @@ void main() {
       test('rejects lib/models/models.dart when only ./bin is allowed', () {
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/bin'];
         expect(
-          isAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart'),
+          isAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart',
+          ),
           isFalse,
         );
       });
@@ -229,7 +256,7 @@ void main() {
         final projectPath = '/Users/jhsware/DEV/dart_dev_mcp';
         final allowed = ['$projectPath/lib'];
         final newDirPath = '$projectPath/lib/models';
-        
+
         expect(isAllowedPath(allowed, newDirPath), isTrue);
       });
 
@@ -237,7 +264,7 @@ void main() {
         final projectPath = '/Users/dev/project';
         final allowed = ['$projectPath/lib'];
         final newDirPath = '$projectPath/lib/src/models/entities';
-        
+
         expect(isAllowedPath(allowed, newDirPath), isTrue);
       });
 
@@ -245,7 +272,7 @@ void main() {
         final projectPath = '/Users/dev/project';
         final allowed = ['$projectPath/lib'];
         final newDirPath = '$projectPath/src/models';
-        
+
         expect(isAllowedPath(allowed, newDirPath), isFalse);
       });
 
@@ -253,7 +280,7 @@ void main() {
         final projectPath = '/Users/dev/project';
         final allowed = ['$projectPath/lib/models'];
         final newDirPath = '$projectPath/lib/models';
-        
+
         expect(isAllowedPath(allowed, newDirPath), isTrue);
       });
     });
@@ -286,29 +313,47 @@ void main() {
 
       test('allows file in nested subdirectory', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/lib/models/user.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/lib/models/user.dart'),
+          isTrue,
+        );
       });
 
       test('allows deeply nested file', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/lib/src/models/entities/user.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(
+            allowed,
+            '/project/lib/src/models/entities/user.dart',
+          ),
+          isTrue,
+        );
       });
     });
 
     group('paths with similar prefixes (critical edge cases)', () {
       test('rejects path that starts with similar name but is not a child', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/library/file.dart'), isFalse);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/library/file.dart'),
+          isFalse,
+        );
       });
 
       test('rejects path with allowed path as substring', () {
         final allowed = ['/project/bin'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/binary/file.dart'), isFalse);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/binary/file.dart'),
+          isFalse,
+        );
       });
 
       test('rejects path with partial directory name match', () {
         final allowed = ['/project/test'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/testing/file.dart'), isFalse);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/testing/file.dart'),
+          isFalse,
+        );
       });
     });
 
@@ -328,49 +373,106 @@ void main() {
       test('allows lib/models/models.dart when ./lib is allowed', () {
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
         expect(
-          gitMcpIsAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart'),
+          gitMcpIsAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart',
+          ),
           isTrue,
         );
       });
 
-      test('allows lib/mcp_server/utils/path_helpers.dart when ./lib is allowed', () {
-        final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
-        expect(
-          gitMcpIsAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/mcp_server/utils/path_helpers.dart'),
-          isTrue,
-        );
-      });
+      test(
+        'allows lib/mcp_server/utils/path_helpers.dart when ./lib is allowed',
+        () {
+          final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
+          expect(
+            gitMcpIsAllowedPath(
+              allowed,
+              '/Users/jhsware/DEV/dart_dev_mcp/lib/mcp_server/utils/path_helpers.dart',
+            ),
+            isTrue,
+          );
+        },
+      );
     });
   });
 
   // Verify both implementations produce identical results
-  group('implementation consistency (isAllowedPath vs gitMcpIsAllowedPath)', () {
-    final testCases = [
-      // [allowedPaths, testPath, expectedResult]
-      [['/project/lib'], '/project/lib', true],
-      [['/project/lib'], '/project/lib/main.dart', true],
-      [['/project/lib'], '/project/lib/models/user.dart', true],
-      [['/project/lib'], '/project/lib/src/deep/nested/file.dart', true],
-      [['/project/lib'], '/project/library/file.dart', false],
-      [['/project/lib'], '/project/src/file.dart', false],
-      [['/project/lib'], '/project', false],
-      [['/project/lib', '/project/bin'], '/project/bin/main.dart', true],
-      [['/project/lib', '/project/bin'], '/project/test/file.dart', false],
-    ];
+  group(
+    'implementation consistency (isAllowedPath vs gitMcpIsAllowedPath)',
+    () {
+      final testCases = [
+        // [allowedPaths, testPath, expectedResult]
+        [
+          ['/project/lib'],
+          '/project/lib',
+          true,
+        ],
+        [
+          ['/project/lib'],
+          '/project/lib/main.dart',
+          true,
+        ],
+        [
+          ['/project/lib'],
+          '/project/lib/models/user.dart',
+          true,
+        ],
+        [
+          ['/project/lib'],
+          '/project/lib/src/deep/nested/file.dart',
+          true,
+        ],
+        [
+          ['/project/lib'],
+          '/project/library/file.dart',
+          false,
+        ],
+        [
+          ['/project/lib'],
+          '/project/src/file.dart',
+          false,
+        ],
+        [
+          ['/project/lib'],
+          '/project',
+          false,
+        ],
+        [
+          ['/project/lib', '/project/bin'],
+          '/project/bin/main.dart',
+          true,
+        ],
+        [
+          ['/project/lib', '/project/bin'],
+          '/project/test/file.dart',
+          false,
+        ],
+      ];
 
-    for (final testCase in testCases) {
-      final allowedPaths = testCase[0] as List<String>;
-      final testPath = testCase[1] as String;
-      final expected = testCase[2] as bool;
+      for (final testCase in testCases) {
+        final allowedPaths = testCase[0] as List<String>;
+        final testPath = testCase[1] as String;
+        final expected = testCase[2] as bool;
 
-      test('both return $expected for "$testPath" with allowed=$allowedPaths', () {
-        expect(isAllowedPath(allowedPaths, testPath), equals(expected),
-            reason: 'isAllowedPath failed');
-        expect(gitMcpIsAllowedPath(allowedPaths, testPath), equals(expected),
-            reason: 'gitMcpIsAllowedPath failed');
-      });
-    }
-  });
+        test(
+          'both return $expected for "$testPath" with allowed=$allowedPaths',
+          () {
+            expect(
+              isAllowedPath(allowedPaths, testPath),
+              equals(expected),
+              reason: 'isAllowedPath failed',
+            );
+            expect(
+              gitMcpIsAllowedPath(allowedPaths, testPath),
+              equals(expected),
+              reason: 'gitMcpIsAllowedPath failed',
+            );
+          },
+        );
+      }
+    },
+  );
 
   group('validateRelativePath', () {
     test('rejects absolute paths', () {
@@ -420,7 +522,9 @@ void main() {
       tempDir = Directory.systemTemp.createTempSync('resolveWorkingDir_');
       projectDir = Directory('${tempDir.path}/project')..createSync();
       // Create sub-package structure
-      Directory('${projectDir.path}/packages/foo/lib').createSync(recursive: true);
+      Directory(
+        '${projectDir.path}/packages/foo/lib',
+      ).createSync(recursive: true);
       // Create a regular file for the "not a directory" test
       File('${projectDir.path}/some.txt').createSync();
     });
@@ -471,7 +575,6 @@ void main() {
       expect(result.error, isNotNull);
     });
 
-
     test('hidden segment is rejected', () {
       final result = resolveWorkingDir(projectDir, '.hidden/foo');
       expect(result.directory, isNull);
@@ -495,7 +598,6 @@ void main() {
       expect(result.directory, isNull);
       expect(result.error, isNotNull);
     });
-
   });
 
   group('crossProjectPathHint', () {
@@ -525,8 +627,7 @@ void main() {
       expect(hint, contains('path="."'));
     });
 
-    test('absolute path inside the current project suggests relative form',
-        () {
+    test('absolute path inside the current project suggests relative form', () {
       final hint = crossProjectPathHint(
         rawPath: '$projectA/lib/main.dart',
         projectDir: projectA,
@@ -575,4 +676,3 @@ void main() {
     });
   });
 }
-

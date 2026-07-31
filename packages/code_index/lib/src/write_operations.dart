@@ -72,7 +72,10 @@ class WriteOperations {
   Future<CallToolResult> indexFiles(Map<String, dynamic>? args) async {
     final files = args?['files'] as List<dynamic>?;
     if (files == null || files.isEmpty) {
-      return validationError('files', 'files[] must contain at least one record');
+      return validationError(
+        'files',
+        'files[] must contain at least one record',
+      );
     }
     final refreshDependents = args?['refresh_dependents'] as bool? ?? true;
 
@@ -166,16 +169,18 @@ class WriteOperations {
       hasStructure = true;
     } else {
       symbols = normalized.symbols
-          .map((s) => _WriteSymbol(
-                name: s.name,
-                kind: s.kind,
-                visibility: s.visibility,
-                parent: s.parent,
-                signature: s.signature,
-                line: s.line,
-                endLine: s.endLine,
-                summary: s.summary,
-              ))
+          .map(
+            (s) => _WriteSymbol(
+              name: s.name,
+              kind: s.kind,
+              visibility: s.visibility,
+              parent: s.parent,
+              signature: s.signature,
+              line: s.line,
+              endLine: s.endLine,
+              summary: s.summary,
+            ),
+          )
           .toList();
       imports = normalized.imports;
       references = normalized.references;
@@ -189,7 +194,14 @@ class WriteOperations {
       hasSymbolSummaries: normalized.symbolSummaries.isNotEmpty,
     );
 
-    _write(normalized, symbols, imports, references, annotations, layersPresent);
+    _write(
+      normalized,
+      symbols,
+      imports,
+      references,
+      annotations,
+      layersPresent,
+    );
     return _FileResult(path, isDart, normalized.warnings);
   }
 
@@ -234,12 +246,13 @@ class WriteOperations {
     List<int> layersPresent,
   ) {
     final now = DateTime.now().toUtc().toIso8601String();
-    final existing =
-        database.select('SELECT id, created_at FROM files WHERE path = ?', [rec.path]);
+    final existing = database.select(
+      'SELECT id, created_at FROM files WHERE path = ?',
+      [rec.path],
+    );
     final isUpdate = existing.isNotEmpty;
     final fileId = isUpdate ? existing.first['id'] as String : _uuid.v4();
-    final createdAt =
-        isUpdate ? existing.first['created_at'] as String : now;
+    final createdAt = isUpdate ? existing.first['created_at'] as String : now;
 
     withRetryTransactionSync(database, () {
       if (isUpdate) {
@@ -251,7 +264,9 @@ class WriteOperations {
         ]) {
           database.execute('DELETE FROM $t WHERE file_id = ?', [fileId]);
         }
-        database.execute('DELETE FROM code_index_fts WHERE file_id = ?', [fileId]);
+        database.execute('DELETE FROM code_index_fts WHERE file_id = ?', [
+          fileId,
+        ]);
       }
 
       database.execute(
@@ -263,9 +278,22 @@ class WriteOperations {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'fresh', NULL, ?, ?)
         ''',
         [
-          fileId, rec.path, rec.name, rec.fileType, rec.language, rec.fileHash,
-          rec.sizeBytes, rec.lineCount, rec.wordCount, rec.mtime, rec.summary,
-          jsonEncode(rec.tags), jsonEncode(layersPresent), now, createdAt, now,
+          fileId,
+          rec.path,
+          rec.name,
+          rec.fileType,
+          rec.language,
+          rec.fileHash,
+          rec.sizeBytes,
+          rec.lineCount,
+          rec.wordCount,
+          rec.mtime,
+          rec.summary,
+          jsonEncode(rec.tags),
+          jsonEncode(layersPresent),
+          now,
+          createdAt,
+          now,
         ],
       );
 
@@ -277,8 +305,17 @@ class WriteOperations {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
-            _uuid.v4(), fileId, s.name, s.kind, s.visibility, s.parent,
-            s.signature, s.line, s.endLine, s.summary, now,
+            _uuid.v4(),
+            fileId,
+            s.name,
+            s.kind,
+            s.visibility,
+            s.parent,
+            s.signature,
+            s.line,
+            s.endLine,
+            s.summary,
+            now,
           ],
         );
       }
@@ -298,8 +335,16 @@ class WriteOperations {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
-            _uuid.v4(), fileId, ref.symbol, ref.module, ref.sourcePath,
-            ref.dotPath, ref.symbolKind, ref.resolution, ref.count, now,
+            _uuid.v4(),
+            fileId,
+            ref.symbol,
+            ref.module,
+            ref.sourcePath,
+            ref.dotPath,
+            ref.symbolKind,
+            ref.resolution,
+            ref.count,
+            now,
           ],
         );
       }
@@ -318,7 +363,11 @@ class WriteOperations {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         [
-          fileId, rec.path, rec.name, rec.summary ?? '', rec.tags.join(' '),
+          fileId,
+          rec.path,
+          rec.name,
+          rec.summary ?? '',
+          rec.tags.join(' '),
           symbols.map((s) => s.name).join(' '),
           symbols.map((s) => s.summary).whereType<String>().join(' '),
           references.map((r) => r.dotPath).join(' '),

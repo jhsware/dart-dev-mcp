@@ -16,7 +16,8 @@ import '../constants.dart';
 /// Gets recent emails from a sender with human-friendly time filters.
 /// This is the only remaining sync (non-batched) search operation.
 Future<CallToolResult> handleGetRecentFromSender(
-    Map<String, dynamic> args) async {
+  Map<String, dynamic> args,
+) async {
   final sender = args['sender'] as String?;
   if (sender == null) {
     return actionableError(
@@ -64,14 +65,16 @@ Future<CallToolResult> handleGetRecentFromSender(
                         set mailboxName to name of aMailbox
                         if mailboxName is not in {"Trash", "Junk", "Junk Email", "Deleted Items", "Deleted Messages", "Spam", "Drafts", "Sent", "Sent Items", "Sent Messages", "Sent Mail", "All Mail", "Bin"} then
 ''';
-    mailboxLoopEnd = '''
+    mailboxLoopEnd =
+        '''
                         end if
                     end try
                     if resultCount >= $maxResults then exit repeat
                 end repeat
 ''';
   } else {
-    mailboxLoopStart = '''
+    mailboxLoopStart =
+        '''
                 try
                     set aMailbox to mailbox "$escapedMailbox" of anAccount
                 on error
@@ -93,7 +96,8 @@ Future<CallToolResult> handleGetRecentFromSender(
   String accountLoopEnd;
   if (account != null) {
     final escapedAccount = escapeAppleScript(account);
-    accountLoopStart = '''
+    accountLoopStart =
+        '''
         set anAccount to account "$escapedAccount"
         set accountName to name of anAccount
         repeat 1 times
@@ -107,13 +111,15 @@ Future<CallToolResult> handleGetRecentFromSender(
         repeat with anAccount in allAccounts
             set accountName to name of anAccount
 ''';
-    accountLoopEnd = '''
+    accountLoopEnd =
+        '''
             if resultCount >= $maxResults then exit repeat
         end repeat
 ''';
   }
 
-  final script = '''
+  final script =
+      '''
 $lowercaseHandler
 
 tell application "Mail"
@@ -177,8 +183,6 @@ end tell
 /// Most search operations now go through the batched execution path
 /// in server.dart. Only get-recent-from-sender remains as a sync handler.
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
-    getSearchOperations() {
-  return {
-    'get-recent-from-sender': handleGetRecentFromSender,
-  };
+getSearchOperations() {
+  return {'get-recent-from-sender': handleGetRecentFromSender};
 }

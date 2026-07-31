@@ -15,8 +15,10 @@ Future<String?> findGpgAgentSocket() async {
   }
 
   try {
-    final result =
-        await Process.run('gpgconf', ['--list-dirs', 'agent-socket']);
+    final result = await Process.run('gpgconf', [
+      '--list-dirs',
+      'agent-socket',
+    ]);
     if (result.exitCode == 0) {
       final socket = (result.stdout as String).trim();
       if (socket.isNotEmpty && await File(socket).exists()) {
@@ -49,11 +51,9 @@ Future<String?> findGpgAgentSocket() async {
 /// Ensure gpg-agent is running.
 Future<bool> ensureGpgAgent() async {
   try {
-    final result = await Process.run(
-      'gpg-connect-agent',
-      ['/bye'],
-      environment: Platform.environment,
-    );
+    final result = await Process.run('gpg-connect-agent', [
+      '/bye',
+    ], environment: Platform.environment);
     if (result.exitCode == 0) {
       return true;
     }
@@ -62,11 +62,10 @@ Future<bool> ensureGpgAgent() async {
   }
 
   try {
-    final result = await Process.run(
-      'gpgconf',
-      ['--launch', 'gpg-agent'],
-      environment: Platform.environment,
-    );
+    final result = await Process.run('gpgconf', [
+      '--launch',
+      'gpg-agent',
+    ], environment: Platform.environment);
     return result.exitCode == 0;
   } catch (e) {
     return false;

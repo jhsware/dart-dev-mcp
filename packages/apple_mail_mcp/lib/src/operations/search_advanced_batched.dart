@@ -5,7 +5,6 @@
 //
 // Requires Full Disk Access to search ~/Library/Mail/.
 
-
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 
@@ -65,7 +64,8 @@ Future<void> runBatchedGetEmailThread({
       if (mailbox == 'All') {
         scopeDir = entry.value;
       } else {
-        scopeDir = await findMailboxDirectory(
+        scopeDir =
+            await findMailboxDirectory(
               accountPath: entry.value,
               mailbox: mailbox,
             ) ??
@@ -92,7 +92,6 @@ Future<void> runBatchedGetEmailThread({
   // Get metadata from mdfind results
   final allMetadata = await fetchEmailMetadata(files);
 
-
   if (allMetadata.isEmpty) {
     final fdaWarning = await getFullDiskAccessWarningIfNeeded();
     session.chunks.add(
@@ -106,8 +105,10 @@ Future<void> runBatchedGetEmailThread({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allMetadata.length} messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} messages, processing...',
+  );
 
   // Process metadata, apply Dart-side thread subject filtering
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -129,9 +130,7 @@ Future<void> runBatchedGetEmailThread({
         cleanSubject = cleanSubject.replaceAll(prefix, '').trim();
       }
 
-      if (!cleanSubject.toLowerCase().contains(
-            cleanedKeyword.toLowerCase(),
-          )) {
+      if (!cleanSubject.toLowerCase().contains(cleanedKeyword.toLowerCase())) {
         continue;
       }
 
@@ -151,9 +150,12 @@ Future<void> runBatchedGetEmailThread({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages, '
-            'found $matchedCount thread matches');
+    await extra.sendProgress(
+      0,
+      message:
+          'Processed $scanned of ${allMetadata.length} messages, '
+          'found $matchedCount thread matches',
+    );
   }
 
   session.chunks.add(

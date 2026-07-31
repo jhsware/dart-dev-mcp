@@ -46,13 +46,7 @@ const List<String> skipFolders = [
 ];
 
 /// Common email thread subject prefixes to strip for matching.
-const List<String> threadPrefixes = [
-  'Re: ',
-  'RE: ',
-  'Fwd: ',
-  'FW: ',
-  'Fw: ',
-];
+const List<String> threadPrefixes = ['Re: ', 'RE: ', 'Fwd: ', 'FW: ', 'Fw: '];
 
 /// Maps human-friendly time range names to days-back values.
 /// 0 means "all time" (no date filter).
@@ -84,5 +78,4 @@ const List<String> allEmailFields = [
   'mailbox',
   'account',
   'attachments',
-
 ];

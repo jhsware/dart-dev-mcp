@@ -34,8 +34,10 @@ Future<String?> findSshAgentSocket() async {
   // 2. macOS: Try launchd socket
   if (Platform.isMacOS) {
     try {
-      final result =
-          await Process.run('launchctl', ['getenv', 'SSH_AUTH_SOCK']);
+      final result = await Process.run('launchctl', [
+        'getenv',
+        'SSH_AUTH_SOCK',
+      ]);
       if (result.exitCode == 0) {
         final socket = (result.stdout as String).trim();
         if (socket.isNotEmpty && await socketExists(socket)) {
@@ -77,9 +79,8 @@ Future<String?> findSshAgentSocket() async {
 
   // 3. Linux: Check common locations
   if (Platform.isLinux) {
-    final uid = Platform.environment['UID'] ??
-        Platform.environment['EUID'] ??
-        '1000';
+    final uid =
+        Platform.environment['UID'] ?? Platform.environment['EUID'] ?? '1000';
     final commonPaths = [
       '/run/user/$uid/ssh-agent.socket',
       '/run/user/$uid/keyring/ssh',
@@ -132,10 +133,7 @@ Future<bool> sshAgentHasIdentities(String? socketPath) async {
     final result = await Process.run(
       'ssh-add',
       ['-l'],
-      environment: {
-        ...Platform.environment,
-        'SSH_AUTH_SOCK': socketPath,
-      },
+      environment: {...Platform.environment, 'SSH_AUTH_SOCK': socketPath},
     );
     // Exit code 0 = has identities, 1 = no identities, 2 = can't connect
     return result.exitCode == 0;
@@ -152,10 +150,7 @@ Future<List<String>> getSshAgentIdentities(String? socketPath) async {
     final result = await Process.run(
       'ssh-add',
       ['-l'],
-      environment: {
-        ...Platform.environment,
-        'SSH_AUTH_SOCK': socketPath,
-      },
+      environment: {...Platform.environment, 'SSH_AUTH_SOCK': socketPath},
     );
     if (result.exitCode == 0) {
       return (result.stdout as String)

@@ -42,8 +42,9 @@ void main() {
   test('scan collects out-of-scope files instead of planning them', () {
     final res = idx.scanDirs();
     expect(res['out_of_scope'], contains('bin/tool.yaml'));
-    final planned =
-        (res['plan'] as List).map((e) => e['path'] as String).toList();
+    final planned = (res['plan'] as List)
+        .map((e) => e['path'] as String)
+        .toList();
     expect(planned, isNot(contains('bin/tool.yaml')));
     expect(planned, contains('lib/app.yaml'));
   });
