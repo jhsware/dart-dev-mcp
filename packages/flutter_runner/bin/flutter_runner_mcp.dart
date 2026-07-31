@@ -41,7 +41,7 @@ void main(List<String> arguments) async {
   );
   if (serverArgs.allowToolchainFallback) {
     logWarning(
-      'flutter_runner',
+      'flutter-runner',
       '--allow-toolchain-fallback is set: projects that declare .fvm but '
           'lack the `fvm` binary will fall back to the system flutter with '
           'a warning (pinned SDK will NOT be used).',
@@ -51,16 +51,16 @@ void main(List<String> arguments) async {
     final resolution = await fvmResolver.resolve(dir);
     if (resolution.fvmBinaryMissing) {
       logWarning(
-        'flutter_runner',
+        'flutter-runner',
         'Project $dir has .fvm but the `fvm` binary is not on PATH. '
             'Flutter commands for this project will fail until fvm is installed. '
             'Install from https://fvm.app/ or restart with --allow-toolchain-fallback.',
       );
     } else if (resolution.useFvm) {
-      logInfo('flutter_runner', 'Project $dir -> using fvm (.fvm detected)');
+      logInfo('flutter-runner', 'Project $dir -> using fvm (.fvm detected)');
     } else {
       logInfo(
-        'flutter_runner',
+        'flutter-runner',
         'Project $dir -> using system flutter (no .fvm)',
       );
     }
@@ -75,9 +75,9 @@ void main(List<String> arguments) async {
     ),
   );
 
-  // Register the flutter_runner tool
+  // Register the flutter-runner tool
   server.registerTool(
-    'flutter_runner',
+    'flutter-runner',
     description:
         '''Run Flutter commands via FVM with support for long-running processes.
 
@@ -171,7 +171,7 @@ useful for monorepo packages (e.g. working_dir='packages/app_core' for code gene
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  logInfo('flutter_runner', 'Flutter Runner MCP Server running on stdio');
+  logInfo('flutter-runner', 'Flutter Runner MCP Server running on stdio');
 }
 
 void _printUsage() {
@@ -373,7 +373,7 @@ Future<CallToolResult> _handleFlutterRunner(
         return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
-    return errorResult('flutter_runner:$operation', e, stackTrace, {
+    return errorResult('flutter-runner:$operation', e, stackTrace, {
       'operation': operation,
     });
   }
@@ -483,7 +483,7 @@ Future<CallToolResult> _runFlutterCommandSync(
 
     return textResult(output.toString());
   } catch (e, stackTrace) {
-    return errorResult('flutter_runner:command', e, stackTrace, {
+    return errorResult('flutter-runner:command', e, stackTrace, {
       'command': 'flutter ${flutterArgs.join(' ')}',
     });
   }
@@ -631,7 +631,7 @@ class FvmResolver {
     if (allowFallback) {
       if (_fallbackWarned.add(projectDir)) {
         logWarning(
-          'flutter_runner',
+          'flutter-runner',
           "Project $projectDir has .fvm but the 'fvm' binary is not on "
               "PATH. --allow-toolchain-fallback is set; falling back to "
               "the system flutter. The pinned SDK is NOT being used.",

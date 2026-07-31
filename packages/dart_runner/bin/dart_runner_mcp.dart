@@ -34,11 +34,11 @@ void main(List<String> arguments) async {
     }
   }
 
-  logInfo('dart_runner', 'Dart Runner MCP Server starting...');
-  logInfo('dart_runner', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('dart-runner', 'Dart Runner MCP Server starting...');
+  logInfo('dart-runner', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
   if (serverArgs.allowToolchainFallback) {
     logWarning(
-      'dart_runner',
+      'dart-runner',
       '--allow-toolchain-fallback is set: projects that declare '
           'shell.nix/flake.nix but lack nix-shell/nix will fall back to '
           'the system dart with a warning (pinned SDK will NOT be used).',
@@ -52,12 +52,12 @@ void main(List<String> arguments) async {
     switch (kind) {
       case _NixKind.shellNix:
         logInfo(
-          'dart_runner',
+          'dart-runner',
           'Detected shell.nix in $dir — dart commands will run via nix-shell.',
         );
       case _NixKind.flakeNix:
         logInfo(
-          'dart_runner',
+          'dart-runner',
           'Detected flake.nix in $dir — dart commands will run via nix develop.',
         );
       case _NixKind.none:
@@ -74,9 +74,9 @@ void main(List<String> arguments) async {
     ),
   );
 
-  // Register the dart_runner tool
+  // Register the dart-runner tool
   server.registerTool(
-    'dart_runner',
+    'dart-runner',
     description: '''Run Dart commands with support for long-running processes.
 
 Operations:
@@ -156,7 +156,7 @@ useful for monorepo packages (e.g. working_dir='packages/foo' for code generatio
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  logInfo('dart_runner', 'Dart Runner MCP Server running on stdio');
+  logInfo('dart-runner', 'Dart Runner MCP Server running on stdio');
 }
 
 void _printUsage() {
@@ -319,7 +319,7 @@ Future<CallToolResult> _handleDartRunner(
         return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
-    return errorResult('dart_runner:$operation', e, stackTrace, {
+    return errorResult('dart-runner:$operation', e, stackTrace, {
       'operation': operation,
     });
   }
@@ -482,7 +482,7 @@ _ResolvedCommand _handleMissingNixBinary({
   if (allowFallback) {
     if (_fallbackWarned.add(projectRoot.path)) {
       logWarning(
-        'dart_runner',
+        'dart-runner',
         "Project ${projectRoot.path} declares $declared but '$binary' is "
             "not on PATH. --allow-toolchain-fallback is set; falling back "
             "to the system dart. The pinned toolchain is NOT being used.",
@@ -602,7 +602,7 @@ Future<CallToolResult> _runDartCommandSync(
 
     return textResult(output.toString());
   } catch (e, stackTrace) {
-    return errorResult('dart_runner:command', e, stackTrace, {
+    return errorResult('dart-runner:command', e, stackTrace, {
       'command': cmd.display,
     });
   }

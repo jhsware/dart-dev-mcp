@@ -9,12 +9,12 @@ Everything in this repository follows one convention, based on the `jhsware_code
 | Kind | Pattern | Example |
 |------|---------|---------|
 | Dart package (pubspec `name:`) | `jhsware_code_<tool>` | `jhsware_code_filesystem` |
-| MCP tool name (what agents call) | `<tool>` (snake_case) | `filesystem`, `dart_runner`, `git` |
+| MCP tool name (what agents call) | `<tool>` (dashes, easy to type) | `filesystem`, `dart-runner`, `git` |
 | Bin entrypoint | `packages/<tool>/bin/<tool>_mcp.dart` | `packages/filesystem/bin/filesystem_mcp.dart` |
 | Compiled binary | `jhsware-code-<tool>` (hyphens) | `jhsware-code-filesystem` |
 | MCP server key (claude.sh / mcp config) | `jhsware_code_<tool>` | `jhsware_code_filesystem` |
 
-Tool names stay simple on purpose: agent instructions like "use the filesystem tool" keep working.
+Tool names stay simple and use dashes because they are typed often. Code identifiers (package names, server keys) use snake_case. In config files the two spellings are interchangeable (see Project Configuration).
 
 ## Features
 
@@ -74,7 +74,7 @@ database (see [Planner server connection](#planner-server-connection)). Operatio
 - Parent task pattern with sub-task references
 
 ### 4. Code Index MCP (`packages/code_index/bin/code_index_mcp.dart`)
-Package `jhsware_code_code_index`, tool `code_index`. Layered code indexing for token-efficient codebase exploration. Maintains a persistent SQLite index with five information layers (metadata → short summary → symbols → per-symbol descriptions → public API). Uses `package:analyzer` for Dart files; delegates to Haiku for LLM-generated summaries. Stale detection on every read via XXH3 hashing.
+Package `jhsware_code_code_index`, tool `code-index`. Layered code indexing for token-efficient codebase exploration. Maintains a persistent SQLite index with five information layers (metadata → short summary → symbols → per-symbol descriptions → public API). Uses `package:analyzer` for Dart files; delegates to Haiku for LLM-generated summaries. Stale detection on every read via XXH3 hashing.
 - `auto-scan` - Scan project tree and produce an indexing plan
 - `auto-index` - Layer-aware indexing of a file
 - `get-file` / `get-files` - Retrieve layered file data (selectable layers 0–4)
@@ -88,7 +88,7 @@ Package `jhsware_code_code_index`, tool `code_index`. Layered code indexing for 
 - `is-allowed` - Check if a path is within allowed paths
 - `prune-stores` - Report/remove orphaned stores under the data root
 ### 5. Dart Runner MCP (`packages/dart_runner/bin/dart_runner_mcp.dart`)
-Package `jhsware_code_dart_runner`, tool `dart_runner`. Run Dart programs with polling for long-running processes:
+Package `jhsware_code_dart_runner`, tool `dart-runner`. Run Dart programs with polling for long-running processes:
 - `analyze` - Run `dart analyze`
 - `test` - Run `dart test`
 - `run` - Run `dart run`
@@ -99,7 +99,7 @@ Package `jhsware_code_dart_runner`, tool `dart_runner`. Run Dart programs with p
 - `cancel` - Cancel a running session
 
 ### 6. Flutter Runner MCP (`packages/flutter_runner/bin/flutter_runner_mcp.dart`)
-Package `jhsware_code_flutter_runner`, tool `flutter_runner`. Run Flutter programs via FVM with polling:
+Package `jhsware_code_flutter_runner`, tool `flutter-runner`. Run Flutter programs via FVM with polling:
 - `analyze` - Run `fvm flutter analyze`
 - `test` - Run `fvm flutter test`
 - `run` - Run `fvm flutter run`
@@ -109,13 +109,13 @@ Package `jhsware_code_flutter_runner`, tool `flutter_runner`. Run Flutter progra
 - `cancel` - Cancel a running session
 
 ### 7. Fetch MCP (`packages/fetch/bin/fetch_mcp.dart`)
-Package `jhsware_code_fetch`, tools `fetch`, `fetch_links`, `fetch_and_transform`. URL fetching with HTML to Markdown conversion:
+Package `jhsware_code_fetch`, tools `fetch`, `fetch-links`, `fetch-and-transform`. URL fetching with HTML to Markdown conversion:
 - `fetch` - Fetch URL content with optional Markdown conversion
-- `fetch_links` - Extract links from a URL
-- `fetch_and_transform` - Fetch and convert HTML content
+- `fetch-links` - Extract links from a URL
+- `fetch-and-transform` - Fetch and convert HTML content
 
 ### 8. Apple Mail MCP (`packages/apple_mail_mcp/bin/apple_mail_mcp.dart`)
-Package `jhsware_code_apple_mail`, tool `apple_mail`. Read-only Apple Mail operations for listing, searching, and exporting emails (macOS only).
+Package `jhsware_code_apple_mail`, tool `apple-mail`. Read-only Apple Mail operations for listing, searching, and exporting emails (macOS only).
 
 ## CLI Arguments
 
@@ -172,7 +172,7 @@ filesystem:
   - pubspec.yaml
 git:
   - .
-code_index:
+code-index:
   - packages
 ```
 
@@ -181,7 +181,7 @@ Each key is an MCP tool name and its value is a flat list of paths, relative to 
 Backwards compatibility:
 
 - The legacy file name `jhsware-code.yaml` is still accepted. If both files exist, `jhsware_code.yaml` wins.
-- Legacy hyphenated tool keys (for example `code-index`) are matched against the renamed snake_case tools (`code_index`). Existing config files keep working without changes.
+- Hyphen and underscore spellings of a key are interchangeable: `code_index:` matches the `code-index` tool and the other way around. Existing config files keep working without changes.
 
 ### Tool Parameter: project_dir
 All tool operations require a `project_dir` parameter that must match one of the registered `--project-dir` values. This enables multi-project sessions where each tool invocation specifies which project it operates on.
@@ -201,7 +201,7 @@ dart pub get
 
 Use the `claude.sh` script to launch Claude with the MCP servers. The servers are
 registered under `jhsware_code_<tool>` keys (e.g. `jhsware_code_filesystem`) and
-expose simple tool names (`filesystem`, `git`, `dart_runner`, ...). The `planner`
+expose simple tool names (`filesystem`, `git`, `dart-runner`, ...). The `planner`
 server is a client for a separate **planner_server**, so it needs the server URL
 and a service token — pass them as flags or via environment variables:
 

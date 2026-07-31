@@ -76,9 +76,9 @@ void main(List<String> arguments) async {
     return res;
   }
 
-  logInfo('code_index', 'Code Index MCP Server (v2) starting...');
-  logInfo('code_index', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
-  logInfo('code_index', 'Data root: $dataRoot');
+  logInfo('code-index', 'Code Index MCP Server (v2) starting...');
+  logInfo('code-index', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('code-index', 'Data root: $dataRoot');
 
   // Graceful shutdown: close every open database.
   ProcessSignal.sigint.watch().listen((_) {
@@ -96,7 +96,7 @@ void main(List<String> arguments) async {
   );
 
   server.registerTool(
-    'code_index',
+    'code-index',
     description:
         '''Maintains a layered, searchable index of code files in a project.
 
@@ -269,7 +269,7 @@ Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so w
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  logInfo('code_index', 'Code Index MCP Server running on stdio');
+  logInfo('code-index', 'Code Index MCP Server running on stdio');
 }
 
 /// Per-project cached resources: an open [Database] plus a warm
@@ -415,7 +415,7 @@ Future<CallToolResult> _handleCodeIndex(
   final workingDir = Directory(projectDir);
   final allowedPaths = ProjectConfigService.getAllowedPaths(
     projectDir,
-    'code_index',
+    'code-index',
   );
 
   // `is-allowed` needs no database.
@@ -547,7 +547,7 @@ Future<CallToolResult> _handleCodeIndex(
     final category = classifyError(e);
     final userMessage = userFriendlyMessage(category, e.message);
 
-    logError('code_index:$operation', e, null, {
+    logError('code-index:$operation', e, null, {
       'category': category.toString(),
       'resultCode': e.resultCode,
       'extendedResultCode': e.extendedResultCode,
@@ -555,14 +555,14 @@ Future<CallToolResult> _handleCodeIndex(
 
     if (category == SqliteErrorCategory.corruption) {
       logWarning(
-        'code_index',
+        'code-index',
         'CRITICAL: Database corruption detected. Database may need repair.',
       );
     }
 
     return textResult('Error: $userMessage');
   } catch (e, stackTrace) {
-    return errorResult('code_index:$operation', e, stackTrace, {
+    return errorResult('code-index:$operation', e, stackTrace, {
       'operation': operation,
     });
   }

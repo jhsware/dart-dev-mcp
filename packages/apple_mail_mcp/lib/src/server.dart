@@ -1,6 +1,6 @@
 // Apple Mail MCP server setup.
 //
-// Registers a single `apple_mail` tool with an `operation` enum parameter
+// Registers a single `apple-mail` tool with an `operation` enum parameter
 // that dispatches to the appropriate read-only operation handler.
 // Long-running operations are wrapped with progress notifications and
 // session tracking for polling support. Batched operations use progressive
@@ -33,7 +33,7 @@ _buildOperationHandlers() {
   };
 }
 
-/// All supported operation names for the apple_mail tool.
+/// All supported operation names for the apple-mail tool.
 List<String> get allOperations => [
   ..._buildOperationHandlers().keys,
   ...batchedOperations,
@@ -44,7 +44,7 @@ List<String> get allOperations => [
 
 /// Creates and configures the Apple Mail MCP server.
 ///
-/// Registers a single `apple_mail` tool with all read-only operations
+/// Registers a single `apple-mail` tool with all read-only operations
 /// plus session management operations for long-running operation support.
 McpServer createAppleMailServer() {
   final operationHandlers = _buildOperationHandlers();
@@ -56,7 +56,7 @@ McpServer createAppleMailServer() {
   );
 
   server.registerTool(
-    'apple_mail',
+    'apple-mail',
     description:
         'Read-only Apple Mail operations for listing, searching, and exporting emails.\n\n'
         'For long-running operations (search-email-content, classify-emails, '

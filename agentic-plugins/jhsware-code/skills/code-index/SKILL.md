@@ -1,7 +1,7 @@
 ---
 name: code-index
 description: Query the layered code index for token-efficient codebase exploration and search.
-allowed-tools: filesystem, code_index
+allowed-tools: filesystem, code-index
 model: haiku
 context: fork
 agent: code-index-agent
@@ -19,14 +19,14 @@ costs ~30–400 tokens per file versus ~500–5000+ for reading source. This is 
 **P1 — Orient** an unfamiliar area:
 
 ```
-code_index: overview path_pattern="lib/auth"
+code-index: overview path_pattern="lib/auth"
 → path + summary + tags + public symbols per file, ~40 tokens each
 ```
 
 **P2 — Concept search** (you know the idea, not the identifier):
 
 ```
-code_index: search query="session expiry refresh"
+code-index: search query="session expiry refresh"
 → semantic tags match "auth"-style vocabulary even when the code says "signIn"
 → miss? retry with synonyms, or check stats' tag cloud for the index vocabulary
 ```
@@ -34,7 +34,7 @@ code_index: search query="session expiry refresh"
 **P3 — Jump to symbol → partial read** (the headline pattern):
 
 ```
-code_index: find-symbol name="refresh" path_pattern="auth"
+code-index: find-symbol name="refresh" path_pattern="auth"
 → { path: "lib/src/auth/session.dart", line: 57, end_line: 74 }
 filesystem: read-file path="lib/src/auth/session.dart" startLine=57 endLine=74
 → the exact 18 lines, not the 500-line file
@@ -43,24 +43,24 @@ filesystem: read-file path="lib/src/auth/session.dart" startLine=57 endLine=74
 **P4 — Impact analysis** (what breaks if I change this?):
 
 ```
-code_index: dependents path="lib/src/auth/session.dart"     # who imports it
-code_index: references symbol="SessionManager"              # who uses the symbol
-code_index: references dot_path_pattern="flutter.material"  # all uses from material
-code_index: references symbol="Widget" module="flutter" resolution="resolved"
+code-index: dependents path="lib/src/auth/session.dart"     # who imports it
+code-index: references symbol="SessionManager"              # who uses the symbol
+code-index: references dot_path_pattern="flutter.material"  # all uses from material
+code-index: references symbol="Widget" module="flutter" resolution="resolved"
                                                             # analyzer-verified only
 ```
 
 **P5 — Debt sweep:**
 
 ```
-code_index: annotations kind="TODO" path_pattern="auth"
+code-index: annotations kind="TODO" path_pattern="auth"
 ```
 
 **P6 — File facts** (line counts, sizes, freshness — no agent needed):
 
 ```
-code_index: get-files paths=[...] layers=[0]
-code_index: stats
+code-index: get-files paths=[...] layers=[0]
+code-index: stats
 ```
 
 ## Cheap before expensive

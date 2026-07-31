@@ -1,7 +1,7 @@
 ---
 name: planner-do-parent-task
 description: Perform a parent task found in the planner tool. The user passes a task prompt.
-allowed-tools: planner, filesystem, git, fetch, flutter_runner, dart_runner, code_index
+allowed-tools: planner, filesystem, git, fetch, flutter-runner, dart-runner, code-index
 model: opus
 ---
 ultrathink

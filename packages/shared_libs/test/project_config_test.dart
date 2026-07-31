@@ -281,7 +281,7 @@ dart_runner:
       expect(paths, [p.normalize(p.join(absRoot, 'lib'))]);
     });
 
-    test('legacy hyphenated keys match renamed snake_case tools', () {
+    test('hyphenated keys match underscore tool-name lookups', () {
       final configFile = File(p.join(tempDir.path, legacyConfigFileName));
       configFile.writeAsStringSync('code-index:\n  - ./lib');
 
@@ -294,7 +294,7 @@ dart_runner:
       expect(paths, [p.normalize(p.join(absRoot, 'lib'))]);
     });
 
-    test('hyphenated tool name lookup matches snake_case keys', () {
+    test('underscore keys match hyphenated tool-name lookups', () {
       final configFile = File(p.join(tempDir.path, configFileName));
       configFile.writeAsStringSync('code_index:\n  - ./lib');
 

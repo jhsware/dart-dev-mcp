@@ -65,7 +65,7 @@ void logError(
 /// Example:
 /// ```dart
 /// if (!await pubspecFile.exists()) {
-///   logWarning('dart_runner', 'No pubspec.yaml found - may not be a Dart project');
+///   logWarning('dart-runner', 'No pubspec.yaml found - may not be a Dart project');
 /// }
 /// ```
 void logWarning(String operation, String message) {

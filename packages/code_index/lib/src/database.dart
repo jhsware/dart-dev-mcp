@@ -73,7 +73,7 @@ Database openOrRebuild(String dbPath) {
   }
 
   logInfo(
-    'code_index',
+    'code-index',
     'Schema version $version != $schemaVersion, rebuilding database',
   );
   return rebuildDatabase(dbPath, existingDb: database);
@@ -202,14 +202,14 @@ void _createSchema(Database db) {
 void setupShutdownHandlers(Database database) {
   // Handle SIGINT (Ctrl+C)
   ProcessSignal.sigint.watch().listen((_) {
-    logInfo('code_index', 'Received SIGINT, closing database...');
+    logInfo('code-index', 'Received SIGINT, closing database...');
     closeDatabase(database);
     exit(0);
   });
 
   // Handle SIGTERM
   ProcessSignal.sigterm.watch().listen((_) {
-    logInfo('code_index', 'Received SIGTERM, closing database...');
+    logInfo('code-index', 'Received SIGTERM, closing database...');
     closeDatabase(database);
     exit(0);
   });
@@ -221,8 +221,8 @@ void closeDatabase(Database database) {
     // Checkpoint WAL to main database before closing
     database.execute('PRAGMA wal_checkpoint(TRUNCATE)');
     database.dispose();
-    logInfo('code_index', 'Database closed successfully');
+    logInfo('code-index', 'Database closed successfully');
   } catch (e, stackTrace) {
-    logError('code_index:close-database', e, stackTrace);
+    logError('code-index:close-database', e, stackTrace);
   }
 }

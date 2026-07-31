@@ -2,10 +2,11 @@
 
 ### BREAKING: jhsware_code naming convention (packages, tools, binaries)
 
-All packages and tools now follow one convention based on the `jhsware_code`
-prefix. Dart packages are `jhsware_code_<tool>`, MCP tool names are simple
-snake_case, compiled binaries are `jhsware-code-<tool>`, and MCP server keys
-are `jhsware_code_<tool>`.
+All packages now follow one convention based on the `jhsware_code` prefix.
+Dart packages are `jhsware_code_<tool>` (snake_case), MCP tool names keep
+their simple, easy-to-type dash form (`dart-runner`, `code-index`), compiled
+binaries are `jhsware-code-<tool>`, and MCP server keys are
+`jhsware_code_<tool>`.
 
 **Package renames (pubspec `name:`):**
 - `dart_dev_mcp` (root) → `jhsware_code`
@@ -18,13 +19,11 @@ are `jhsware_code_<tool>`.
 - `code_index_mcp` → `jhsware_code_code_index`
 - `apple_mail_mcp` → `jhsware_code_apple_mail`
 
-**Tool renames (hyphens → underscores):**
-- `dart-runner` → `dart_runner`
-- `flutter-runner` → `flutter_runner`
-- `code-index` → `code_index`
-- `apple-mail` → `apple_mail`
-- `fetch-and-transform` → `fetch_and_transform`
-- `filesystem`, `git`, `planner`, `fetch`, `fetch_links` unchanged.
+**Tool names (dash form kept):**
+- Tool names stay simple with dashes: `filesystem`, `git`, `planner`, `fetch`,
+  `dart-runner`, `flutter-runner`, `code-index`, `apple-mail`,
+  `fetch-and-transform`.
+- `fetch_links` → `fetch-links` to match the dash convention.
 
 **Binary renames** (rebuild + reinstall required):
 - `file-edit-mcp` → `jhsware-code-filesystem`, `git-mcp` → `jhsware-code-git`,
@@ -41,8 +40,8 @@ are `jhsware_code_<tool>`.
 **Backwards compatible project config:** the permission file is now
 `jhsware_code.yaml`, but the legacy `jhsware-code.yaml` name is still accepted
 (preferred name wins when both exist). Config keys are matched with hyphens
-normalised to underscores, so legacy `code-index:` entries keep working for the
-renamed `code_index` tool. Existing project permission files need no changes.
+normalised to underscores, so `code-index:` and `code_index:` both address the
+`code-index` tool. Existing project permission files need no changes.
 
 **Not renamed on purpose:** the code-index data root stays `~/.code-index`
 (existing stores keep working), and operation names (e.g. `read-file`,

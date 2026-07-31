@@ -73,9 +73,9 @@ Synonyms: fetch, follow, load, get''',
     callback: (args, extra) => _handleFetch(args, httpConfig, ignoreRobotsTxt),
   );
 
-  // Register the fetch_links tool
+  // Register the fetch-links tool
   server.registerTool(
-    'fetch_links',
+    'fetch-links',
     description: '''Fetches a URL and extracts all links from it.
 
 You can use this to recursively scrape a website to find more information.
@@ -94,9 +94,9 @@ Synonyms: get links, find links, fetch links''',
         _handleFetchLinks(args, httpConfig, ignoreRobotsTxt),
   );
 
-  // Register the fetch_and_transform tool (merged from convert_to_md_mcp)
+  // Register the fetch-and-transform tool (merged from convert_to_md_mcp)
   server.registerTool(
-    'fetch_and_transform',
+    'fetch-and-transform',
     description:
         '''Fetches a web page and extracts content for efficient research.
 
@@ -262,7 +262,7 @@ Future<CallToolResult> _handleFetch(
   }
 }
 
-/// Handle fetch_links request
+/// Handle fetch-links request
 Future<CallToolResult> _handleFetchLinks(
   Map<String, dynamic> args,
   HttpClientConfig httpConfig,
@@ -334,6 +334,6 @@ Future<CallToolResult> _handleFetchLinks(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('fetch:fetch_links', e, stackTrace, {'url': url});
+    return errorResult('fetch:fetch-links', e, stackTrace, {'url': url});
   }
 }

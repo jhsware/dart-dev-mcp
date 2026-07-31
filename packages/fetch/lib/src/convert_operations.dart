@@ -80,7 +80,7 @@ Future<CallToolResult> handleConvert(
         return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
-    return errorResult('fetch_and_transform:$operation', e, stackTrace, {
+    return errorResult('fetch-and-transform:$operation', e, stackTrace, {
       'operation': operation,
     });
   }
@@ -583,7 +583,7 @@ Future<CallToolResult> convertUrl(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('fetch_and_transform:fetch-to-markdown', e, stackTrace, {
+    return errorResult('fetch-and-transform:fetch-to-markdown', e, stackTrace, {
       'url': url,
     });
   }
@@ -612,7 +612,7 @@ Future<CallToolResult> extractLinksFromUrl(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('fetch_and_transform:html-to-links', e, stackTrace, {
+    return errorResult('fetch-and-transform:html-to-links', e, stackTrace, {
       'url': url,
     });
   }

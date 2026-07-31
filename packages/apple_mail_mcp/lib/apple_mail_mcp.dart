@@ -1,6 +1,6 @@
 /// Read-only Apple Mail MCP server for Dart.
 ///
-/// Provides a single `apple_mail` tool with read-only operations
+/// Provides a single `apple-mail` tool with read-only operations
 /// for listing, searching, and exporting emails from Apple Mail.
 library;
 

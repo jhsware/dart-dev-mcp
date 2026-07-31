@@ -1,7 +1,7 @@
 ---
 name: task-agent
 description: This agent allows us to process sub-tasks whith a fresh context.
-tools: filesystem, planner, git, fetch, flutter_runner, dart_runner, code_index
+tools: filesystem, planner, git, fetch, flutter-runner, dart-runner, code-index
 disallowed-tools: Bash, Read, Write, Edit, Cowork
 permission-mode: dontAsk, acceptEdits
 model: opus

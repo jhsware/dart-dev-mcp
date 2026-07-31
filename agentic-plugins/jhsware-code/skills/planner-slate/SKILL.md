@@ -1,7 +1,7 @@
 ---
 name: planner-slate
 description: Create slates and select appropriate backlog items for them. An item is part of the backlog if it doesn't belong to any slate.
-allowed-tools: planner, filesystem, git, fetch, flutter_runner, dart_runner, code_index
+allowed-tools: planner, filesystem, git, fetch, flutter-runner, dart-runner, code-index
 model: opus
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: planner-do-sub-task
 description: "Perform a task found in the planner tool. The user passes a sub-task prompt from planner: get-subtask-prompt."
-allowed-tools: planner, filesystem, git, fetch, flutter_runner, dart_runner, code_index
+allowed-tools: planner, filesystem, git, fetch, flutter-runner, dart-runner, code-index
 model: opus
 context: fork
 agent: task-agent

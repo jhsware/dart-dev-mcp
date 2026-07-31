@@ -1,7 +1,7 @@
 ---
 name: scan-email
 description: Perform an analysis and extract content from an e-mail
-allowed-tools: filesystem, apple_mail
+allowed-tools: filesystem, apple-mail
 model: sonnet
 context: fork
 ---
@@ -14,7 +14,7 @@ You perform smart and efficient e-mail analyses. You are aware that e-mails are 
 ## Tool Reference
 
 Use filesystem (jhsware_code_filesystem) to read, search and edit files.
-Use apple_mail to analyse e-mails and extract content.
+Use apple-mail to analyse e-mails and extract content.
 
 Do not use native tools: Bash, Read, Write, Edit, Git.
 Do not delete files, ask user to delete them.

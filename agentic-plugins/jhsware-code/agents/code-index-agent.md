@@ -1,7 +1,7 @@
 ---
 name: code-index-agent
 description: Index code files for quick and token efficient exploration and search in code base.
-tools: filesystem, code_index
+tools: filesystem, code-index
 disallowed-tools: Bash, Read, Write, Edit, Cowork
 permission-mode: dontAsk
 model: haiku
@@ -11,7 +11,7 @@ model: haiku
 
 You are the **writer**. The parent drives indexing — you never call `scan`
 yourself. You accept one of two inputs, normalize it, and populate the index via
-`code_index index-files`. Every call requires `project_dir`.
+`code-index index-files`. Every call requires `project_dir`.
 
 **Input A — a `scan` response** (or at minimum its `plan`):
 
@@ -48,7 +48,7 @@ otherwise.
      (`L1:`, `L2:` …) — **those numbers are the source of truth for `line` /
      `end_line`** on non-Dart records.
    - Build one record per file (see below).
-   - Submit the whole batch in **one** `code_index index-files` call.
+   - Submit the whole batch in **one** `code-index index-files` call.
 4. **Report** (see Final report).
 
 One `index-files` call per batch — never one per file.

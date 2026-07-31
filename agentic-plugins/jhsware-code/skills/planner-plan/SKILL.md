@@ -27,7 +27,7 @@ Before creating any tasks, explore the codebase to understand scope and identify
 
 - **filesystem list-content**: Use to explore directory structure or find files in unindexed directories.
 - **filesystem read-file**: Use to examine specific files in detail — but only AFTER using show-file to confirm the file is relevant.
-- **filesystem search-text**: Use for regex-based searching when you need pattern matching (code_index search is keyword/FTS-based, not regex).
+- **filesystem search-text**: Use for regex-based searching when you need pattern matching (code-index search is keyword/FTS-based, not regex).
 - **git log/diff**: Use to understand recent changes and what areas of code are actively being modified.
 
 ### Token Economy
@@ -140,46 +140,46 @@ After creating all tasks:
 
 - **Task creation fails**: Check that required fields (title) are provided. Retry once, then report the error to the user.
 - **Duplicate task found**: If `list-tasks` shows a similar task already exists, inform the user and ask whether to update the existing task or create a new one.
-- **code_index returns no results**: The index may be stale — use `code_index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
-- **code_index show-file returns nothing**: The file may not be indexed. Fall back to `filesystem read-file` for that specific file.
+- **code-index returns no results**: The index may be stale — use `code-index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
+- **code-index show-file returns nothing**: The file may not be indexed. Fall back to `filesystem read-file` for that specific file.
 
 ## Examples
 
-### Example 1 — Exploration with code_index before planning
+### Example 1 — Exploration with code-index before planning
 
 A user asks to add input validation to a form component. First explore:
 
 ```
 # Step 0: Ensure index is fresh
-code_index: diff (file_extensions: [".dart", ".tsx"])
+code-index: diff (file_extensions: [".dart", ".tsx"])
 # → 2 changed, 1 added → spawn code-index-agent to re-index them
 
 # Step 1: Get codebase overview
-code_index: overview
+code-index: overview
 # → 15 files listed with descriptions and exports
 
 # Step 2: Find relevant files
-code_index: search (query: "validation", export_kind: "class")
+code-index: search (query: "validation", export_kind: "class")
 # → Found ValidationUtils in src/utils/validation.dart
-code_index: search (query: "RegisterForm")
+code-index: search (query: "RegisterForm")
 # → Found RegisterForm class in src/components/RegisterForm.tsx
 
 # Step 3: Understand file API without reading source
-code_index: file-summary (path: "src/components/RegisterForm.tsx")
+code-index: file-summary (path: "src/components/RegisterForm.tsx")
 # → exports grouped by class: RegisterForm { build, _onSubmit }
 # → no variables
 
-code_index: show-file (path: "src/utils/validation.dart")
+code-index: show-file (path: "src/utils/validation.dart")
 # → exports: validateEmail (function), validatePassword (function)
 # → imports: dart:core
 # → annotations: TODO "add password strength check" at line 15
 
 # Step 4: Check impact — who else uses validation?
-code_index: dependents (path: "src/utils/validation")
+code-index: dependents (path: "src/utils/validation")
 # → 3 files import this module: LoginForm, RegisterForm, ProfileForm
 
 # Step 5: Check for related TODOs
-code_index: search-annotations (kind: "TODO", path_pattern: "%validation%")
+code-index: search-annotations (kind: "TODO", path_pattern: "%validation%")
 # → TODO: "add email format validation" in RegisterForm.tsx line 42
 # → TODO: "add password strength check" in validation.dart line 15
 

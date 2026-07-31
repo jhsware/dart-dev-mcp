@@ -18,8 +18,8 @@ const List<String> configFileNames = [configFileName, legacyConfigFileName];
 ///
 /// Maps MCP tool names to lists of relative paths that tool is allowed to
 /// access. Tool keys are stored in canonical form: hyphens replaced with
-/// underscores. A legacy `code-index:` entry therefore matches the
-/// `code_index` tool.
+/// underscores. Hyphen and underscore spellings are interchangeable: a
+/// `code_index:` entry matches the `code-index` tool and the other way around.
 class ProjectConfig {
   /// Canonical tool name → list of relative paths (as specified in the YAML file).
   final Map<String, List<String>> toolPaths;
@@ -56,8 +56,8 @@ class _CacheEntry {
 /// - Otherwise: returns the resolved absolute paths for that tool.
 ///
 /// Tool names are matched in canonical form (hyphens replaced with
-/// underscores), so legacy config keys such as `code-index` keep working
-/// for the renamed `code_index` tool.
+/// underscores), so hyphen and underscore spellings are interchangeable: a
+/// `code_index:` key matches the `code-index` tool and the other way around.
 ///
 /// Results are cached per project root and invalidated when the config
 /// file's path or modification time changes.

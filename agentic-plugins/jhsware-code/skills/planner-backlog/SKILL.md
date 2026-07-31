@@ -1,7 +1,7 @@
 ---
 name: planner-backlog
 description: Add items to the backlog. Allows creating, updating, and listing backlog items categorized as features, improvements, bugs, or changes.
-allowed-tools: planner, filesystem, git, fetch, flutter_runner, dart_runner, code_index
+allowed-tools: planner, filesystem, git, fetch, flutter-runner, dart-runner, code-index
 model: opus
 ---
 

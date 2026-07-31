@@ -144,8 +144,8 @@ allowedTools:
   - "filesystem"
   - "git"
   - "planner"
-  - "dart_runner"
-  - "flutter_runner"
+  - "dart-runner"
+  - "flutter-runner"
   - "WebSearch"
 
 # disallowedTools (optional)

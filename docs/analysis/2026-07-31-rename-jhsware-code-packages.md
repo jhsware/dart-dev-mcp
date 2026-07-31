@@ -7,19 +7,24 @@ Planner task: `94d16c46-7cb4-4bad-b9f7-bc79fce46aa9`
 ## Goal
 
 The project packages started with generic names. This change renames packages
-and tools so the `jhsware_code` prefix shows that they are part of the
-jhsware_code project, while tools keep simple names.
+so the `jhsware_code` prefix shows that they are part of the jhsware_code
+project, while tools keep simple names.
 
 ## The convention
 
 | Kind | Pattern | Example |
 |------|---------|---------|
-| Dart package (pubspec `name:`) | `jhsware_code_<tool>` | `jhsware_code_filesystem` |
-| MCP tool name | `<tool>` (snake_case) | `filesystem`, `dart_runner`, `git` |
+| Dart package (pubspec `name:`) | `jhsware_code_<tool>` (snake_case) | `jhsware_code_filesystem` |
+| MCP tool name | `<tool>` with dashes (easy to type) | `filesystem`, `dart-runner`, `git` |
 | Bin entrypoint | `bin/<tool>_mcp.dart` | `bin/filesystem_mcp.dart` |
 | Compiled binary | `jhsware-code-<tool>` | `jhsware-code-filesystem` |
 | MCP server key (claude.sh, persona, mcp config) | `jhsware_code_<tool>` | `jhsware_code_git` |
 | MCP server Implementation name | `jhsware_code_<tool>` | `jhsware_code_planner` |
+
+Decision note: a first iteration renamed the tools to snake_case
+(`dart_runner`). This was reverted the same day — dashes are more natural to
+type for tool names. Final rule: code identifiers (packages, server keys) use
+snake_case, tool names use dashes.
 
 ## Package renames (pubspec `name:` + all `package:` imports)
 
@@ -36,18 +41,13 @@ jhsware_code project, while tools keep simple names.
 | `apple_mail_mcp` | `jhsware_code_apple_mail` |
 | `jhsware_code_shared_libs` | unchanged (already followed the convention) |
 
-## Tool renames
+## Tool names
 
-| Old | New |
-|-----|-----|
-| `dart-runner` | `dart_runner` |
-| `flutter-runner` | `flutter_runner` |
-| `code-index` | `code_index` |
-| `apple-mail` | `apple_mail` |
-| `fetch-and-transform` | `fetch_and_transform` |
-| `filesystem`, `git`, `planner`, `fetch`, `fetch_links` | unchanged |
-
-Log and error tags inside the servers now use the same snake_case names.
+Tool names keep their simple dashed form: `filesystem`, `git`, `planner`,
+`fetch`, `dart-runner`, `flutter-runner`, `code-index`, `apple-mail`,
+`fetch-and-transform`. One rename for consistency: `fetch_links` →
+`fetch-links`. Log and error tags inside the servers use the same dashed
+names.
 
 ## Binary renames (build.sh, claude.sh)
 
@@ -83,11 +83,11 @@ extended so existing permission files keep working without edits:
    preferred name wins. The cache tracks the config file path plus its
    modification time, so switching files invalidates correctly.
 2. **Tool keys.** Config keys and tool-name lookups are matched in canonical
-   form: hyphens become underscores (`canonicalToolName`). A legacy
-   `code-index:` entry matches the renamed `code_index` tool. `filesystem`
-   and `git` keys are unchanged either way.
+   form: hyphens and underscores are interchangeable (`canonicalToolName`
+   maps both to underscores internally). `code-index:` and `code_index:`
+   both address the `code-index` tool.
 
-New tests in `packages/shared_libs/test/project_config_test.dart` cover the
+Tests in `packages/shared_libs/test/project_config_test.dart` cover the
 legacy file name, precedence, hyphen/underscore key matching in both
 directions, and cache invalidation when the preferred file appears.
 
@@ -97,14 +97,13 @@ directions, and cache invalidation when the preferred file appears.
   use the new binary names, dev mode maps `filesystem_mcp.dart`, and the
   backup file suffix is `.jhsware_code.bak`. CLI server selectors (`fs`,
   `dart`, `code-index`, ...) are unchanged on purpose (user-facing shorthand).
-- `agentic-plugins/jhsware-code`: agents and skills reference the new tool
-  names in `tools:` / `allowed-tools:` and in body text. The stale `convert`
-  tool (merged into fetch long ago) was removed from allowed-tools lists.
-  Skill and agent names (`code-index`, `code-index-agent`) are unchanged —
-  they are plugin component names, not MCP tools.
-- `agentic-personas/flutter-developer-persona/persona.yaml`: allowedTools and
-  mcpServers keys updated; the filesystem entry points at
-  `filesystem_mcp.dart`.
+- `agentic-plugins/jhsware-code`: skills/agents keep the dashed tool names in
+  `tools:` / `allowed-tools:`; server-name parentheticals in the text now say
+  `jhsware_code_<tool>`. The stale `convert` tool (merged into fetch long
+  ago) was removed from allowed-tools lists.
+- `agentic-personas/flutter-developer-persona/persona.yaml`: mcpServers keys
+  are `jhsware_code_<tool>`; the filesystem entry points at
+  `filesystem_mcp.dart`; allowedTools keep the dashed tool names.
 - `shared_libs/prompt_pack.dart`: task prompts now say
   "planner (jhsware_code_planner)".
 - `README.md` (root): rewritten for the convention, with a naming table. The
@@ -119,14 +118,16 @@ directions, and cache invalidation when the preferred file appears.
 
 ## Deliberately not renamed
 
+- **Tool names**: keep dashes (see decision note above).
 - **Package directories** (`packages/filesystem`, ...): the MCP toolset has no
   move operation, so directories keep their simple names. This also reads
   well: `packages/<tool>/`. `packages/apple_mail_mcp/` is the one directory
   with an `_mcp` suffix; a later `git mv apple_mail_mcp apple_mail` would
   harmonise it if wanted.
-- **Operation names** (`read-file`, `branch-create`, ...): hyphenated
-  operation values are part of the tool API used by skills and agents in many
-  projects; renaming them has high cost and no gain.
+- **Operation names** (`read-file`, `branch-create`, ...): part of the tool
+  API used by skills and agents in many projects. Note: a few operations use
+  underscores (`get_output`, `list_sessions`); harmonising them to dashes
+  would be a separate breaking change.
 - **Code-index data root** `~/.code-index`: renaming would orphan existing
   index stores.
 - **GitHub repository URL** (`github.com/jhsware/dart_dev_mcp`): renaming the
@@ -149,22 +150,25 @@ directions, and cache invalidation when the preferred file appears.
    `*-mcp` binaries in `/usr/local/bin` can be removed manually.
 2. Claude sessions started via `claude.sh` will register servers under the
    new keys, so fully qualified tool ids change (e.g.
-   `mcp__jhsware_code_git__git`). Any allow-lists that pin the old
-   `mcp__dart-dev-mcp-*` ids need updating — project `jhsware-code.yaml`
-   permission files do NOT need changes.
+   `mcp__jhsware_code_git__git`, `mcp__jhsware_code_dart_runner__dart-runner`).
+   Any allow-lists that pin the old `mcp__dart-dev-mcp-*` ids need updating —
+   project `jhsware-code.yaml` permission files do NOT need changes.
 3. Rebuild the plugin zip with `./build-plugins.sh` to publish the updated
    skills/agents.
 4. Delete `packages/filesystem/bin/file_edit_mcp.dart` (forwarder) when
    nothing references it any more.
+5. Anything that called the fetch server's `fetch_links` tool must call
+   `fetch-links` now.
 
 ## Verification
 
 - `dart pub get`: workspace resolves with the new package names.
-- `dart analyze`: no issues.
+- `dart analyze`: no issues (run again after the dash revert).
 - Tests: shared_libs 250 passed; filesystem 45 passed; planner 14 passed;
   code_index 101 passed; git 71 passed; apple_mail 110 passed (9 integration
   suites skipped — require Apple Mail); root server tests all passed after the
-  two stale code_index argument tests were fixed.
+  two stale code_index argument tests were fixed. Re-run after the dash
+  revert: analyze plus shared_libs and root server suites green.
 - `dart format`: repo formatted with the pinned SDK. The formatter in the
   current pinned SDK is newer than the one used for the last format commit,
   so it reformatted ~100 files repo-wide. This churn is committed separately
