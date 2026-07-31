@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
@@ -35,13 +35,18 @@ void main() {
       db = initializeDatabase(dbPath);
       write = WriteOperations(database: db, workingDir: project);
       browse = BrowseOperations(
-          database: db, workingDir: project, dbPath: dbPath);
+        database: db,
+        workingDir: project,
+        dbPath: dbPath,
+      );
       search = SearchOperations(database: db, workingDir: project);
       symbols = SymbolQueries(database: db, workingDir: project);
       graph = GraphQueries(database: db, workingDir: project);
 
-      write0('config/app.yaml',
-          'server:\n  host: localhost\n  port: 8080\nsecret: xxx\nextra: 1\n');
+      write0(
+        'config/app.yaml',
+        'server:\n  host: localhost\n  port: 8080\nsecret: xxx\nextra: 1\n',
+      );
       write0('shared/base.yaml', 'defaults:\n  retries: 3\n');
 
       await write.indexFiles({
@@ -58,14 +63,14 @@ void main() {
                 'visibility': 'public',
                 'line': 1,
                 'end_line': 3,
-                'summary': 'The server block.'
+                'summary': 'The server block.',
               },
               {
                 'name': '_secret',
                 'kind': 'key',
                 'visibility': 'private',
                 'line': 4,
-                'end_line': 4
+                'end_line': 4,
               },
             ],
             'imports': ['shared/base.yaml'],
@@ -73,7 +78,7 @@ void main() {
               {
                 'symbol': 'Widget',
                 'qualifier': 'package:flutter/material.dart',
-                'count': 3
+                'count': 3,
               },
             ],
             'annotations': [
@@ -91,7 +96,7 @@ void main() {
                 'kind': 'key',
                 'visibility': 'public',
                 'line': 1,
-                'end_line': 2
+                'end_line': 2,
               },
             ],
           },
@@ -106,50 +111,58 @@ void main() {
       dataDir.deleteSync(recursive: true);
     });
 
-    test('get-file default layers [0,1,4]: metadata, summary/tags, public API',
-        () {
-      final res = _json(browse.getFile({'path': 'config/app.yaml'}));
-      expect(res['line_count'], isNotNull);
-      expect(res['analysis_status'], 'fresh');
-      expect(res['summary'], contains('auth'));
-      expect(res['tags'], containsAll(<String>['auth', 'login']));
-      final names =
-          (res['symbols'] as List).map((s) => s['name']).toList();
-      expect(names, contains('server'));
-      expect(names, isNot(contains('_secret'))); // public-only
-      expect(res['imports'], contains('shared/base.yaml'));
-      expect(res.containsKey('references'), isFalse); // no layer 2/3
-      expect(res['needs_reindex'], isEmpty);
-    });
+    test(
+      'get-file default layers [0,1,4]: metadata, summary/tags, public API',
+      () {
+        final res = _json(browse.getFile({'path': 'config/app.yaml'}));
+        expect(res['line_count'], isNotNull);
+        expect(res['analysis_status'], 'fresh');
+        expect(res['summary'], contains('auth'));
+        expect(res['tags'], containsAll(<String>['auth', 'login']));
+        final names = (res['symbols'] as List).map((s) => s['name']).toList();
+        expect(names, contains('server'));
+        expect(names, isNot(contains('_secret'))); // public-only
+        expect(res['imports'], contains('shared/base.yaml'));
+        expect(res.containsKey('references'), isFalse); // no layer 2/3
+        expect(res['needs_reindex'], isEmpty);
+      },
+    );
 
-    test('get-file layer 2: all symbols + references (dot_path, resolution)',
-        () {
-      final res = _json(browse.getFile({
-        'path': 'config/app.yaml',
-        'layers': [2],
-      }));
-      final names =
-          (res['symbols'] as List).map((s) => s['name']).toList();
-      expect(names, containsAll(<String>['server', '_secret']));
-      // layer 2 has line ranges but not summaries.
-      final server = (res['symbols'] as List)
-          .firstWhere((s) => s['name'] == 'server') as Map;
-      expect(server['line'], 1);
-      expect(server['end_line'], 3);
-      expect(server.containsKey('summary'), isFalse);
-      final refs = res['references'] as List;
-      expect(refs.single['dot_path'], 'flutter.material.Widget');
-      expect(refs.single['resolution'], 'declared');
-      expect((res['annotations'] as List).single['kind'], 'TODO');
-    });
+    test(
+      'get-file layer 2: all symbols + references (dot_path, resolution)',
+      () {
+        final res = _json(
+          browse.getFile({
+            'path': 'config/app.yaml',
+            'layers': [2],
+          }),
+        );
+        final names = (res['symbols'] as List).map((s) => s['name']).toList();
+        expect(names, containsAll(<String>['server', '_secret']));
+        // layer 2 has line ranges but not summaries.
+        final server =
+            (res['symbols'] as List).firstWhere((s) => s['name'] == 'server')
+                as Map;
+        expect(server['line'], 1);
+        expect(server['end_line'], 3);
+        expect(server.containsKey('summary'), isFalse);
+        final refs = res['references'] as List;
+        expect(refs.single['dot_path'], 'flutter.material.Widget');
+        expect(refs.single['resolution'], 'declared');
+        expect((res['annotations'] as List).single['kind'], 'TODO');
+      },
+    );
 
     test('get-file layer 3: symbol summaries included', () {
-      final res = _json(browse.getFile({
-        'path': 'config/app.yaml',
-        'layers': [3],
-      }));
-      final server = (res['symbols'] as List)
-          .firstWhere((s) => s['name'] == 'server') as Map;
+      final res = _json(
+        browse.getFile({
+          'path': 'config/app.yaml',
+          'layers': [3],
+        }),
+      );
+      final server =
+          (res['symbols'] as List).firstWhere((s) => s['name'] == 'server')
+              as Map;
       expect(server['summary'], 'The server block.');
     });
 
@@ -162,8 +175,11 @@ void main() {
     test('overview: path, summary, tags, line_count, public symbol names', () {
       final res = _json(browse.overview({'file_type': 'yaml'}));
       expect(res['count'], 2);
-      final app = (res['files'] as List)
-          .firstWhere((f) => f['path'] == 'config/app.yaml') as Map;
+      final app =
+          (res['files'] as List).firstWhere(
+                (f) => f['path'] == 'config/app.yaml',
+              )
+              as Map;
       expect(app['summary'], contains('auth'));
       expect(app['tags'], contains('config'));
       expect(app['line_count'], isNotNull);
@@ -182,8 +198,10 @@ void main() {
 
     test('search: FTS query + tag + symbol_name filters', () {
       final byQuery = _json(search.search({'query': 'auth login'}));
-      expect((byQuery['files'] as List).map((f) => f['path']),
-          contains('config/app.yaml'));
+      expect(
+        (byQuery['files'] as List).map((f) => f['path']),
+        contains('config/app.yaml'),
+      );
 
       final byTag = _json(search.search({'tag': 'auth'}));
       expect((byTag['files'] as List).single['path'], 'config/app.yaml');
@@ -208,12 +226,16 @@ void main() {
       expect(m['kind'], 'key');
 
       final prefix = _json(
-          symbols.findSymbol({'name': 'serv', 'match': 'prefix'}));
-      expect((prefix['matches'] as List).map((e) => e['name']),
-          contains('server'));
+        symbols.findSymbol({'name': 'serv', 'match': 'prefix'}),
+      );
+      expect(
+        (prefix['matches'] as List).map((e) => e['name']),
+        contains('server'),
+      );
 
-      final priv = _json(symbols
-          .findSymbol({'name': '_secret', 'visibility': 'private'}));
+      final priv = _json(
+        symbols.findSymbol({'name': '_secret', 'visibility': 'private'}),
+      );
       expect((priv['matches'] as List).single['visibility'], 'private');
     });
 
@@ -259,8 +281,7 @@ void main() {
       expect((res['freshness'] as Map)['fresh'], 2);
       final tags = (res['tags'] as List).map((t) => t['tag']).toList();
       expect(tags, contains('config'));
-      final topRefs =
-          (res['references'] as Map)['top'] as List;
+      final topRefs = (res['references'] as Map)['top'] as List;
       expect(topRefs.single['dot_path'], 'flutter.material.Widget');
     });
   });

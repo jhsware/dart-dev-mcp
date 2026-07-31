@@ -1,6 +1,6 @@
-# planner_mcp
+# jhsware_code_planner
 
-The Planner MCP server: task and step management for AI-assisted development.
+The Planner MCP server (tool name: `planner`): task and step management for AI-assisted development.
 It proxies every operation to a **planner_server** over HTTPS rather than
 opening a local `planner.db`.
 

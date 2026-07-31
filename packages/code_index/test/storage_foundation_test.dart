@@ -5,10 +5,10 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
-import 'package:code_index_mcp/src/database.dart';
-import 'package:code_index_mcp/src/hash_utils.dart';
-import 'package:code_index_mcp/src/registry.dart';
-import 'package:code_index_mcp/src/storage_paths.dart';
+import 'package:jhsware_code_code_index/src/database.dart';
+import 'package:jhsware_code_code_index/src/hash_utils.dart';
+import 'package:jhsware_code_code_index/src/registry.dart';
+import 'package:jhsware_code_code_index/src/storage_paths.dart';
 
 void main() {
   late Directory tmp;
@@ -37,8 +37,10 @@ void main() {
 
     test('two projects sharing a basename get distinct dirs', () {
       final root = tmp.path;
-      final a = Directory(p.join(root, 'x', 'app'))..createSync(recursive: true);
-      final b = Directory(p.join(root, 'y', 'app'))..createSync(recursive: true);
+      final a = Directory(p.join(root, 'x', 'app'))
+        ..createSync(recursive: true);
+      final b = Directory(p.join(root, 'y', 'app'))
+        ..createSync(recursive: true);
 
       final dirA = dataDirFor(root, a.path);
       final dirB = dataDirFor(root, b.path);
@@ -66,8 +68,10 @@ void main() {
     test('computeFileHash returns sha256 hex', () {
       final f = File(p.join(tmp.path, 'a.txt'))..writeAsStringSync('hello');
       // Known sha256 of "hello".
-      expect(computeFileHash(f),
-          '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
+      expect(
+        computeFileHash(f),
+        '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+      );
     });
 
     test('isUnchanged short-circuits on matching mtime+size', () {
@@ -125,12 +129,16 @@ void main() {
       final proj = Directory(p.join(root, 'proj'))..createSync();
       upsertProject(root, proj.path);
       final canonical = canonicalProjectPath(proj.path);
-      final first = (jsonDecode(File(p.join(root, 'registry.json'))
-          .readAsStringSync()) as Map)['projects'][canonical] as Map;
+      final first =
+          (jsonDecode(File(p.join(root, 'registry.json')).readAsStringSync())
+                  as Map)['projects'][canonical]
+              as Map;
 
       upsertProject(root, proj.path);
-      final second = (jsonDecode(File(p.join(root, 'registry.json'))
-          .readAsStringSync()) as Map)['projects'][canonical] as Map;
+      final second =
+          (jsonDecode(File(p.join(root, 'registry.json')).readAsStringSync())
+                  as Map)['projects'][canonical]
+              as Map;
 
       expect(second['created_at'], first['created_at']);
     });
@@ -160,8 +168,10 @@ void main() {
 
       // Different project throws.
       final other = Directory(p.join(tmp.path, 'other'))..createSync();
-      expect(() => assertMetaMatches(dataDir.path, other.path),
-          throwsA(isA<MetaMismatchError>()));
+      expect(
+        () => assertMetaMatches(dataDir.path, other.path),
+        throwsA(isA<MetaMismatchError>()),
+      );
     });
 
     test('missing meta.json is allowed', () {
@@ -182,13 +192,16 @@ void main() {
           .select("SELECT name FROM sqlite_master WHERE type IN ('table')")
           .map((r) => r['name'])
           .toList();
-      expect(tables, containsAll(<String>[
-        'files',
-        'symbols',
-        'imports',
-        'symbol_references',
-        'annotations',
-      ]));
+      expect(
+        tables,
+        containsAll(<String>[
+          'files',
+          'symbols',
+          'imports',
+          'symbol_references',
+          'annotations',
+        ]),
+      );
       db.dispose();
     });
 
@@ -203,7 +216,8 @@ void main() {
       final version = reopened.select('PRAGMA user_version').first.values.first;
       expect(version, 2);
       final legacy = reopened.select(
-          "SELECT name FROM sqlite_master WHERE name='legacy'");
+        "SELECT name FROM sqlite_master WHERE name='legacy'",
+      );
       expect(legacy, isEmpty);
       reopened.dispose();
     });

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:code_index_mcp/src/registry.dart';
-import 'package:code_index_mcp/src/storage_paths.dart';
+import 'package:jhsware_code_code_index/src/registry.dart';
+import 'package:jhsware_code_code_index/src/storage_paths.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -25,9 +25,13 @@ void main() {
 
       // Scan discovers both files and plans them.
       final scan = idx.scanDirs();
-      final planned =
-          (scan['plan'] as List).map((e) => e['path'] as String).toSet();
-      expect(planned, containsAll(<String>['config/app.yaml', 'shared/base.yaml']));
+      final planned = (scan['plan'] as List)
+          .map((e) => e['path'] as String)
+          .toSet();
+      expect(
+        planned,
+        containsAll(<String>['config/app.yaml', 'shared/base.yaml']),
+      );
 
       // Agent indexes the planned files.
       final indexed = await idx.indexFiles([
@@ -37,15 +41,23 @@ void main() {
           'summary': 'App configuration for auth login',
           'tags': ['auth', 'config'],
         },
-        {'path': 'shared/base.yaml', 'language': 'yaml', 'summary': 'Base config'},
+        {
+          'path': 'shared/base.yaml',
+          'language': 'yaml',
+          'summary': 'Base config',
+        },
       ]);
-      expect(indexed['indexed'],
-          containsAll(<String>['config/app.yaml', 'shared/base.yaml']));
+      expect(
+        indexed['indexed'],
+        containsAll(<String>['config/app.yaml', 'shared/base.yaml']),
+      );
 
       // Search finds the app config by its summary text.
       final res = jsonOf(idx.search.search({'query': 'auth login'}));
-      expect((res['files'] as List).map((f) => f['path']),
-          contains('config/app.yaml'));
+      expect(
+        (res['files'] as List).map((f) => f['path']),
+        contains('config/app.yaml'),
+      );
     });
 
     test('stale-on-read: touching a fixture flips needs_reindex', () async {
@@ -59,7 +71,10 @@ void main() {
       expect(fresh['analysis_status'], 'fresh');
 
       // Mutate on disk (size changes) → the mtime+size short-circuit misses.
-      idx.writeFile('config/app.yaml', 'server:\n  host: 0.0.0.0\n  port: 80\n');
+      idx.writeFile(
+        'config/app.yaml',
+        'server:\n  host: 0.0.0.0\n  port: 80\n',
+      );
       final stale = jsonOf(idx.browse.getFile({'path': 'config/app.yaml'}));
       expect(stale['needs_reindex'], isNotEmpty);
       expect((stale['needs_reindex'] as List).first['path'], 'config/app.yaml');
@@ -206,9 +221,10 @@ Greeter? held;
         {'path': 'lib/consumer.dart'},
       ]);
       expect(
-        idx.db
-            .select("SELECT dot_path FROM symbol_references "
-                "WHERE dot_path = 'sample_project.greeter.Greeter'"),
+        idx.db.select(
+          "SELECT dot_path FROM symbol_references "
+          "WHERE dot_path = 'sample_project.greeter.Greeter'",
+        ),
         isNotEmpty,
       );
 
@@ -220,8 +236,10 @@ Greeter? held;
 
       expect(res['dependents_refreshed'], contains('lib/consumer.dart'));
       expect(
-        idx.db.select("SELECT dot_path FROM symbol_references "
-            "WHERE dot_path = 'sample_project.greeter.Greeter'"),
+        idx.db.select(
+          "SELECT dot_path FROM symbol_references "
+          "WHERE dot_path = 'sample_project.greeter.Greeter'",
+        ),
         isEmpty,
       );
     });

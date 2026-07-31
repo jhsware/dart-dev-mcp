@@ -1,9 +1,8 @@
 import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
-import 'package:fetch_mcp/fetch_mcp.dart';
+import 'package:jhsware_code_fetch/fetch_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
-
 
 /// Default user agent for autonomous fetching
 const defaultUserAgent =
@@ -30,15 +29,15 @@ void main(List<String> arguments) async {
   // Create HTTP client config from environment
   final httpConfig = HttpClientConfig.fromEnvironment(userAgent: userAgent);
 
-  logInfo('fetch',
-      'Server starting - userAgent=$userAgent timeout=${httpConfig.timeout.inSeconds}s maxRetries=${httpConfig.maxRetries} ignoreRobotsTxt=$ignoreRobotsTxt');
+  logInfo(
+    'fetch',
+    'Server starting - userAgent=$userAgent timeout=${httpConfig.timeout.inSeconds}s maxRetries=${httpConfig.maxRetries} ignoreRobotsTxt=$ignoreRobotsTxt',
+  );
 
   final server = McpServer(
-    Implementation(name: 'fetch-mcp', version: '1.0.0'),
+    Implementation(name: 'jhsware_code_fetch', version: '1.0.0'),
     options: McpServerOptions(
-      capabilities: ServerCapabilities(
-        tools: ServerCapabilitiesTools(),
-      ),
+      capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
   );
 
@@ -54,13 +53,9 @@ You can fetch the most up-to-date information and let the user know that.
 Synonyms: fetch, follow, load, get''',
     inputSchema: ToolInputSchema(
       properties: {
-        'url': JsonSchema.string(
-          description: 'URL to fetch',
-          format: 'uri',
-        ),
+        'url': JsonSchema.string(description: 'URL to fetch', format: 'uri'),
         'max_length': JsonSchema.integer(
-          description:
-              'Maximum number of characters to return. Default: 5000',
+          description: 'Maximum number of characters to return. Default: 5000',
           defaultValue: 5000,
         ),
         'start_index': JsonSchema.integer(
@@ -75,8 +70,7 @@ Synonyms: fetch, follow, load, get''',
         ),
       },
     ),
-    callback: (args, extra) =>
-        _handleFetch(args, httpConfig, ignoreRobotsTxt),
+    callback: (args, extra) => _handleFetch(args, httpConfig, ignoreRobotsTxt),
   );
 
   // Register the fetch_links tool
@@ -100,10 +94,11 @@ Synonyms: get links, find links, fetch links''',
         _handleFetchLinks(args, httpConfig, ignoreRobotsTxt),
   );
 
-  // Register the fetch-and-transform tool (merged from convert_to_md_mcp)
+  // Register the fetch_and_transform tool (merged from convert_to_md_mcp)
   server.registerTool(
-    'fetch-and-transform',
-    description: '''Fetches a web page and extracts content for efficient research.
+    'fetch_and_transform',
+    description:
+        '''Fetches a web page and extracts content for efficient research.
 
 Operations:
 - html-to-markdown: Convert HTML content to Markdown
@@ -146,10 +141,16 @@ Operations:
 }
 
 /// Logger for retry attempts
-void _logRetry(int attempt, int maxAttempts, HttpFetchException error,
-    Duration nextDelay) {
-  logWarning('fetch:retry',
-      'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms');
+void _logRetry(
+  int attempt,
+  int maxAttempts,
+  HttpFetchException error,
+  Duration nextDelay,
+) {
+  logWarning(
+    'fetch:retry',
+    'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms',
+  );
 }
 
 /// Handle fetch request
@@ -173,7 +174,9 @@ Future<CallToolResult> _handleFetch(
     uri = Uri.parse(url!);
     if (!uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
       return validationError(
-          'url', 'Invalid URL scheme. Must be http or https.');
+        'url',
+        'Invalid URL scheme. Must be http or https.',
+      );
     }
   } catch (e) {
     return validationError('url', 'Invalid URL: $e');
@@ -197,12 +200,14 @@ Future<CallToolResult> _handleFetch(
 
     if (!result.isSuccess) {
       return textResult(
-          'Error: Failed to fetch $url - status code ${result.statusCode}');
+        'Error: Failed to fetch $url - status code ${result.statusCode}',
+      );
     }
 
     final contentType = result.contentType;
     final pageRaw = result.body;
-    final isHtml = pageRaw.toLowerCase().contains('<html') ||
+    final isHtml =
+        pageRaw.toLowerCase().contains('<html') ||
         contentType.contains('text/html') ||
         contentType.isEmpty;
 
@@ -275,7 +280,9 @@ Future<CallToolResult> _handleFetchLinks(
     uri = Uri.parse(url!);
     if (!uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
       return validationError(
-          'url', 'Invalid URL scheme. Must be http or https.');
+        'url',
+        'Invalid URL scheme. Must be http or https.',
+      );
     }
   } catch (e) {
     return validationError('url', 'Invalid URL: $e');
@@ -299,23 +306,28 @@ Future<CallToolResult> _handleFetchLinks(
 
     if (!result.isSuccess) {
       return textResult(
-          'Error: Failed to fetch $url - status code ${result.statusCode}');
+        'Error: Failed to fetch $url - status code ${result.statusCode}',
+      );
     }
 
     final contentType = result.contentType;
     final pageRaw = result.body;
-    final isHtml = pageRaw.toLowerCase().contains('<html') ||
+    final isHtml =
+        pageRaw.toLowerCase().contains('<html') ||
         contentType.contains('text/html');
 
     if (!isHtml) {
       return textResult(
-          "Content type $contentType isn't HTML, we can't extract links.");
+        "Content type $contentType isn't HTML, we can't extract links.",
+      );
     }
 
     final links = extractLinksFromHtml(pageRaw, url);
     final prettyLinks = links
-        .map((link) =>
-            '${link['label']}: ${link['url']}${link['navParent'] == true ? ' (navbar)' : ''}')
+        .map(
+          (link) =>
+              '${link['label']}: ${link['url']}${link['navParent'] == true ? ' (navbar)' : ''}',
+        )
         .toList();
 
     return textResult('Links of $url:\n${prettyLinks.join('\n')}');

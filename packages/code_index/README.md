@@ -48,7 +48,7 @@ Raw file content is not stored — use `filesystem read-file` (optionally with t
 
 ## Operations
 
-A single MCP tool `code-index`, multiplexed by `operation`. `project_dir` is required on every call.
+A single MCP tool `code_index` (package `jhsware_code_code_index`), multiplexed by `operation`. `project_dir` is required on every call.
 
 ### Scanning & Indexing
 
@@ -82,7 +82,7 @@ A single MCP tool `code-index`, multiplexed by `operation`. `project_dir` is req
 | Operation | Parameters | Description |
 |-----------|------------|-------------|
 | `project-info` | — | Data dir, db path, `registry.json` entry, schema version, row counts, last scan. |
-| `is-allowed` | `path` | Check if a path is within the `code-index` allowed paths (works without a database). |
+| `is-allowed` | `path` | Check if a path is within the `code_index` allowed paths (works without a database). |
 | `prune-stores` | `delete` | Report stores under the data root whose recorded source project no longer exists on disk; `delete: true` removes them together with their `registry.json` entries (default is a dry run). Data-root-scoped, works without a database. |
 
 ## SHA-256 Change Detection
@@ -101,19 +101,19 @@ The code index uses a **clean-rebuild** strategy instead of schema migrations:
 
 ## Allowed Paths Configuration
 
-The `jhsware-code.yaml` file in each project directory controls which paths the code index can access:
+The `jhsware_code.yaml` file (or the legacy `jhsware-code.yaml`) in each project directory controls which paths the code index can access:
 
 ```yaml
-code-index:
-  allowed_paths:
-    - lib
-    - test
-    - bin
-    - pubspec.yaml
+code_index:
+  - lib
+  - test
+  - bin
+  - pubspec.yaml
 ```
 
+- Legacy configs that use the hyphenated `code-index` key keep working — keys are matched with hyphens normalised to underscores.
 - Operations on paths outside the allowed list return `out_of_scope` responses.
-- If `jhsware-code.yaml` is missing, the full project root is accessible (matching `filesystem` and `git` behavior).
+- If no config file is present, the full project root is accessible (matching `filesystem` and `git` behavior).
 - Use `is-allowed` to check before calling other operations.
 
 ## External Symbol References (Dart)

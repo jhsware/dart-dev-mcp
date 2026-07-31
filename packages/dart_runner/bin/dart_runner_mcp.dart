@@ -34,12 +34,11 @@ void main(List<String> arguments) async {
     }
   }
 
-  logInfo('dart-runner', 'Dart Runner MCP Server starting...');
-  logInfo('dart-runner',
-      'Project dirs: ${serverArgs.projectDirs.join(", ")}');
+  logInfo('dart_runner', 'Dart Runner MCP Server starting...');
+  logInfo('dart_runner', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
   if (serverArgs.allowToolchainFallback) {
     logWarning(
-      'dart-runner',
+      'dart_runner',
       '--allow-toolchain-fallback is set: projects that declare '
           'shell.nix/flake.nix but lack nix-shell/nix will fall back to '
           'the system dart with a warning (pinned SDK will NOT be used).',
@@ -52,32 +51,32 @@ void main(List<String> arguments) async {
     final kind = _detectNixKind(Directory(dir));
     switch (kind) {
       case _NixKind.shellNix:
-        logInfo('dart-runner',
-            'Detected shell.nix in $dir — dart commands will run via nix-shell.');
+        logInfo(
+          'dart_runner',
+          'Detected shell.nix in $dir — dart commands will run via nix-shell.',
+        );
       case _NixKind.flakeNix:
-        logInfo('dart-runner',
-            'Detected flake.nix in $dir — dart commands will run via nix develop.');
+        logInfo(
+          'dart_runner',
+          'Detected flake.nix in $dir — dart commands will run via nix develop.',
+        );
       case _NixKind.none:
         break;
     }
   }
 
-
-
   final sessionManager = SessionManager();
 
   final server = McpServer(
-    Implementation(name: 'dart-runner-mcp', version: '1.0.0'),
+    Implementation(name: 'jhsware_code_dart_runner', version: '1.0.0'),
     options: McpServerOptions(
-      capabilities: ServerCapabilities(
-        tools: ServerCapabilitiesTools(),
-      ),
+      capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
   );
 
-  // Register the dart-runner tool
+  // Register the dart_runner tool
   server.registerTool(
-    'dart-runner',
+    'dart_runner',
     description: '''Run Dart commands with support for long-running processes.
 
 Operations:
@@ -157,26 +156,29 @@ useful for monorepo packages (e.g. working_dir='packages/foo' for code generatio
 
   final transport = StdioServerTransport();
   await server.connect(transport);
-  logInfo('dart-runner', 'Dart Runner MCP Server running on stdio');
+  logInfo('dart_runner', 'Dart Runner MCP Server running on stdio');
 }
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: dart_runner_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]');
+    'Usage: dart_runner_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]',
+  );
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH             Path to a project directory (required, can be repeated)');
+    '  --project-dir=PATH             Path to a project directory (required, can be repeated)',
+  );
   stderr.writeln(
-      '  --allow-toolchain-fallback     When shell.nix/flake.nix is present but');
+    '  --allow-toolchain-fallback     When shell.nix/flake.nix is present but',
+  );
   stderr.writeln(
-      '                                 nix-shell/nix is missing, log a warning and');
+    '                                 nix-shell/nix is missing, log a warning and',
+  );
   stderr.writeln(
-      '                                 fall back to the system dart instead of erroring.');
-  stderr.writeln(
-      '  --help, -h                     Show this help message');
+    '                                 fall back to the system dart instead of erroring.',
+  );
+  stderr.writeln('  --help, -h                     Show this help message');
 }
-
 
 const _validOperations = [
   'analyze',
@@ -203,11 +205,15 @@ Future<CallToolResult> _handleDartRunner(
   if (requireString(requestedDir, 'project_dir') case final error?) {
     return error;
   }
-  final projectDir =
-      resolveProjectDirAlias(requestedDir!, serverArgs.projectDirs);
+  final projectDir = resolveProjectDirAlias(
+    requestedDir!,
+    serverArgs.projectDirs,
+  );
   if (projectDir == null) {
-    return validationError('project_dir',
-        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+    return validationError(
+      'project_dir',
+      'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}',
+    );
   }
 
   final operation = args['operation'] as String?;
@@ -249,11 +255,7 @@ Future<CallToolResult> _handleDartRunner(
           workingDir,
           sessionManager,
           'test',
-          [
-            'test',
-            ?target,
-            ...?_getExtraArgs(args),
-          ],
+          ['test', ?target, ...?_getExtraArgs(args)],
           allowFallback: allowFallback,
         );
 
@@ -265,28 +267,22 @@ Future<CallToolResult> _handleDartRunner(
           workingDir,
           sessionManager,
           'run',
-          [
-            'run',
-            ?target,
-            ...?_getExtraArgs(args),
-          ],
+          ['run', ?target, ...?_getExtraArgs(args)],
           allowFallback: allowFallback,
         );
       case 'format':
         final target = args['target'] as String? ?? '.';
-        return await _runDartCommandSync(
-          projectRoot,
-          workingDir,
-          ['format', target, ...?_getExtraArgs(args)],
-          allowFallback: allowFallback,
-        );
+        return await _runDartCommandSync(projectRoot, workingDir, [
+          'format',
+          target,
+          ...?_getExtraArgs(args),
+        ], allowFallback: allowFallback);
       case 'pub-get':
-        return await _runDartCommandSync(
-          projectRoot,
-          workingDir,
-          ['pub', 'get', ...?_getExtraArgs(args)],
-          allowFallback: allowFallback,
-        );
+        return await _runDartCommandSync(projectRoot, workingDir, [
+          'pub',
+          'get',
+          ...?_getExtraArgs(args),
+        ], allowFallback: allowFallback);
 
       case 'pub-run':
         final target = args['target'] as String?;
@@ -303,12 +299,13 @@ Future<CallToolResult> _handleDartRunner(
           allowFallback: allowFallback,
         );
 
-
       case 'get_output':
         final sessionId = args['session_id'] as String?;
         final chunkIndex = (args['chunk_index'] as num?)?.toInt() ?? 0;
-        final maxChunks =
-            ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
+        final maxChunks = ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(
+          1,
+          200,
+        );
         return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
 
       case 'list_sessions':
@@ -322,7 +319,7 @@ Future<CallToolResult> _handleDartRunner(
         return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
-    return errorResult('dart-runner:$operation', e, stackTrace, {
+    return errorResult('dart_runner:$operation', e, stackTrace, {
       'operation': operation,
     });
   }
@@ -396,12 +393,7 @@ class _ResolvedCommand {
   final List<String> args;
   final _NixKind kind;
   final CallToolResult? error;
-  _ResolvedCommand(
-    this.executable,
-    this.args,
-    this.kind, {
-    this.error,
-  });
+  _ResolvedCommand(this.executable, this.args, this.kind, {this.error});
 
   String get display => '$executable ${args.join(' ')}';
 }
@@ -450,13 +442,15 @@ _ResolvedCommand _getDartCommand(
           allowFallback: allowFallback,
         );
       }
-      final runCmd =
-          ['dart', ...dartArgs].map(_posixSingleQuoteEscape).join(' ');
-      return _ResolvedCommand(
-        'nix-shell',
-        ['--run', runCmd, '${projectRoot.path}/shell.nix'],
-        kind,
-      );
+      final runCmd = [
+        'dart',
+        ...dartArgs,
+      ].map(_posixSingleQuoteEscape).join(' ');
+      return _ResolvedCommand('nix-shell', [
+        '--run',
+        runCmd,
+        '${projectRoot.path}/shell.nix',
+      ], kind);
     case _NixKind.flakeNix:
       if (!_nixAvailable()) {
         return _handleMissingNixBinary(
@@ -468,11 +462,12 @@ _ResolvedCommand _getDartCommand(
           allowFallback: allowFallback,
         );
       }
-      return _ResolvedCommand(
-        'nix',
-        ['develop', '--command', 'dart', ...dartArgs],
-        kind,
-      );
+      return _ResolvedCommand('nix', [
+        'develop',
+        '--command',
+        'dart',
+        ...dartArgs,
+      ], kind);
   }
 }
 
@@ -487,7 +482,7 @@ _ResolvedCommand _handleMissingNixBinary({
   if (allowFallback) {
     if (_fallbackWarned.add(projectRoot.path)) {
       logWarning(
-        'dart-runner',
+        'dart_runner',
         "Project ${projectRoot.path} declares $declared but '$binary' is "
             "not on PATH. --allow-toolchain-fallback is set; falling back "
             "to the system dart. The pinned toolchain is NOT being used.",
@@ -499,18 +494,19 @@ _ResolvedCommand _handleMissingNixBinary({
     'dart',
     dartArgs,
     kind,
-    error: textResult(jsonEncode({
-      'status': 'error',
-      'error': "Project declares $declared but the '$binary' binary was "
-          "not found on PATH. Install Nix (https://nixos.org/download), "
-          "remove $declared to use the system dart, or restart the server "
-          "with --allow-toolchain-fallback to allow a warning-and-fallback "
-          "to the system dart.",
-    })),
+    error: textResult(
+      jsonEncode({
+        'status': 'error',
+        'error':
+            "Project declares $declared but the '$binary' binary was "
+            "not found on PATH. Install Nix (https://nixos.org/download), "
+            "remove $declared to use the system dart, or restart the server "
+            "with --allow-toolchain-fallback to allow a warning-and-fallback "
+            "to the system dart.",
+      }),
+    ),
   );
 }
-
-
 
 /// Start a long-running Dart command with progress notifications
 Future<CallToolResult> _startDartCommandWithProgress(
@@ -522,12 +518,14 @@ Future<CallToolResult> _startDartCommandWithProgress(
   List<String> dartArgs, {
   required bool allowFallback,
 }) async {
-  final cmd = _getDartCommand(projectRoot, dartArgs,
-      allowFallback: allowFallback);
+  final cmd = _getDartCommand(
+    projectRoot,
+    dartArgs,
+    allowFallback: allowFallback,
+  );
   if (cmd.error != null) return cmd.error!;
 
-  final sessionId =
-      sessionManager.createSession(operation, cmd.display);
+  final sessionId = sessionManager.createSession(operation, cmd.display);
   final session = sessionManager.getSession(sessionId)!;
 
   final outputStream = streamCommand(
@@ -548,8 +546,7 @@ Future<CallToolResult> _startDartCommandWithProgress(
     // Send progress notification with latest output
     await extra.sendProgress(
       chunkCount.toDouble(),
-      message:
-          'Running $operation... (${allOutput.length} chars received)',
+      message: 'Running $operation... (${allOutput.length} chars received)',
     );
   }
 
@@ -561,14 +558,12 @@ Future<CallToolResult> _startDartCommandWithProgress(
     'session_id': sessionId,
     'operation': operation,
     'command': cmd.display,
-    if (workingDir.path != projectRoot.path)
-      'working_dir': workingDir.path,
+    if (workingDir.path != projectRoot.path) 'working_dir': workingDir.path,
     'output': allOutput.toString(),
   };
 
   return textResult(jsonEncode(response));
 }
-
 
 /// Run a short Dart command synchronously
 Future<CallToolResult> _runDartCommandSync(
@@ -577,8 +572,11 @@ Future<CallToolResult> _runDartCommandSync(
   List<String> dartArgs, {
   required bool allowFallback,
 }) async {
-  final cmd = _getDartCommand(projectRoot, dartArgs,
-      allowFallback: allowFallback);
+  final cmd = _getDartCommand(
+    projectRoot,
+    dartArgs,
+    allowFallback: allowFallback,
+  );
   if (cmd.error != null) return cmd.error!;
 
   try {
@@ -604,14 +602,11 @@ Future<CallToolResult> _runDartCommandSync(
 
     return textResult(output.toString());
   } catch (e, stackTrace) {
-    return errorResult('dart-runner:command', e, stackTrace, {
+    return errorResult('dart_runner:command', e, stackTrace, {
       'command': cmd.display,
     });
   }
 }
-
-
-
 
 /// Get output chunks from a session
 CallToolResult _getOutput(
@@ -662,8 +657,7 @@ CallToolResult _getOutput(
     response['message'] =
         'More chunks available. Call get_output with chunk_index: $nextChunkIndex';
   } else if (session.isComplete && !hasMoreChunks) {
-    response['message'] =
-        'All output has been retrieved. Operation complete.';
+    response['message'] = 'All output has been retrieved. Operation complete.';
   }
 
   return textResult(jsonEncode(response));
@@ -675,20 +669,19 @@ CallToolResult _listSessions(SessionManager sessionManager) {
   sessionManager.cleanupOldSessions();
 
   final sessions = sessionManager.allSessions
-      .map((s) => {
-            'session_id': s.id,
-            'operation': s.operation,
-            'description': s.description,
-            'is_complete': s.isComplete,
-            'chunks_collected': s.chunks.length,
-            'started_at': s.startedAt.toIso8601String(),
-          })
+      .map(
+        (s) => {
+          'session_id': s.id,
+          'operation': s.operation,
+          'description': s.description,
+          'is_complete': s.isComplete,
+          'chunks_collected': s.chunks.length,
+          'started_at': s.startedAt.toIso8601String(),
+        },
+      )
       .toList();
 
-  final response = {
-    'sessions': sessions,
-    'total': sessions.length,
-  };
+  final response = {'sessions': sessions, 'total': sessions.length};
 
   return textResult(jsonEncode(response));
 }

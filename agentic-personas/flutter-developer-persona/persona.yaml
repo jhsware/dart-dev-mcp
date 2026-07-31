@@ -144,8 +144,8 @@ allowedTools:
   - "filesystem"
   - "git"
   - "planner"
-  - "dart-runner"
-  - "flutter-runner"
+  - "dart_runner"
+  - "flutter_runner"
   - "WebSearch"
 
 # disallowedTools (optional)
@@ -185,30 +185,30 @@ allowedTools:
 #   env (optional):     map of string → string — environment variables (no shell metacharacters)
 #
 mcpServers:
-  dart-dev-mcp-fs:
+  jhsware_code_filesystem:
     command: "dart"
     args:
       - "run"
-      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/filesystem/bin/file_edit_mcp.dart"
+      - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/filesystem/bin/filesystem_mcp.dart"
     requiresProjectDir: true
-  dart-dev-mcp-fetch:
+  jhsware_code_fetch:
     command: "dart"
     args:
       - "run"
       - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/fetch/bin/fetch_mcp.dart"
-  dart-dev-mcp-dart-runner:
+  jhsware_code_dart_runner:
     command: "dart"
     args:
       - "run"
       - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/dart_runner/bin/dart_runner_mcp.dart"
     requiresProjectDir: true
-  dart-dev-mcp-flutter-runner:
+  jhsware_code_flutter_runner:
     command: "dart"
     args:
       - "run"
       - "/Users/jhsware/DEV/agentic-coding/jhsware_code/packages/flutter_runner/bin/flutter_runner_mcp.dart"
     requiresProjectDir: true
-  dart-dev-mcp-git:
+  jhsware_code_git:
     command: "dart"
     args:
       - "run"

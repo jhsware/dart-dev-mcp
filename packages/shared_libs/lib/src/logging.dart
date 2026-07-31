@@ -35,21 +35,21 @@ void logError(
 ]) {
   final timestamp = DateTime.now().toIso8601String();
   final buffer = StringBuffer();
-  
+
   buffer.write('[$timestamp] ERROR in $operation: $error');
-  
+
   // Add exception details if available
   if (error is McpException && error.details != null) {
     buffer.write(' (${error.details})');
   }
-  
+
   // Add context if provided
   if (context != null && context.isNotEmpty) {
     buffer.write(' context=${jsonEncode(context)}');
   }
-  
+
   stderr.writeln(buffer);
-  
+
   // Include stack trace for non-MCP exceptions or when explicitly provided
   if (stackTrace != null && error is! McpException) {
     stderr.writeln('Stack trace:');
@@ -65,7 +65,7 @@ void logError(
 /// Example:
 /// ```dart
 /// if (!await pubspecFile.exists()) {
-///   logWarning('dart-runner', 'No pubspec.yaml found - may not be a Dart project');
+///   logWarning('dart_runner', 'No pubspec.yaml found - may not be a Dart project');
 /// }
 /// ```
 void logWarning(String operation, String message) {

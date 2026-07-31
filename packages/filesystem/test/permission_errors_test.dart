@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:filesystem_mcp/src/read_operations.dart';
-import 'package:filesystem_mcp/src/write_operations.dart';
+import 'package:jhsware_code_filesystem/src/read_operations.dart';
+import 'package:jhsware_code_filesystem/src/write_operations.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
@@ -124,7 +124,12 @@ void main() {
     });
 
     test('editFile includes allowed paths in error', () async {
-      final result = await writeOps.editFile('src/secret.dart', 'new content', null, null);
+      final result = await writeOps.editFile(
+        'src/secret.dart',
+        'new content',
+        null,
+        null,
+      );
       final text = resultText(result);
       expect(text, contains('Not allowed for: src/secret.dart'));
       expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
@@ -156,12 +161,15 @@ void main() {
       expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
     });
 
-    test('write operation absolute path error includes allowed paths', () async {
-      final result = await writeOps.createFile('/tmp/evil.dart', 'content');
-      final text = resultText(result);
-      expect(text, contains('No absolute paths allowed'));
-      expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
-    });
+    test(
+      'write operation absolute path error includes allowed paths',
+      () async {
+        final result = await writeOps.createFile('/tmp/evil.dart', 'content');
+        final text = resultText(result);
+        expect(text, contains('No absolute paths allowed'));
+        expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
+      },
+    );
 
     test('write operation hidden file error includes allowed paths', () async {
       final result = await writeOps.createFile('.hidden/file.dart', 'content');
@@ -170,13 +178,21 @@ void main() {
       expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
     });
 
-    test('write operation parent traversal error includes allowed paths', () async {
-      // Same as above — use embedded '..' to trigger traversal check
-      final result = await writeOps.editFile('foo..bar', 'content', null, null);
-      final text = resultText(result);
-      expect(text, contains('No parent directory traversal allowed'));
-      expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
-    });
+    test(
+      'write operation parent traversal error includes allowed paths',
+      () async {
+        // Same as above — use embedded '..' to trigger traversal check
+        final result = await writeOps.editFile(
+          'foo..bar',
+          'content',
+          null,
+          null,
+        );
+        final text = resultText(result);
+        expect(text, contains('No parent directory traversal allowed'));
+        expect(text, contains('Allowed paths: lib, test, pubspec.yaml'));
+      },
+    );
   });
 
   group('readFile line range support', () {
@@ -197,8 +213,11 @@ void main() {
     });
 
     test('startLine and endLine returns specified range', () async {
-      final result = await readOps.readFile('lib/range_test.dart',
-          startLine: 3, endLine: 7);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 3,
+        endLine: 7,
+      );
       final text = resultText(result);
       expect(text, contains('L3: Line 3'));
       expect(text, contains('L7: Line 7'));
@@ -207,8 +226,10 @@ void main() {
     });
 
     test('startLine only returns from startLine to end of file', () async {
-      final result =
-          await readOps.readFile('lib/range_test.dart', startLine: 8);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 8,
+      );
       final text = resultText(result);
       expect(text, contains('L8: Line 8'));
       expect(text, contains('L9: Line 9'));
@@ -217,15 +238,21 @@ void main() {
     });
 
     test('startLine=1 endLine=1 returns single line', () async {
-      final result = await readOps.readFile('lib/range_test.dart',
-          startLine: 1, endLine: 1);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 1,
+        endLine: 1,
+      );
       final text = resultText(result);
       expect(text, equals('L1: Line 1'));
     });
 
     test('endLine beyond file length clamps to file length', () async {
-      final result = await readOps.readFile('lib/range_test.dart',
-          startLine: 8, endLine: 100);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 8,
+        endLine: 100,
+      );
       final text = resultText(result);
       expect(text, contains('L8: Line 8'));
       expect(text, contains('L10: Line 10'));
@@ -233,29 +260,35 @@ void main() {
     });
 
     test('startLine beyond file length returns error', () async {
-      final result =
-          await readOps.readFile('lib/range_test.dart', startLine: 999);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 999,
+      );
       final text = resultText(result);
       expect(text, contains('startLine (999) exceeds file length'));
     });
 
     test('startLine < 1 returns error', () async {
-      final result =
-          await readOps.readFile('lib/range_test.dart', startLine: 0);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 0,
+      );
       final text = resultText(result);
       expect(text, contains('startLine must be >= 1'));
     });
 
     test('endLine < startLine returns error', () async {
-      final result = await readOps.readFile('lib/range_test.dart',
-          startLine: 5, endLine: 3);
+      final result = await readOps.readFile(
+        'lib/range_test.dart',
+        startLine: 5,
+        endLine: 3,
+      );
       final text = resultText(result);
       expect(text, contains('endLine must be >= startLine'));
     });
 
     test('endLine without startLine returns error', () async {
-      final result =
-          await readOps.readFile('lib/range_test.dart', endLine: 5);
+      final result = await readOps.readFile('lib/range_test.dart', endLine: 5);
       final text = resultText(result);
       expect(text, contains('endLine requires startLine'));
     });

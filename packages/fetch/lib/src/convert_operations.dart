@@ -4,10 +4,16 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
 /// Logger for retry attempts
-void logConvertRetry(int attempt, int maxAttempts, HttpFetchException error,
-    Duration nextDelay) {
-  logWarning('convert',
-      'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms');
+void logConvertRetry(
+  int attempt,
+  int maxAttempts,
+  HttpFetchException error,
+  Duration nextDelay,
+) {
+  logWarning(
+    'convert',
+    'Retry $attempt/$maxAttempts after ${error.type.name}: waiting ${nextDelay.inMilliseconds}ms',
+  );
 }
 
 const validConvertOperations = [
@@ -23,7 +29,8 @@ Future<CallToolResult> handleConvert(
 ) async {
   final operation = args['operation'] as String?;
 
-  if (requireStringOneOf(operation, 'operation', validConvertOperations) case final error?) {
+  if (requireStringOneOf(operation, 'operation', validConvertOperations)
+      case final error?) {
     return error;
   }
 
@@ -37,7 +44,8 @@ Future<CallToolResult> handleConvert(
         final includeLinks = args['include-links'] as bool? ?? true;
         final includeImages = args['include-images'] as bool? ?? true;
         return textResult(
-            convertHtmlToMarkdown(html!, includeLinks, includeImages));
+          convertHtmlToMarkdown(html!, includeLinks, includeImages),
+        );
 
       case 'fetch-to-markdown':
         final url = args['url'] as String?;
@@ -63,13 +71,16 @@ Future<CallToolResult> handleConvert(
         } else if (html != null && html.isNotEmpty) {
           return textResult(extractLinks(html, null));
         }
-        return validationError('url', 'url or html is required for html-to-links operation');
+        return validationError(
+          'url',
+          'url or html is required for html-to-links operation',
+        );
 
       default:
         return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
-    return errorResult('fetch-and-transform:$operation', e, stackTrace, {
+    return errorResult('fetch_and_transform:$operation', e, stackTrace, {
       'operation': operation,
     });
   }
@@ -77,12 +88,22 @@ Future<CallToolResult> handleConvert(
 
 /// Convert HTML to Markdown
 String convertHtmlToMarkdown(
-    String html, bool includeLinks, bool includeImages) {
+  String html,
+  bool includeLinks,
+  bool includeImages,
+) {
   final document = html_parser.parse(html);
 
   // Remove unwanted elements
-  removeElements(document,
-      ['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'head']);
+  removeElements(document, [
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'svg',
+    'canvas',
+    'head',
+  ]);
 
   // Find main content
   final body = document.querySelector('body') ?? document.documentElement;
@@ -107,8 +128,12 @@ void removeElements(Document document, List<String> selectors) {
 
 /// Convert a DOM node to Markdown
 void convertNode(
-    Node node, StringBuffer buffer, bool includeLinks, bool includeImages,
-    {int listDepth = 0}) {
+  Node node,
+  StringBuffer buffer,
+  bool includeLinks,
+  bool includeImages, {
+  int listDepth = 0,
+}) {
   if (node is Text) {
     final text = node.text.replaceAll(RegExp(r'\s+'), ' ');
     buffer.write(text);
@@ -124,46 +149,81 @@ void convertNode(
     // Headings
     case 'h1':
       buffer.write('\n\n# ');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
     case 'h2':
       buffer.write('\n\n## ');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
     case 'h3':
       buffer.write('\n\n### ');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
     case 'h4':
       buffer.write('\n\n#### ');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
     case 'h5':
       buffer.write('\n\n##### ');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
     case 'h6':
       buffer.write('\n\n###### ');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
 
     // Paragraphs and blocks
     case 'p':
       buffer.write('\n\n');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('\n\n');
       break;
     case 'div':
@@ -172,8 +232,13 @@ void convertNode(
     case 'main':
     case 'header':
     case 'footer':
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       break;
     case 'br':
       buffer.write('\n');
@@ -186,21 +251,36 @@ void convertNode(
     case 'strong':
     case 'b':
       buffer.write('**');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('**');
       break;
     case 'em':
     case 'i':
       buffer.write('*');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('*');
       break;
     case 'code':
       buffer.write('`');
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
       buffer.write('`');
       break;
     case 'pre':
@@ -226,8 +306,13 @@ void convertNode(
           buffer.write(text);
         }
       } else {
-        convertChildren(element, buffer, includeLinks, includeImages,
-            listDepth: listDepth);
+        convertChildren(
+          element,
+          buffer,
+          includeLinks,
+          includeImages,
+          listDepth: listDepth,
+        );
       }
       break;
     case 'img':
@@ -246,8 +331,13 @@ void convertNode(
       for (final child in element.children) {
         if (child.localName == 'li') {
           buffer.write('${'  ' * listDepth}- ');
-          convertChildren(child, buffer, includeLinks, includeImages,
-              listDepth: listDepth + 1);
+          convertChildren(
+            child,
+            buffer,
+            includeLinks,
+            includeImages,
+            listDepth: listDepth + 1,
+          );
           buffer.write('\n');
         }
       }
@@ -259,8 +349,13 @@ void convertNode(
       for (final child in element.children) {
         if (child.localName == 'li') {
           buffer.write('${'  ' * listDepth}$index. ');
-          convertChildren(child, buffer, includeLinks, includeImages,
-              listDepth: listDepth + 1);
+          convertChildren(
+            child,
+            buffer,
+            includeLinks,
+            includeImages,
+            listDepth: listDepth + 1,
+          );
           buffer.write('\n');
           index++;
         }
@@ -286,17 +381,31 @@ void convertNode(
       break;
 
     default:
-      convertChildren(element, buffer, includeLinks, includeImages,
-          listDepth: listDepth);
+      convertChildren(
+        element,
+        buffer,
+        includeLinks,
+        includeImages,
+        listDepth: listDepth,
+      );
   }
 }
 
 void convertChildren(
-    Element element, StringBuffer buffer, bool includeLinks, bool includeImages,
-    {int listDepth = 0}) {
+  Element element,
+  StringBuffer buffer,
+  bool includeLinks,
+  bool includeImages, {
+  int listDepth = 0,
+}) {
   for (final child in element.nodes) {
-    convertNode(child, buffer, includeLinks, includeImages,
-        listDepth: listDepth);
+    convertNode(
+      child,
+      buffer,
+      includeLinks,
+      includeImages,
+      listDepth: listDepth,
+    );
   }
 }
 
@@ -342,7 +451,9 @@ String cleanMarkdown(String markdown) {
 
   // Normalize heading spacing
   cleaned = cleaned.replaceAll(
-      RegExp(r'^(#{1,6} .+)(?!\n)', multiLine: true), r'$1\n');
+    RegExp(r'^(#{1,6} .+)(?!\n)', multiLine: true),
+    r'$1\n',
+  );
 
   // Trim whitespace
   cleaned = cleaned.trim();
@@ -355,8 +466,15 @@ String extractText(String html) {
   final document = html_parser.parse(html);
 
   // Remove script, style, etc.
-  removeElements(document,
-      ['script', 'style', 'noscript', 'template', 'svg', 'canvas', 'head']);
+  removeElements(document, [
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'svg',
+    'canvas',
+    'head',
+  ]);
 
   final body = document.querySelector('body') ?? document.documentElement;
   if (body == null) {
@@ -454,7 +572,8 @@ Future<CallToolResult> convertUrl(
 
     if (!result.isSuccess) {
       return textResult(
-          'Error: Failed to fetch URL. Status: ${result.statusCode}');
+        'Error: Failed to fetch URL. Status: ${result.statusCode}',
+      );
     }
 
     final html = result.body;
@@ -464,7 +583,7 @@ Future<CallToolResult> convertUrl(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('fetch-and-transform:fetch-to-markdown', e, stackTrace, {
+    return errorResult('fetch_and_transform:fetch-to-markdown', e, stackTrace, {
       'url': url,
     });
   }
@@ -484,7 +603,8 @@ Future<CallToolResult> extractLinksFromUrl(
 
     if (!result.isSuccess) {
       return textResult(
-          'Error: Failed to fetch URL. Status: ${result.statusCode}');
+        'Error: Failed to fetch URL. Status: ${result.statusCode}',
+      );
     }
 
     final html = result.body;
@@ -492,7 +612,7 @@ Future<CallToolResult> extractLinksFromUrl(
   } on HttpFetchException catch (e) {
     return textResult('Error: ${e.toUserMessage()}');
   } catch (e, stackTrace) {
-    return errorResult('fetch-and-transform:html-to-links', e, stackTrace, {
+    return errorResult('fetch_and_transform:html-to-links', e, stackTrace, {
       'url': url,
     });
   }

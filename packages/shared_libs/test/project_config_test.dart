@@ -55,8 +55,17 @@ git:
       final config = ProjectConfigService.loadConfig(tempDir.path);
       expect(config.hasConfig, isTrue);
       expect(config.toolPaths.keys, containsAll(['filesystem', 'git']));
-      expect(config.toolPaths['filesystem'], ['./pubspec.yaml', './lib', './test']);
-      expect(config.toolPaths['git'], ['./pubspec.yaml', './lib', './test', './bin']);
+      expect(config.toolPaths['filesystem'], [
+        './pubspec.yaml',
+        './lib',
+        './test',
+      ]);
+      expect(config.toolPaths['git'], [
+        './pubspec.yaml',
+        './lib',
+        './test',
+        './bin',
+      ]);
     });
 
     test('handles tool with null value as empty list', () {
@@ -88,11 +97,13 @@ dart_runner:
 
       expect(
         () => ProjectConfigService.loadConfig(tempDir.path),
-        throwsA(isA<FormatException>().having(
-          (e) => e.message,
-          'message',
-          contains('expected a YAML map'),
-        )),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('expected a YAML map'),
+          ),
+        ),
       );
     });
 
@@ -102,11 +113,13 @@ dart_runner:
 
       expect(
         () => ProjectConfigService.loadConfig(tempDir.path),
-        throwsA(isA<FormatException>().having(
-          (e) => e.message,
-          'message',
-          contains('expected a list'),
-        )),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('expected a list'),
+          ),
+        ),
       );
     });
 
@@ -116,11 +129,13 @@ dart_runner:
 
       expect(
         () => ProjectConfigService.loadConfig(tempDir.path),
-        throwsA(isA<FormatException>().having(
-          (e) => e.message,
-          'message',
-          contains('expected string path'),
-        )),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('expected string path'),
+          ),
+        ),
       );
     });
 
@@ -174,10 +189,12 @@ dart_runner:
     });
   });
 
-
   group('ProjectConfigService.getAllowedPaths', () {
     test('returns full project root when no config file exists', () {
-      final paths = ProjectConfigService.getAllowedPaths(tempDir.path, 'filesystem');
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'filesystem',
+      );
       expect(paths, hasLength(1));
       expect(paths.first, p.normalize(p.absolute(tempDir.path)));
     });
@@ -186,7 +203,10 @@ dart_runner:
       final configFile = File(p.join(tempDir.path, configFileName));
       configFile.writeAsStringSync('filesystem:\n  - ./lib');
 
-      final paths = ProjectConfigService.getAllowedPaths(tempDir.path, 'unknown_tool');
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'unknown_tool',
+      );
       expect(paths, hasLength(1));
       expect(paths.first, p.normalize(p.absolute(tempDir.path)));
     });
@@ -195,7 +215,10 @@ dart_runner:
       final configFile = File(p.join(tempDir.path, configFileName));
       configFile.writeAsStringSync('filesystem:\n  - ./lib\ndart_runner:');
 
-      final paths = ProjectConfigService.getAllowedPaths(tempDir.path, 'dart_runner');
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'dart_runner',
+      );
       expect(paths, isEmpty);
     });
 
@@ -203,7 +226,10 @@ dart_runner:
       final configFile = File(p.join(tempDir.path, configFileName));
       configFile.writeAsStringSync('filesystem:\n  - ./lib\n  - ./test');
 
-      final paths = ProjectConfigService.getAllowedPaths(tempDir.path, 'filesystem');
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'filesystem',
+      );
       final absRoot = p.normalize(p.absolute(tempDir.path));
 
       expect(paths, hasLength(2));
@@ -221,6 +247,78 @@ dart_runner:
       expect(paths, hasLength(2));
       expect(paths[0], p.normalize(p.join(absRoot, 'pubspec.yaml')));
       expect(paths[1], p.normalize(p.join(absRoot, 'lib')));
+    });
+  });
+
+  group('backwards compatibility', () {
+    test('reads legacy jhsware-code.yaml when preferred file is absent', () {
+      final configFile = File(p.join(tempDir.path, legacyConfigFileName));
+      configFile.writeAsStringSync('filesystem:\n  - ./lib');
+
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'filesystem',
+      );
+      final absRoot = p.normalize(p.absolute(tempDir.path));
+
+      expect(paths, [p.normalize(p.join(absRoot, 'lib'))]);
+    });
+
+    test('prefers jhsware_code.yaml when both config files exist', () {
+      File(
+        p.join(tempDir.path, configFileName),
+      ).writeAsStringSync('filesystem:\n  - ./lib');
+      File(
+        p.join(tempDir.path, legacyConfigFileName),
+      ).writeAsStringSync('filesystem:\n  - ./legacy');
+
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'filesystem',
+      );
+      final absRoot = p.normalize(p.absolute(tempDir.path));
+
+      expect(paths, [p.normalize(p.join(absRoot, 'lib'))]);
+    });
+
+    test('legacy hyphenated keys match renamed snake_case tools', () {
+      final configFile = File(p.join(tempDir.path, legacyConfigFileName));
+      configFile.writeAsStringSync('code-index:\n  - ./lib');
+
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'code_index',
+      );
+      final absRoot = p.normalize(p.absolute(tempDir.path));
+
+      expect(paths, [p.normalize(p.join(absRoot, 'lib'))]);
+    });
+
+    test('hyphenated tool name lookup matches snake_case keys', () {
+      final configFile = File(p.join(tempDir.path, configFileName));
+      configFile.writeAsStringSync('code_index:\n  - ./lib');
+
+      final paths = ProjectConfigService.getAllowedPaths(
+        tempDir.path,
+        'code-index',
+      );
+      final absRoot = p.normalize(p.absolute(tempDir.path));
+
+      expect(paths, [p.normalize(p.join(absRoot, 'lib'))]);
+    });
+
+    test('cache is invalidated when preferred file appears next to legacy', () {
+      File(
+        p.join(tempDir.path, legacyConfigFileName),
+      ).writeAsStringSync('filesystem:\n  - ./legacy');
+      final config1 = ProjectConfigService.loadConfig(tempDir.path);
+      expect(config1.toolPaths['filesystem'], ['./legacy']);
+
+      File(
+        p.join(tempDir.path, configFileName),
+      ).writeAsStringSync('filesystem:\n  - ./lib');
+      final config2 = ProjectConfigService.loadConfig(tempDir.path);
+      expect(config2.toolPaths['filesystem'], ['./lib']);
     });
   });
 }

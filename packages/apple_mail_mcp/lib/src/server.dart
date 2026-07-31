@@ -1,6 +1,6 @@
 // Apple Mail MCP server setup.
 //
-// Registers a single `apple-mail` tool with an `operation` enum parameter
+// Registers a single `apple_mail` tool with an `operation` enum parameter
 // that dispatches to the appropriate read-only operation handler.
 // Long-running operations are wrapped with progress notifications and
 // session tracking for polling support. Batched operations use progressive
@@ -25,7 +25,7 @@ import 'session_operations.dart';
 
 /// Builds the merged dispatch map from all operation modules.
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
-    _buildOperationHandlers() {
+_buildOperationHandlers() {
   return {
     ...getInboxOperations(),
     ...getSearchOperations(),
@@ -33,18 +33,18 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
   };
 }
 
-/// All supported operation names for the apple-mail tool.
+/// All supported operation names for the apple_mail tool.
 List<String> get allOperations => [
-      ..._buildOperationHandlers().keys,
-      ...batchedOperations,
-      'get_output',
-      'list_sessions',
-      'cancel',
-    ];
+  ..._buildOperationHandlers().keys,
+  ...batchedOperations,
+  'get_output',
+  'list_sessions',
+  'cancel',
+];
 
 /// Creates and configures the Apple Mail MCP server.
 ///
-/// Registers a single `apple-mail` tool with all read-only operations
+/// Registers a single `apple_mail` tool with all read-only operations
 /// plus session management operations for long-running operation support.
 McpServer createAppleMailServer() {
   final operationHandlers = _buildOperationHandlers();
@@ -52,11 +52,11 @@ McpServer createAppleMailServer() {
   final sessionManager = SessionManager();
 
   final server = McpServer(
-    Implementation(name: 'apple-mail-mcp', version: '0.1.0'),
+    Implementation(name: 'jhsware_code_apple_mail', version: '0.1.0'),
   );
 
   server.registerTool(
-    'apple-mail',
+    'apple_mail',
     description:
         'Read-only Apple Mail operations for listing, searching, and exporting emails.\n\n'
         'For long-running operations (search-email-content, classify-emails, '
@@ -353,8 +353,7 @@ McpServer createAppleMailServer() {
           }
           // Validate JSON parses correctly
           try {
-            final parsed =
-                jsonDecode(classifiersJson) as Map<String, dynamic>;
+            final parsed = jsonDecode(classifiersJson) as Map<String, dynamic>;
             if (parsed.isEmpty) {
               return actionableError(
                 'classifiers must contain at least one category.',

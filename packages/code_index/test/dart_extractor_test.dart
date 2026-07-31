@@ -1,28 +1,35 @@
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('dot_path canonicalization', () {
     test('package: URI → module.source_path', () {
-      final (module, src) = parseLibraryUri(Uri.parse('package:flutter/material.dart'));
+      final (module, src) = parseLibraryUri(
+        Uri.parse('package:flutter/material.dart'),
+      );
       expect(module, 'flutter');
       expect(src, 'material');
       expect(buildDotPath(module, src, 'Widget'), 'flutter.material.Widget');
     });
 
     test('package: URI with nested path', () {
-      final (module, src) =
-          parseLibraryUri(Uri.parse('package:flutter/src/widgets/framework.dart'));
+      final (module, src) = parseLibraryUri(
+        Uri.parse('package:flutter/src/widgets/framework.dart'),
+      );
       expect(module, 'flutter');
       expect(src, 'src.widgets.framework');
-      expect(buildDotPath(module, src, 'Widget'),
-          'flutter.src.widgets.framework.Widget');
+      expect(
+        buildDotPath(module, src, 'Widget'),
+        'flutter.src.widgets.framework.Widget',
+      );
     });
 
     test('single-file package library', () {
-      final (module, src) = parseLibraryUri(Uri.parse('package:path/path.dart'));
+      final (module, src) = parseLibraryUri(
+        Uri.parse('package:path/path.dart'),
+      );
       expect(module, 'path');
       expect(src, 'path');
     });
@@ -137,7 +144,9 @@ void main() {
   while (true) {}
 }
 ''');
-      final fns = r.symbols.where((s) => s.kind == 'function').map((s) => s.name);
+      final fns = r.symbols
+          .where((s) => s.kind == 'function')
+          .map((s) => s.name);
       expect(fns, contains('main'));
       expect(fns, isNot(contains('if')));
       expect(fns, isNot(contains('for')));
@@ -174,7 +183,8 @@ class Foo {
   group('Line ranges (1-indexed, inclusive)', () {
     test('class and member spans', () {
       final r = DartExtractor.extractSyntactic(
-          'class Foo {\n  void bar() {\n    return;\n  }\n}\n');
+        'class Foo {\n  void bar() {\n    return;\n  }\n}\n',
+      );
       final foo = _sym(r, 'Foo');
       expect(foo.line, 1);
       expect(foo.endLine, 5);
@@ -185,7 +195,8 @@ class Foo {
 
     test('top-level function span after leading lines', () {
       final r = DartExtractor.extractSyntactic(
-          '// a\n// b\nString greet() =>\n    "hi";\n');
+        '// a\n// b\nString greet() =>\n    "hi";\n',
+      );
       final greet = _sym(r, 'greet');
       expect(greet.line, 3);
       expect(greet.endLine, 4);
@@ -195,7 +206,8 @@ class Foo {
   group('Annotations', () {
     test('TODO / FIXME / HACK / NOTE with author + line', () {
       final r = DartExtractor.extractSyntactic(
-          '// line 1\n// TODO(john): fix this\n// FIXME: leak\n// HACK: x\n// NOTE: y');
+        '// line 1\n// TODO(john): fix this\n// FIXME: leak\n// HACK: x\n// NOTE: y',
+      );
       final todo = r.annotations.firstWhere((a) => a['kind'] == 'TODO');
       expect(todo['message'], 'fix this');
       expect(todo['line'], 2);
@@ -206,7 +218,10 @@ class Foo {
 
     test('DEPRECATED annotation', () {
       final r = DartExtractor.extractSyntactic('@deprecated\nclass Old {}');
-      expect(r.annotations.where((a) => a['kind'] == 'DEPRECATED'), hasLength(1));
+      expect(
+        r.annotations.where((a) => a['kind'] == 'DEPRECATED'),
+        hasLength(1),
+      );
     });
   });
 
@@ -236,8 +251,10 @@ class Foo {
     late Directory tempDir;
 
     Future<void> pubGet() async {
-      final r = await Process.run('dart', ['pub', 'get'],
-          workingDirectory: tempDir.path);
+      final r = await Process.run('dart', [
+        'pub',
+        'get',
+      ], workingDirectory: tempDir.path);
       expect(r.exitCode, 0, reason: 'pub get failed: ${r.stderr}');
     }
 
@@ -341,8 +358,9 @@ ExtractedSymbol _sym(ExtractedFile r, String name, {String? kind}) =>
     r.symbols.firstWhere(
       (s) => s.name == name && (kind == null || s.kind == kind),
       orElse: () => throw StateError(
-          'Symbol "$name"${kind == null ? '' : ' ($kind)'} not found. '
-          'Have: ${r.symbols.map((s) => "${s.name}:${s.kind}").join(", ")}'),
+        'Symbol "$name"${kind == null ? '' : ' ($kind)'} not found. '
+        'Have: ${r.symbols.map((s) => "${s.name}:${s.kind}").join(", ")}',
+      ),
     );
 
 String _kind(ExtractedFile r, String name) => _sym(r, name).kind;

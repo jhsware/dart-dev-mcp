@@ -1,4 +1,4 @@
-name: planner_mcp
+name: jhsware_code_planner
 description: >-
   Planner MCP server. Proxies to a planner_server over HTTPS.
 version: 1.0.0

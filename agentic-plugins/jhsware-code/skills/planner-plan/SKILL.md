@@ -27,7 +27,7 @@ Before creating any tasks, explore the codebase to understand scope and identify
 
 - **filesystem list-content**: Use to explore directory structure or find files in unindexed directories.
 - **filesystem read-file**: Use to examine specific files in detail — but only AFTER using show-file to confirm the file is relevant.
-- **filesystem search-text**: Use for regex-based searching when you need pattern matching (code-index search is keyword/FTS-based, not regex).
+- **filesystem search-text**: Use for regex-based searching when you need pattern matching (code_index search is keyword/FTS-based, not regex).
 - **git log/diff**: Use to understand recent changes and what areas of code are actively being modified.
 
 ### Token Economy
@@ -140,46 +140,46 @@ After creating all tasks:
 
 - **Task creation fails**: Check that required fields (title) are provided. Retry once, then report the error to the user.
 - **Duplicate task found**: If `list-tasks` shows a similar task already exists, inform the user and ask whether to update the existing task or create a new one.
-- **code-index returns no results**: The index may be stale — use `code-index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
-- **code-index show-file returns nothing**: The file may not be indexed. Fall back to `filesystem read-file` for that specific file.
+- **code_index returns no results**: The index may be stale — use `code_index diff` to check for unindexed files. If the codebase is unindexed, fall back to `filesystem search-text` and `filesystem list-content`. Consider spawning `code-index` skill to index the codebase first.
+- **code_index show-file returns nothing**: The file may not be indexed. Fall back to `filesystem read-file` for that specific file.
 
 ## Examples
 
-### Example 1 — Exploration with code-index before planning
+### Example 1 — Exploration with code_index before planning
 
 A user asks to add input validation to a form component. First explore:
 
 ```
 # Step 0: Ensure index is fresh
-code-index: diff (file_extensions: [".dart", ".tsx"])
+code_index: diff (file_extensions: [".dart", ".tsx"])
 # → 2 changed, 1 added → spawn code-index-agent to re-index them
 
 # Step 1: Get codebase overview
-code-index: overview
+code_index: overview
 # → 15 files listed with descriptions and exports
 
 # Step 2: Find relevant files
-code-index: search (query: "validation", export_kind: "class")
+code_index: search (query: "validation", export_kind: "class")
 # → Found ValidationUtils in src/utils/validation.dart
-code-index: search (query: "RegisterForm")
+code_index: search (query: "RegisterForm")
 # → Found RegisterForm class in src/components/RegisterForm.tsx
 
 # Step 3: Understand file API without reading source
-code-index: file-summary (path: "src/components/RegisterForm.tsx")
+code_index: file-summary (path: "src/components/RegisterForm.tsx")
 # → exports grouped by class: RegisterForm { build, _onSubmit }
 # → no variables
 
-code-index: show-file (path: "src/utils/validation.dart")
+code_index: show-file (path: "src/utils/validation.dart")
 # → exports: validateEmail (function), validatePassword (function)
 # → imports: dart:core
 # → annotations: TODO "add password strength check" at line 15
 
 # Step 4: Check impact — who else uses validation?
-code-index: dependents (path: "src/utils/validation")
+code_index: dependents (path: "src/utils/validation")
 # → 3 files import this module: LoginForm, RegisterForm, ProfileForm
 
 # Step 5: Check for related TODOs
-code-index: search-annotations (kind: "TODO", path_pattern: "%validation%")
+code_index: search-annotations (kind: "TODO", path_pattern: "%validation%")
 # → TODO: "add email format validation" in RegisterForm.tsx line 42
 # → TODO: "add password strength check" in validation.dart line 15
 
@@ -339,10 +339,10 @@ Do not use native tools: Bash, Read, Write, Edit, Git.
 Do not delete files, ask user to delete them.
 Do not run bash commands, ask user to do this.
 
-Use planner (dart-dev-mcp-planner) to interact with the task planner and backlog.
+Use planner (jhsware_code_planner) to interact with the task planner and backlog.
 
 The following tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error:
 
-Use filesystem (dart-dev-mcp-fs) to read, search and edit files.
-Use git (dart-dev-mcp-git) for git operations.
-Use flutter (dart-dev-mcp-flutter-runner) or dart (dart-dev-mcp-dart-runner) to run code test, analyze or build the project. Use the `pub-run` operation for code generation (e.g. `build_runner build --delete-conflicting-outputs`). For monorepo sub-packages, pass the optional `working_dir` parameter (relative to `project_dir`, e.g. `working_dir="packages/foo"`).
+Use filesystem (jhsware_code_filesystem) to read, search and edit files.
+Use git (jhsware_code_git) for git operations.
+Use flutter (jhsware_code_flutter_runner) or dart (jhsware_code_dart_runner) to run code test, analyze or build the project. Use the `pub-run` operation for code generation (e.g. `build_runner build --delete-conflicting-outputs`). For monorepo sub-packages, pass the optional `working_dir` parameter (relative to `project_dir`, e.g. `working_dir="packages/foo"`).

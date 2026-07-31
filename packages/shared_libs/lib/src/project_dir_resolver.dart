@@ -32,8 +32,7 @@ String? stripWorktreeInfix(String path) {
   // Need `<root>/.worktrees/<slug>`: `.worktrees` must not be the first
   // segment and a slug segment must follow it.
   if (idx < 1 || idx + 1 >= segments.length) return null;
-  return p.joinAll(
-      [...segments.sublist(0, idx), ...segments.sublist(idx + 2)]);
+  return p.joinAll([...segments.sublist(0, idx), ...segments.sublist(idx + 2)]);
 }
 
 /// Resolve a caller-supplied [requested] project directory against the
@@ -62,7 +61,7 @@ String? stripWorktreeInfix(String path) {
 ///      infix-stripped form → that dir.
 ///
 /// Always returns the matching entry from [projectDirs] (never the raw
-/// input), so downstream lookups — `jhsware-code.yaml` allowed paths, DB
+/// input), so downstream lookups — `jhsware_code.yaml` allowed paths, DB
 /// paths keyed on basename, git roots — behave exactly as if the caller
 /// had passed the registered value.
 ///

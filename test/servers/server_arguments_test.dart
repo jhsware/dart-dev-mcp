@@ -5,15 +5,17 @@ import 'package:test/test.dart';
 
 import 'test_helpers.dart';
 
-
 void main() {
   setUpAll(() async {
     await compileAllServers();
   });
 
-  group('file_edit_mcp arguments', () {
+  group('filesystem_mcp arguments', () {
     test('shows error without --project-dir', () async {
-      final result = await runServer('packages/filesystem/bin/file_edit_mcp.dart', []);
+      final result = await runServer(
+        'packages/filesystem/bin/filesystem_mcp.dart',
+        [],
+      );
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--project-dir is required'));
@@ -21,7 +23,7 @@ void main() {
 
     test('shows project dirs on startup', () async {
       final (process, stderrBuffer) = await startServer(
-        'packages/filesystem/bin/file_edit_mcp.dart',
+        'packages/filesystem/bin/filesystem_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
@@ -33,13 +35,13 @@ void main() {
 
     test('starts with multiple --project-dir flags', () async {
       final (process, stderrBuffer) = await startServer(
-        'packages/filesystem/bin/file_edit_mcp.dart',
+        'packages/filesystem/bin/filesystem_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
 
       final stderr = stderrBuffer.toString();
-      expect(stderr, contains('File Edit MCP Server starting'));
+      expect(stderr, contains('Filesystem MCP Server starting'));
       expect(stderr, contains('Project dirs:'));
     });
   });
@@ -141,25 +143,28 @@ void main() {
 
   group('planner_mcp arguments', () {
     test('shows error without --project-dir', () async {
-      final result = await runServer('packages/planner/bin/planner_mcp.dart', []);
+      final result = await runServer(
+        'packages/planner/bin/planner_mcp.dart',
+        [],
+      );
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('--project-dir is required'));
     });
 
     test('fails with non-existent project directory', () async {
-      final result = await runServer(
-        'packages/planner/bin/planner_mcp.dart',
-        ['--project-dir=/nonexistent/path'],
-      );
+      final result = await runServer('packages/planner/bin/planner_mcp.dart', [
+        '--project-dir=/nonexistent/path',
+      ]);
 
       expect(result.exitCode, 1);
       expect(result.stderr, contains('does not exist'));
     });
 
     test('shows help with --help flag', () async {
-      final result =
-          await runServer('packages/planner/bin/planner_mcp.dart', ['--help']);
+      final result = await runServer('packages/planner/bin/planner_mcp.dart', [
+        '--help',
+      ]);
 
       expect(result.exitCode, 0);
       expect(result.stderr, contains('Usage: planner_mcp --project-dir=PATH'));
@@ -167,22 +172,16 @@ void main() {
     });
   });
 
-
   group('code_index_mcp arguments', () {
-    test('shows error without --planner-data-root', () async {
-      final result = await runServer(
-          'packages/code_index/bin/code_index_mcp.dart', ['--project-dir=.']);
-
-      expect(result.exitCode, isNot(0));
-      expect(result.stderr, contains('--planner-data-root is required'));
-    });
-
+    // Since the v2 rewrite the data root is optional (--data-root, default
+    // ~/.code-index); --planner-data-root is no longer required.
     test('shows error without --project-dir', () async {
       final tempDir = await Directory.systemTemp.createTemp('code_index_args_');
       try {
         final result = await runServer(
-            'packages/code_index/bin/code_index_mcp.dart',
-            ['--planner-data-root=${tempDir.path}']);
+          'packages/code_index/bin/code_index_mcp.dart',
+          ['--data-root=${tempDir.path}'],
+        );
 
         expect(result.exitCode, isNot(0));
         expect(result.stderr, contains('--project-dir is required'));
@@ -195,11 +194,13 @@ void main() {
 
     test('shows help with --help flag', () async {
       final result = await runServer(
-          'packages/code_index/bin/code_index_mcp.dart', ['--help']);
+        'packages/code_index/bin/code_index_mcp.dart',
+        ['--help'],
+      );
 
       expect(result.exitCode, 0);
       expect(result.stderr, contains('Usage: code_index_mcp'));
-      expect(result.stderr, contains('--planner-data-root'));
+      expect(result.stderr, contains('--data-root'));
     });
   });
 }

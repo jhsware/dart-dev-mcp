@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';

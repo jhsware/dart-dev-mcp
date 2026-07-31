@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:planner_mcp/planner_mcp.dart';
+import 'package:jhsware_code_planner/planner_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
 
@@ -25,8 +25,11 @@ void main() {
     });
 
     test('--insecure flag', () {
-      final c = PlannerConfig.parse(
-          ['--project-dir=/a', '--server-url=https://h', '--insecure']);
+      final c = PlannerConfig.parse([
+        '--project-dir=/a',
+        '--server-url=https://h',
+        '--insecure',
+      ]);
       expect(c.insecure, isTrue);
     });
   });
@@ -40,21 +43,26 @@ void main() {
     setUp(() async {
       server = await HttpServer.bind('127.0.0.1', 0);
       server.listen((req) async {
-        final path = '${req.uri.path}'
+        final path =
+            '${req.uri.path}'
             '${req.uri.hasQuery ? '?${req.uri.query}' : ''}';
         final body = await utf8.decoder.bind(req).join();
         req.response.headers.contentType = ContentType.json;
-        req.response.write(jsonEncode({
-          '_method': req.method,
-          '_path': path,
-          '_body': body.isEmpty ? null : jsonDecode(body),
-          'ok': true,
-        }));
+        req.response.write(
+          jsonEncode({
+            '_method': req.method,
+            '_path': path,
+            '_body': body.isEmpty ? null : jsonDecode(body),
+            'ok': true,
+          }),
+        );
         await req.response.close();
       });
       final base = 'http://127.0.0.1:${server.port}';
-      config = PlannerConfig.parse(
-          ['--project-dir=$projectDir', '--server-url=$base']);
+      config = PlannerConfig.parse([
+        '--project-dir=$projectDir',
+        '--server-url=$base',
+      ]);
       client = PlannerApiClient(baseUrl: base, client: http.Client());
     });
 
@@ -76,9 +84,10 @@ void main() {
 
     test('rejects unknown project_dir', () async {
       final r = await dispatchPlanner(
-          {'operation': 'show-task', 'project_dir': '/nope', 'id': 'x'},
-          client,
-          config);
+        {'operation': 'show-task', 'project_dir': '/nope', 'id': 'x'},
+        client,
+        config,
+      );
       expect(_resultText(r), startsWith('Error:'));
     });
 
@@ -96,8 +105,11 @@ void main() {
     });
 
     test('show-task -> GET /projects/myproj/tasks/{id}', () async {
-      final r = await call(
-          {'operation': 'show-task', 'project_dir': projectDir, 'id': 't1'});
+      final r = await call({
+        'operation': 'show-task',
+        'project_dir': projectDir,
+        'id': 't1',
+      });
       expect(r['_method'], 'GET');
       expect(r['_path'], '/projects/myproj/tasks/t1');
     });
@@ -145,19 +157,21 @@ void main() {
       expect(r['_path'], '/projects/myproj/audit/task/t1');
     });
 
-    test('create-project -> POST /projects with body, no project_dir needed',
-        () async {
-      final r = await call({
-        'operation': 'create-project',
-        'local_path': '/tmp/newproj',
-        'name': 'New Proj',
-      });
-      expect(r['_method'], 'POST');
-      expect(r['_path'], '/projects');
-      expect(r['_body'], {'local_path': '/tmp/newproj', 'name': 'New Proj'});
-      // The raw server JSON is returned without project_dir injection.
-      expect(r.containsKey('project_dir'), isFalse);
-    });
+    test(
+      'create-project -> POST /projects with body, no project_dir needed',
+      () async {
+        final r = await call({
+          'operation': 'create-project',
+          'local_path': '/tmp/newproj',
+          'name': 'New Proj',
+        });
+        expect(r['_method'], 'POST');
+        expect(r['_path'], '/projects');
+        expect(r['_body'], {'local_path': '/tmp/newproj', 'name': 'New Proj'});
+        // The raw server JSON is returned without project_dir injection.
+        expect(r.containsKey('project_dir'), isFalse);
+      },
+    );
 
     test('create-project omits name when not provided', () async {
       final r = await call({
@@ -171,7 +185,10 @@ void main() {
 
     test('create-project requires local_path', () async {
       final r = await dispatchPlanner(
-          {'operation': 'create-project'}, client, config);
+        {'operation': 'create-project'},
+        client,
+        config,
+      );
       expect(_resultText(r), 'Error: local_path is required');
     });
 

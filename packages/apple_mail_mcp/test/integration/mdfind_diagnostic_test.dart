@@ -4,7 +4,7 @@ library;
 
 import 'dart:io';
 
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 import 'package:test/test.dart';
 
 /// Diagnostic test suite to isolate mdfind behavior and identify why
@@ -63,8 +63,10 @@ void main() {
       String? firstEmlxPath;
 
       try {
-        await for (final entity
-            in mailDir.list(recursive: true, followLinks: false)) {
+        await for (final entity in mailDir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is File && entity.path.endsWith('.emlx')) {
             emlxCount++;
             firstEmlxPath ??= entity.path;
@@ -84,7 +86,8 @@ void main() {
       }
       // ignore: avoid_print
       print(
-          'RESULT: ${emlxCount > 0 ? "PASS" : "FAIL"} — .emlx files ${emlxCount > 0 ? "exist" : "NOT found"}');
+        'RESULT: ${emlxCount > 0 ? "PASS" : "FAIL"} — .emlx files ${emlxCount > 0 ? "exist" : "NOT found"}',
+      );
     });
 
     test('3. Run mdls on a known .emlx file', () async {
@@ -97,8 +100,10 @@ void main() {
 
       String? emlxPath;
       try {
-        await for (final entity
-            in mailDir.list(recursive: true, followLinks: false)) {
+        await for (final entity in mailDir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is File && entity.path.endsWith('.emlx')) {
             emlxPath = entity.path;
             break;
@@ -118,14 +123,17 @@ void main() {
       // ignore: avoid_print
       print('Running mdls on: $emlxPath');
       try {
-        final mdlsResult = await runMdls(emlxPath, attributes: [
-          'kMDItemContentType',
-          'kMDItemContentTypeTree',
-          'kMDItemKind',
-          'kMDItemTitle',
-          'kMDItemAuthors',
-          'kMDItemContentCreationDate',
-        ]);
+        final mdlsResult = await runMdls(
+          emlxPath,
+          attributes: [
+            'kMDItemContentType',
+            'kMDItemContentTypeTree',
+            'kMDItemKind',
+            'kMDItemTitle',
+            'kMDItemAuthors',
+            'kMDItemContentCreationDate',
+          ],
+        );
 
         for (final entry in mdlsResult.entries) {
           // ignore: avoid_print
@@ -135,10 +143,12 @@ void main() {
         final contentType = mdlsResult['kMDItemContentType'];
         // ignore: avoid_print
         print(
-            '\nActual content type: "$contentType" (expected: "com.apple.mail.emlx")');
+          '\nActual content type: "$contentType" (expected: "com.apple.mail.emlx")',
+        );
         // ignore: avoid_print
         print(
-            'RESULT: ${contentType == "com.apple.mail.emlx" ? "PASS" : "FAIL"} — content type ${contentType == "com.apple.mail.emlx" ? "matches" : "MISMATCH: got $contentType"}');
+          'RESULT: ${contentType == "com.apple.mail.emlx" ? "PASS" : "FAIL"} — content type ${contentType == "com.apple.mail.emlx" ? "matches" : "MISMATCH: got $contentType"}',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdls error: $e');
@@ -158,8 +168,10 @@ void main() {
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -180,7 +192,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind (no scope) returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind (no scope) returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -199,8 +212,10 @@ void main() {
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -221,7 +236,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind -name returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind -name returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -240,8 +256,10 @@ void main() {
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -262,7 +280,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — kMDItemFSName returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — kMDItemFSName returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -279,8 +298,10 @@ void main() {
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -301,7 +322,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — kind:email returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — kind:email returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -312,7 +334,8 @@ void main() {
       final expandedPath = '$homeDir/Library/Mail';
       // ignore: avoid_print
       print(
-          'Running: mdfind -onlyin "$expandedPath" \'kMDItemContentType == "com.apple.mail.emlx"\'');
+        'Running: mdfind -onlyin "$expandedPath" \'kMDItemContentType == "com.apple.mail.emlx"\'',
+      );
 
       try {
         final result = await Process.run('mdfind', [
@@ -323,8 +346,10 @@ void main() {
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -337,7 +362,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind (scoped) returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — mdfind (scoped) returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -347,7 +373,8 @@ void main() {
     test('9. mdfind with unexpanded tilde path (bug check)', () async {
       // ignore: avoid_print
       print(
-          'Running: mdfind -onlyin "~/Library/Mail" \'kMDItemContentType == "com.apple.mail.emlx"\'');
+        'Running: mdfind -onlyin "~/Library/Mail" \'kMDItemContentType == "com.apple.mail.emlx"\'',
+      );
 
       try {
         final result = await Process.run('mdfind', [
@@ -358,8 +385,10 @@ void main() {
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -372,7 +401,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${result.exitCode == 0 ? "INFO" : "FAIL"} — unexpanded tilde: ${lines.length} results (exit ${result.exitCode})');
+          'RESULT: ${result.exitCode == 0 ? "INFO" : "FAIL"} — unexpanded tilde: ${lines.length} results (exit ${result.exitCode})',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -418,8 +448,10 @@ void main() {
 
       // Check mdutil status
       try {
-        final result =
-            await Process.run('mdutil', ['-s', '$homeDir/Library/Mail']);
+        final result = await Process.run('mdutil', [
+          '-s',
+          '$homeDir/Library/Mail',
+        ]);
         // ignore: avoid_print
         print('mdutil -s Mail: ${(result.stdout as String).trim()}');
         if ((result.stderr as String).trim().isNotEmpty) {
@@ -461,8 +493,10 @@ void main() {
           if (exists) {
             var count = 0;
             try {
-              await for (final f
-                  in dir.list(recursive: true, followLinks: false)) {
+              await for (final f in dir.list(
+                recursive: true,
+                followLinks: false,
+              )) {
                 if (f is File && f.path.endsWith('.emlx')) {
                   count++;
                   if (count >= 5) break;
@@ -476,7 +510,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${paths.isNotEmpty ? "PASS" : "FAIL"} — found ${paths.length} accounts');
+          'RESULT: ${paths.isNotEmpty ? "PASS" : "FAIL"} — found ${paths.length} accounts',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('resolveAccountPaths error: $e');
@@ -506,19 +541,30 @@ void main() {
 
         // Test with -name flag scoped to account
         final result2 = await Process.run('mdfind', [
-          '-onlyin', accountPath, '-name', '.emlx',
+          '-onlyin',
+          accountPath,
+          '-name',
+          '.emlx',
         ]);
-        final nameResults = (result2.stdout as String).trim()
-            .split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final nameResults = (result2.stdout as String)
+            .trim()
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
         // ignore: avoid_print
         print('-name .emlx results: ${nameResults.length}');
 
         // Test with kMDItemFSName scoped to account
         final result3 = await Process.run('mdfind', [
-          '-onlyin', accountPath, "kMDItemFSName == '*.emlx'",
+          '-onlyin',
+          accountPath,
+          "kMDItemFSName == '*.emlx'",
         ]);
-        final fsNameResults = (result3.stdout as String).trim()
-            .split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final fsNameResults = (result3.stdout as String)
+            .trim()
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
         // ignore: avoid_print
         print('kMDItemFSName results: ${fsNameResults.length}');
 
@@ -539,12 +585,15 @@ void main() {
 
       try {
         final result = await Process.run('mdfind', [
-          '-interpret', 'email messages',
+          '-interpret',
+          'email messages',
         ]);
 
         final stdout = (result.stdout as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -561,7 +610,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — -interpret returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — -interpret returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -577,13 +627,17 @@ void main() {
 
       try {
         final result = await Process.run('mdfind', [
-          '-onlyin', expandedPath, '*',
+          '-onlyin',
+          expandedPath,
+          '*',
         ]);
 
         final stdout = (result.stdout as String).trim();
         final stderr = (result.stderr as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // ignore: avoid_print
         print('Exit code: ${result.exitCode}');
@@ -604,7 +658,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — wildcard in ~/Library/Mail returned ${lines.length} results');
+          'RESULT: ${lines.isNotEmpty ? "PASS" : "FAIL"} — wildcard in ~/Library/Mail returned ${lines.length} results',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -615,7 +670,9 @@ void main() {
       // Test if mdfind works at all for .emlx files anywhere on disk
       // If this returns results but scoped search doesn't, it's a scoping issue
       // ignore: avoid_print
-      print('Running: mdfind -onlyin / \'kMDItemContentType == "com.apple.mail.emlx"\' (first 5 only)');
+      print(
+        'Running: mdfind -onlyin / \'kMDItemContentType == "com.apple.mail.emlx"\' (first 5 only)',
+      );
 
       try {
         final result = await Process.run('mdfind', [
@@ -623,12 +680,16 @@ void main() {
         ]);
 
         final stdout = (result.stdout as String).trim();
-        final lines =
-            stdout.split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = stdout
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
 
         // Separate by location
         final inMail = lines.where((l) => l.contains('/Library/Mail/')).length;
-        final outsideMail = lines.where((l) => !l.contains('/Library/Mail/')).length;
+        final outsideMail = lines
+            .where((l) => !l.contains('/Library/Mail/'))
+            .length;
 
         // ignore: avoid_print
         print('Total results: ${lines.length}');
@@ -648,7 +709,8 @@ void main() {
 
         // ignore: avoid_print
         print(
-            'RESULT: INFO — total=${lines.length}, inMail=$inMail, outside=$outsideMail');
+          'RESULT: INFO — total=${lines.length}, inMail=$inMail, outside=$outsideMail',
+        );
       } catch (e) {
         // ignore: avoid_print
         print('mdfind error: $e');
@@ -667,8 +729,10 @@ void main() {
 
       var fsCount = 0;
       try {
-        await for (final entity
-            in mailDir.list(recursive: true, followLinks: false)) {
+        await for (final entity in mailDir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is File && entity.path.endsWith('.emlx')) {
             fsCount++;
             if (fsCount >= 100) break;
@@ -682,11 +746,15 @@ void main() {
       int mdfindCount;
       try {
         final result = await Process.run('mdfind', [
-          '-onlyin', '$homeDir/Library/Mail',
+          '-onlyin',
+          '$homeDir/Library/Mail',
           'kMDItemContentType == "com.apple.mail.emlx"',
         ]);
-        final lines = (result.stdout as String).trim()
-            .split('\n').where((l) => l.trim().isNotEmpty).toList();
+        final lines = (result.stdout as String)
+            .trim()
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
         mdfindCount = lines.length;
       } catch (_) {
         mdfindCount = -1;

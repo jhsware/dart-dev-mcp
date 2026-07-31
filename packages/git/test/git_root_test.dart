@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:git_mcp/git_mcp.dart';
+import 'package:jhsware_code_git/git_mcp.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -56,8 +56,9 @@ void main() {
       final repoDir = p.join(tempDir.path, 'repo');
       Directory(repoDir).createSync();
       // Submodules and worktrees use a .git file pointing to the real git dir
-      File(p.join(repoDir, '.git'))
-          .writeAsStringSync('gitdir: /elsewhere/.git/worktrees/repo');
+      File(
+        p.join(repoDir, '.git'),
+      ).writeAsStringSync('gitdir: /elsewhere/.git/worktrees/repo');
       final subProject = p.join(repoDir, 'packages', 'sub');
       Directory(subProject).createSync(recursive: true);
 

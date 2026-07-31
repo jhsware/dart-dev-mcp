@@ -1,5 +1,5 @@
-name: dart_dev_mcp
-description: MCP servers for Dart/Flutter development - file editing, URL fetching, code indexing, and Dart/Flutter runners.
+name: jhsware_code
+description: jhsware_code MCP servers for AI-assisted development - file editing, URL fetching, code indexing, task planning, and Dart/Flutter runners.
 version: 0.2.0
 publish_to: none
 repository: https://github.com/jhsware/dart_dev_mcp

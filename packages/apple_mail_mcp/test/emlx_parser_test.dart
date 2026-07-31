@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 
 /// Helper to build a valid .emlx string with correct byte count.
 String buildEmlx(String emailData, {String plist = ''}) {
@@ -62,13 +62,16 @@ void main() {
         mailbox: 'INBOX',
         fileId: '123',
       );
-      expect(info.toString(),
-          'EmlxPathInfo(account: ACC, mailbox: INBOX, id: 123)');
+      expect(
+        info.toString(),
+        'EmlxPathInfo(account: ACC, mailbox: INBOX, id: 123)',
+      );
     });
   });
 
   group('parseEmlxContentFromString', () {
-    final emailData = 'From: sender@example.com\n'
+    final emailData =
+        'From: sender@example.com\n'
         'To: recipient@example.com\n'
         'Subject: Test Email Subject\n'
         'Date: Mon, 15 Jan 2024 10:30:00 +0000\n'
@@ -77,7 +80,8 @@ void main() {
         'This is the body of the email message.\n'
         'It has multiple lines.\n';
 
-    final plist = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    final plist =
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
         '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
         '<plist version="1.0">\n'
@@ -128,7 +132,8 @@ void main() {
 
     test('detects unread status', () {
       final unreadEmail = 'From: test@test.com\nSubject: Unread\n\nbody\n';
-      final unreadPlist = '<plist version="1.0"><dict>'
+      final unreadPlist =
+          '<plist version="1.0"><dict>'
           '<key>flags</key><integer>0</integer>'
           '</dict></plist>\n';
       final unreadEmlx = buildEmlx(unreadEmail, plist: unreadPlist);
@@ -169,8 +174,10 @@ void main() {
     test('truncates body preview to requested length', () {
       final longEmail = 'From: a@b.com\nSubject: X\n\n${'A' * 500}';
       final longBody = buildEmlx(longEmail);
-      final result =
-          parseEmlxContentFromString(longBody, bodyPreviewLength: 50);
+      final result = parseEmlxContentFromString(
+        longBody,
+        bodyPreviewLength: 50,
+      );
       expect(result, isNotNull);
       expect(result!.bodyPreview!.length, lessThanOrEqualTo(54)); // 50 + "..."
     });
@@ -189,7 +196,8 @@ void main() {
 
     test('detects attachments from flags', () {
       final email = 'From: a@b.com\nSubject: Hi\n\nbody\n';
-      final attachPlist = '<plist version="1.0"><dict>'
+      final attachPlist =
+          '<plist version="1.0"><dict>'
           '<key>flags</key><integer>5</integer>'
           '</dict></plist>\n';
       final withAttachments = buildEmlx(email, plist: attachPlist);
