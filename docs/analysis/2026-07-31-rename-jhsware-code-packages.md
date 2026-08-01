@@ -250,15 +250,48 @@ docs, packages), jhsware_business_desktop_app, veckoappen backend projects,
 veckoappen app docs, gardsman server/app docs, nasp-waves projects,
 whisper_ggml_plus, bmd_switcher_sdk docs, nix-pretty src, agriculture.
 
-### Not reachable from this session (check manually)
+### Additional findings from manual grep (2026-08-01)
 
-- `/Users/jhsware/DEV/agentic-coding/personas` — the external persona builder
-  repo is not registered with the filesystem server.
-- Hidden locations: per-project `.claude/settings*.json` and `.mcp.json`,
-  `~/.claude`, `agentic-plugins/jhsware-code/.claude-plugin/plugin.json`, and
-  installed plugin/skill copies under application-support directories.
-- Suggested manual check:
-  `grep -rn --exclude-dir=node_modules "dart-dev-mcp" ~/DEV ~/RESEARCH ~/.claude`
+The user ran `grep -rn "dart-dev-mcp" ~/DEV ~/RESEARCH` (the filesystem tool
+could not reach these locations). Confirmed additional references:
+
+Personas repo (`~/DEV/agentic-coding/personas`) — allowedTools lists,
+mcpServers keys and system_prompt.md tool references in six personas:
+- `dart-developer` (persona.yaml L142-146, L186-203)
+- `nix-infra-secops-researcher` (persona.yaml + system_prompt.md L45-46)
+- `nix-infra-devops` (persona.yaml + system_prompt.md L49-50)
+- `nix-infra-sysops-server-probe` (persona.yaml + system_prompt.md L32)
+- `nix-infra-sysops` (persona.yaml + system_prompt.md L46-47)
+- `flutter-developer` (persona.yaml, incl. `dart-dev-mcp-flutter-runner`)
+
+Test directories that my per-directory search missed:
+- sysops_app: `test/features/chat/widgets/tool_bubble/renderers/tool_renderer_registry_test.dart`,
+  `test/features/chat/widgets/tool_bubble_test.dart`
+- sysops_server: `test/agent/process_manager_test.dart` L196,
+  `test/agent/agent_runner_appendix_test.dart` L152
+- builder_app: `test/tool_name_formatter_test.dart`,
+  `test/ui/widgets/mcp_env_vars_dialog_planner_cert_test.dart` L24,
+  `test/server_connection_cubit_planner_token_test.dart` L98
+- planner_app: `test/models/project_config_test.dart` (many), plus
+  `README.md` L103/L232 (`~/dev/dart-dev-mcp` source dir, toolset mention)
+
+Standalone scripts and configs outside registered projects:
+- `~/DEV/urbantalk-server-fleet/cli` L833-930 — embedded mcp config JSON with
+  `dart-dev-mcp-fs/git/planner` keys
+- `~/DEV/nixos-infect/claude.sh` — old launcher copy with `dart-dev-mcp-*`
+  keys and `.dart-dev-mcp.bak` suffix
+- `~/DEV/veckoappen-dart-backend/claude.sh` — old launcher copy
+  (`.dart-dev-mcp.bak` suffix)
+- `~/DEV/planner_viewer_migration.sh` L29 (`server: dart-dev-mcp`)
+
+Vendored `agent_chat_ui` copies (same formatter doc + test in each host app):
+- `~/DEV/nasp-waves/nasp_waves_backend_app/packages/agent_chat_ui` (plus a
+  `.worktrees` copy)
+- already listed: sysops_app `packages/agent_chat_ui`
+
+Binary matches (build/, .dart_tool/, kernel blobs, .dill) are build artifacts;
+they disappear on the next build. `~/.claude` and per-project `.claude/`
+settings were not part of this grep and remain unchecked.
 
 ### Suggested update order
 
@@ -266,6 +299,13 @@ whisper_ggml_plus, bmd_switcher_sdk docs, nix-pretty src, agriculture.
 2. Update the functional integration points that generate or match server
    keys: builder_server `mcp_config_builder.dart` + `mcp_inventory_service.dart`,
    planner_app `mcp_server_config.dart` defaults, sysops_server
-   `agent_runner.dart` allow-list, and the two chat renderer registries
-   (builder_app, sysops_app chat_ui_component).
-3. Update prompts, skills, docs and tests in those projects.
+   `agent_runner.dart` allow-list, the chat renderer registries (builder_app,
+   sysops_app chat_ui_component), and every vendored `agent_chat_ui` copy.
+3. Update the six personas in `~/DEV/agentic-coding/personas` (allowedTools,
+   mcpServers keys, system prompts) and re-zip/re-upload them.
+4. Replace or delete the old launcher copies (`nixos-infect/claude.sh`,
+   `veckoappen-dart-backend/claude.sh`) and update
+   `urbantalk-server-fleet/cli` mcp config blocks.
+5. Update prompts, skills, docs and tests in the listed projects.
+6. Check `~/.claude` and per-project `.claude/` settings for pinned
+   `mcp__dart-dev-mcp-*` ids.
