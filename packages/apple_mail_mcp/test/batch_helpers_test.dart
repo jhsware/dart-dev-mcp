@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 
 void main() {
   group('batchList', () {

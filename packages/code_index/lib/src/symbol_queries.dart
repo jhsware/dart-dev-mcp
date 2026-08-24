@@ -74,7 +74,8 @@ class SymbolQueries {
       values.add('%$pathPattern%');
     }
 
-    final result = database.select('''
+    final result = database.select(
+      '''
       SELECT f.path, s.name, s.kind, s.parent, s.visibility, s.signature,
              s.line, s.end_line, s.summary
       FROM symbols s
@@ -82,7 +83,9 @@ class SymbolQueries {
       WHERE ${conditions.join(' AND ')}
       ORDER BY f.path, s.line
       LIMIT ?
-    ''', [...values, limit]);
+    ''',
+      [...values, limit],
+    );
 
     final filePaths = <String>{};
     final matches = result.map((row) {
@@ -152,10 +155,12 @@ class SymbolQueries {
       values.add('%$pathPattern%');
     }
 
-    final whereClause =
-        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final whereClause = conditions.isEmpty
+        ? ''
+        : 'WHERE ${conditions.join(' AND ')}';
 
-    final result = database.select('''
+    final result = database.select(
+      '''
       SELECT f.path, r.dot_path, r.symbol, r.module, r.source_path,
              r.symbol_kind, r.resolution, r.count
       FROM symbol_references r
@@ -163,7 +168,9 @@ class SymbolQueries {
       $whereClause
       ORDER BY r.count DESC, f.path
       LIMIT ?
-    ''', [...values, limit]);
+    ''',
+      [...values, limit],
+    );
 
     final filePaths = <String>{};
     final matches = result.map((row) {

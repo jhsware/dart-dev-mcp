@@ -1,7 +1,7 @@
 ---
 name: planner-do-parent-task
 description: Perform a parent task found in the planner tool. The user passes a task prompt.
-allowed-tools: planner, filesystem, git, fetch, convert, flutter-runner, dart-runner, code-index
+allowed-tools: planner, filesystem, git, fetch, flutter-runner, dart-runner, code-index
 model: opus
 ---
 ultrathink
@@ -34,9 +34,9 @@ Using worktrees allows us to work on tasks in parallel. But creating a worktree 
 
 All tool calls MUST include the `project_dir` parameter matching one of the registered project directories. Omitting `project_dir` will return a validation error.
 
-Use filesystem (dart-dev-mcp-fs) to read, search and edit files.
-Use git (dart-dev-mcp-git) for git operations.
-Use flutter (dart-dev-mcp-flutter-runner) or dart (dart-dev-mcp-dart-runner) to run code test, analyze or build the project. Use the `pub-run` operation for code generation (e.g. `build_runner build --delete-conflicting-outputs`). For monorepo sub-packages, pass the optional `working_dir` parameter (relative to `project_dir`, e.g. `working_dir="packages/foo"`).
+Use filesystem (jhsware_code_filesystem) to read, search and edit files.
+Use git (jhsware_code_git) for git operations.
+Use flutter (jhsware_code_flutter_runner) or dart (jhsware_code_dart_runner) to run code test, analyze or build the project. Use the `pub-run` operation for code generation (e.g. `build_runner build --delete-conflicting-outputs`). For monorepo sub-packages, pass the optional `working_dir` parameter (relative to `project_dir`, e.g. `working_dir="packages/foo"`).
 
 Do not use native tools: Bash, Read, Write, Edit, Git.
 Do not delete files, ask user to delete them.

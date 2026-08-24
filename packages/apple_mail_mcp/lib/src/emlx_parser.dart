@@ -94,11 +94,7 @@ EmlxPathInfo? parseEmlxPath(String filePath) {
   final fileName = path.split('/').last;
   final fileId = fileName.replaceAll(RegExp(r'\.emlx$'), '');
 
-  return EmlxPathInfo(
-    accountDir: accountDir,
-    mailbox: mailbox,
-    fileId: fileId,
-  );
+  return EmlxPathInfo(accountDir: accountDir, mailbox: mailbox, fileId: fileId);
 }
 
 /// Reads an .emlx file and extracts the RFC 2822 Message-ID header.
@@ -177,15 +173,17 @@ EmlxContent? parseEmlxContentFromString(
       : '';
 
   // Parse headers
-  final messageId = _extractHeader(headerSection, 'Message-ID') ??
+  final messageId =
+      _extractHeader(headerSection, 'Message-ID') ??
       _extractHeader(headerSection, 'Message-Id');
   final subject = _extractHeader(headerSection, 'Subject');
   final sender = _extractHeader(headerSection, 'From');
   final dateStr = _extractHeader(headerSection, 'Date');
 
   // Parse Apple plist flags (after the email data)
-  final plistSection =
-      emailEnd < content.length ? content.substring(emailEnd) : '';
+  final plistSection = emailEnd < content.length
+      ? content.substring(emailEnd)
+      : '';
   final flags = _parsePlistFlags(plistSection);
   final isRead = (flags & 1) != 0; // Bit 0 = read
   final hasAttachments = (flags & 4) != 0; // Bit 2 = has attachments

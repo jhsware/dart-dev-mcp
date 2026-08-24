@@ -101,11 +101,13 @@ class SearchOperations {
     }
 
     final joinClause = joins.join('\n');
-    final whereClause =
-        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final whereClause = conditions.isEmpty
+        ? ''
+        : 'WHERE ${conditions.join(' AND ')}';
     final orderClause = useFts ? 'ORDER BY rank' : 'ORDER BY f.path';
 
-    final sql = '''
+    final sql =
+        '''
       SELECT DISTINCT f.id, f.path, f.summary, f.tags, f.file_type, f.language
       FROM files f
       $joinClause
@@ -139,7 +141,8 @@ class SearchOperations {
     int limit,
   ) {
     final like = '%$query%';
-    final result = database.select('''
+    final result = database.select(
+      '''
       SELECT DISTINCT f.id, f.path, f.summary, f.tags, f.file_type, f.language
       FROM files f
       LEFT JOIN symbols sy ON sy.file_id = f.id
@@ -148,7 +151,9 @@ class SearchOperations {
         OR f.tags LIKE ? OR sy.name LIKE ? OR r.dot_path LIKE ?
       ORDER BY f.path
       LIMIT ?
-    ''', [like, like, like, like, like, like, limit]);
+    ''',
+      [like, like, like, like, like, like, limit],
+    );
     filters['fallback'] = 'like';
     return _buildResults(result, filters);
   }
@@ -196,17 +201,17 @@ class SearchOperations {
         database.select('SELECT COUNT(*) AS c FROM $table').first['c'] as int;
 
     Map<String, int> group(String sql, String keyCol) => {
-          for (final r in database.select(sql))
-            (r[keyCol] as String? ?? 'unknown'): r['cnt'] as int,
-        };
+      for (final r in database.select(sql))
+        (r[keyCol] as String? ?? 'unknown'): r['cnt'] as int,
+    };
 
-    final totalLines = database
-            .select('SELECT SUM(line_count) AS s FROM files')
-            .first['s'] as int? ??
+    final totalLines =
+        database.select('SELECT SUM(line_count) AS s FROM files').first['s']
+            as int? ??
         0;
-    final totalWords = database
-            .select('SELECT SUM(word_count) AS s FROM files')
-            .first['s'] as int? ??
+    final totalWords =
+        database.select('SELECT SUM(word_count) AS s FROM files').first['s']
+            as int? ??
         0;
 
     final topImports = database.select(
@@ -225,12 +230,12 @@ class SearchOperations {
         'total': count('files'),
         'by_language': group(
           'SELECT language, COUNT(*) AS cnt FROM files '
-          'GROUP BY language ORDER BY cnt DESC',
+              'GROUP BY language ORDER BY cnt DESC',
           'language',
         ),
         'by_type': group(
           'SELECT file_type, COUNT(*) AS cnt FROM files '
-          'GROUP BY file_type ORDER BY cnt DESC',
+              'GROUP BY file_type ORDER BY cnt DESC',
           'file_type',
         ),
       },
@@ -238,7 +243,7 @@ class SearchOperations {
         'total': count('symbols'),
         'by_kind': group(
           'SELECT kind, COUNT(*) AS cnt FROM symbols '
-          'GROUP BY kind ORDER BY cnt DESC',
+              'GROUP BY kind ORDER BY cnt DESC',
           'kind',
         ),
       },
@@ -258,14 +263,14 @@ class SearchOperations {
         'total': count('annotations'),
         'by_kind': group(
           'SELECT kind, COUNT(*) AS cnt FROM annotations '
-          'GROUP BY kind ORDER BY cnt DESC',
+              'GROUP BY kind ORDER BY cnt DESC',
           'kind',
         ),
       },
       'tags': _topTags(20),
       'freshness': group(
         'SELECT analysis_status, COUNT(*) AS cnt FROM files '
-        'GROUP BY analysis_status',
+            'GROUP BY analysis_status',
         'analysis_status',
       ),
       'totals': {'lines': totalLines, 'words': totalWords},
@@ -282,10 +287,7 @@ class SearchOperations {
     }
     final sorted = counts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    return sorted
-        .take(n)
-        .map((e) => {'tag': e.key, 'count': e.value})
-        .toList();
+    return sorted.take(n).map((e) => {'tag': e.key, 'count': e.value}).toList();
   }
 
   List<String> _decodeTags(String? raw) {

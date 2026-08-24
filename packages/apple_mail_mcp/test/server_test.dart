@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 
 void main() {
   group('getInboxOperations', () {
@@ -23,8 +23,11 @@ void main() {
     test('all values are non-null functions', () {
       final ops = getInboxOperations();
       for (final entry in ops.entries) {
-        expect(entry.value, isNotNull,
-            reason: '${entry.key} handler should not be null');
+        expect(
+          entry.value,
+          isNotNull,
+          reason: '${entry.key} handler should not be null',
+        );
       }
     });
   });
@@ -58,10 +61,12 @@ void main() {
   });
 
   group('allOperations', () {
-    test('contains exactly 25 operations (14 sync + 8 batched + 3 session)',
-        () {
-      expect(allOperations.length, equals(25));
-    });
+    test(
+      'contains exactly 25 operations (14 sync + 8 batched + 3 session)',
+      () {
+        expect(allOperations.length, equals(25));
+      },
+    );
 
     test('contains all inbox operations', () {
       expect(allOperations, contains('list-inbox-emails'));
@@ -99,4 +104,3 @@ void main() {
     });
   });
 }
-

@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:code_index_mcp/src/database.dart';
-import 'package:code_index_mcp/src/hash_utils.dart';
-import 'package:code_index_mcp/src/record_normalize.dart';
-import 'package:code_index_mcp/src/registry.dart';
-import 'package:code_index_mcp/src/storage_paths.dart';
+import 'package:jhsware_code_code_index/src/database.dart';
+import 'package:jhsware_code_code_index/src/hash_utils.dart';
+import 'package:jhsware_code_code_index/src/record_normalize.dart';
+import 'package:jhsware_code_code_index/src/registry.dart';
+import 'package:jhsware_code_code_index/src/storage_paths.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
@@ -48,8 +48,10 @@ void main() {
         isEmpty,
       );
       // The current schema is present.
-      expect(rebuilt.select("SELECT name FROM sqlite_master WHERE name = 'files'"),
-          isNotEmpty);
+      expect(
+        rebuilt.select("SELECT name FROM sqlite_master WHERE name = 'files'"),
+        isNotEmpty,
+      );
     });
 
     test('openOrRebuild keeps a database already at the current version', () {
@@ -102,30 +104,45 @@ void main() {
   });
 
   group('registry / meta atomic read-modify-write', () {
-    test('upsertProject writes registry.json atomically (no .tmp left behind)',
-        () {
-      final proj = Directory(p.join(tmp.path, 'proj'))..createSync();
-      upsertProject(tmp.path, proj.path);
+    test(
+      'upsertProject writes registry.json atomically (no .tmp left behind)',
+      () {
+        final proj = Directory(p.join(tmp.path, 'proj'))..createSync();
+        upsertProject(tmp.path, proj.path);
 
-      expect(File(p.join(tmp.path, 'registry.json')).existsSync(), isTrue);
-      expect(File(p.join(tmp.path, 'registry.json.tmp')).existsSync(), isFalse);
+        expect(File(p.join(tmp.path, 'registry.json')).existsSync(), isTrue);
+        expect(
+          File(p.join(tmp.path, 'registry.json.tmp')).existsSync(),
+          isFalse,
+        );
 
-      final reg = jsonDecode(
-        File(p.join(tmp.path, 'registry.json')).readAsStringSync(),
-      ) as Map;
-      final canonical = canonicalProjectPath(proj.path);
-      expect((reg['projects'] as Map).containsKey(canonical), isTrue);
-    });
+        final reg =
+            jsonDecode(
+                  File(p.join(tmp.path, 'registry.json')).readAsStringSync(),
+                )
+                as Map;
+        final canonical = canonicalProjectPath(proj.path);
+        expect((reg['projects'] as Map).containsKey(canonical), isTrue);
+      },
+    );
 
     test('a second upsert preserves created_at (read-modify-write)', () {
       final proj = Directory(p.join(tmp.path, 'proj'))..createSync();
       final canonical = canonicalProjectPath(proj.path);
       upsertProject(tmp.path, proj.path);
-      final first = (jsonDecode(File(p.join(tmp.path, 'registry.json'))
-          .readAsStringSync()) as Map)['projects'][canonical] as Map;
+      final first =
+          (jsonDecode(
+                    File(p.join(tmp.path, 'registry.json')).readAsStringSync(),
+                  )
+                  as Map)['projects'][canonical]
+              as Map;
       upsertProject(tmp.path, proj.path);
-      final second = (jsonDecode(File(p.join(tmp.path, 'registry.json'))
-          .readAsStringSync()) as Map)['projects'][canonical] as Map;
+      final second =
+          (jsonDecode(
+                    File(p.join(tmp.path, 'registry.json')).readAsStringSync(),
+                  )
+                  as Map)['projects'][canonical]
+              as Map;
       expect(second['created_at'], first['created_at']);
     });
 
@@ -133,9 +150,9 @@ void main() {
       File(p.join(tmp.path, 'registry.json')).writeAsStringSync('{ not json');
       final proj = Directory(p.join(tmp.path, 'proj'))..createSync();
       upsertProject(tmp.path, proj.path);
-      final reg = jsonDecode(
-        File(p.join(tmp.path, 'registry.json')).readAsStringSync(),
-      ) as Map;
+      final reg =
+          jsonDecode(File(p.join(tmp.path, 'registry.json')).readAsStringSync())
+              as Map;
       expect(reg['projects'] as Map, isNotEmpty);
     });
 
@@ -164,7 +181,11 @@ void main() {
       final rec = normalizeRecord(
         record: {
           'references': [
-            {'symbol': 'json_serializable', 'qualifier': 'build_runner', 'count': 2},
+            {
+              'symbol': 'json_serializable',
+              'qualifier': 'build_runner',
+              'count': 2,
+            },
             {'symbol': 'Widget', 'qualifier': 'package:flutter/material.dart'},
             {'symbol': 'Loose'},
           ],
@@ -175,8 +196,10 @@ void main() {
         fileType: 'yaml',
       );
       final byName = {for (final r in rec.references) r.symbol: r};
-      expect(byName['json_serializable']!.dotPath,
-          'build_runner.json_serializable');
+      expect(
+        byName['json_serializable']!.dotPath,
+        'build_runner.json_serializable',
+      );
       expect(byName['json_serializable']!.resolution, 'declared');
       expect(byName['json_serializable']!.count, 2);
       expect(byName['Widget']!.dotPath, 'flutter.material.Widget');

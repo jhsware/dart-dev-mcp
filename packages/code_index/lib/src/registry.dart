@@ -90,8 +90,7 @@ void writeMeta(String dataDir, String projectPath, int schemaVersion) {
     'created_at': _nowIso(),
   };
   Directory(dataDir).createSync(recursive: true);
-  file.writeAsStringSync(
-      const JsonEncoder.withIndent('  ').convert(meta));
+  file.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(meta));
 }
 
 /// Read the per-project `meta.json` marker, or null when absent/corrupt.
@@ -139,8 +138,10 @@ void assertMetaMatches(String dataDir, String projectPath) {
 /// this is a dry run that only reports. With [delete] true the orphaned
 /// store directories are removed together with their `registry.json`
 /// entries.
-Map<String, dynamic> pruneOrphanedStores(String dataRoot,
-    {bool delete = false}) {
+Map<String, dynamic> pruneOrphanedStores(
+  String dataRoot, {
+  bool delete = false,
+}) {
   final root = Directory(dataRoot);
   final orphans = <Map<String, dynamic>>[];
   final unidentified = <String>[];
@@ -171,7 +172,9 @@ Map<String, dynamic> pruneOrphanedStores(String dataRoot,
 
   if (delete && orphans.isNotEmpty) {
     _removeRegistryEntries(
-        dataRoot, orphans.map((o) => o['project_path'] as String).toSet());
+      dataRoot,
+      orphans.map((o) => o['project_path'] as String).toSet(),
+    );
   }
 
   return {

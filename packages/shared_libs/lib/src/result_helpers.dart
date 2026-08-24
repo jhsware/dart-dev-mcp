@@ -10,9 +10,7 @@ import 'logging.dart';
 /// This is a common helper used across all MCP servers to wrap
 /// plain text responses in the proper MCP result format.
 CallToolResult textResult(String text) {
-  return CallToolResult.fromContent(
-    [TextContent(text: text)],
-  );
+  return CallToolResult.fromContent([TextContent(text: text)]);
 }
 
 /// Creates a CallToolResult with JSON content.
@@ -20,9 +18,9 @@ CallToolResult textResult(String text) {
 /// This is a common helper for returning structured data responses,
 /// automatically formatting the JSON with indentation.
 CallToolResult jsonResult(Map<String, dynamic> data) {
-  return CallToolResult.fromContent(
-    [TextContent(text: JsonEncoder.withIndent('  ').convert(data))],
-  );
+  return CallToolResult.fromContent([
+    TextContent(text: JsonEncoder.withIndent('  ').convert(data)),
+  ]);
 }
 
 /// Creates an error CallToolResult with consistent formatting and logging.
@@ -56,7 +54,7 @@ CallToolResult errorResult(
 ]) {
   // Log the error with full context
   logError(operation, error, stackTrace, context);
-  
+
   // Return a user-friendly error message
   final message = _formatErrorMessage(error);
   return textResult(message);
@@ -123,6 +121,8 @@ CallToolResult outOfScopeResponse({
     'status': 'out_of_scope',
     'path': path,
     'allowed_paths': allowedPaths,
-    'message': message ?? "Path '$path' is outside allowed paths: ${allowedPaths.join(', ')}",
+    'message':
+        message ??
+        "Path '$path' is outside allowed paths: ${allowedPaths.join(', ')}",
   });
 }

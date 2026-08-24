@@ -4,7 +4,7 @@
 /// functionality:
 ///
 /// ```dart
-/// import 'package:code_index_mcp/code_index_mcp.dart';
+/// import 'package:jhsware_code_code_index/code_index_mcp.dart';
 /// ```
 library;
 

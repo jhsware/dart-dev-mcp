@@ -44,7 +44,8 @@ Future<List<String>> fetchEmailFiles({
   if (accountPath == null) {
     // Try partial match (account name might differ slightly)
     final matchingKey = accountPaths.keys.firstWhere(
-      (k) => k.toLowerCase().contains(account.toLowerCase()) ||
+      (k) =>
+          k.toLowerCase().contains(account.toLowerCase()) ||
           account.toLowerCase().contains(k.toLowerCase()),
       orElse: () => '',
     );
@@ -91,11 +92,9 @@ Future<List<String>> _fetchEmailFilesFromPath({
 
   if (endDate != null) {
     // End of day
-    dateBefore = DateTime.parse(endDate).add(const Duration(
-      hours: 23,
-      minutes: 59,
-      seconds: 59,
-    ));
+    dateBefore = DateTime.parse(
+      endDate,
+    ).add(const Duration(hours: 23, minutes: 59, seconds: 59));
   }
 
   // Determine search scope directory
@@ -116,10 +115,7 @@ Future<List<String>> _fetchEmailFilesFromPath({
   }
 
   // Build and run mdfind query
-  final query = buildMdfindQuery(
-    dateAfter: dateAfter,
-    dateBefore: dateBefore,
-  );
+  final query = buildMdfindQuery(dateAfter: dateAfter, dateBefore: dateBefore);
 
   final files = await runMdfind(query, directory: scopeDir);
 
@@ -173,7 +169,8 @@ Future<List<String>> fetchMessageIds({
 /// Uses mdls for fast Spotlight-indexed metadata (subject, sender, date)
 /// and .emlx parsing for Message-ID and read status.
 Future<List<Map<String, String>>> fetchEmailMetadata(
-    List<String> emlxPaths) async {
+  List<String> emlxPaths,
+) async {
   if (emlxPaths.isEmpty) return [];
 
   // Batch mdls queries in groups of 100 to avoid command line limits
@@ -209,7 +206,9 @@ Future<List<Map<String, String>>> fetchEmailMetadata(
         'read_status': (content?.isRead ?? false) ? 'read' : 'unread',
         'mailbox': pathInfo?.mailbox ?? '',
         'account': pathInfo?.accountDir ?? '',
-        'has_attachments': (content?.hasAttachments ?? false) ? 'true' : 'false',
+        'has_attachments': (content?.hasAttachments ?? false)
+            ? 'true'
+            : 'false',
       });
     }
   }
@@ -226,7 +225,6 @@ Future<List<String>> fetchAccountNames() async {
   return accountPaths.keys.toList();
 }
 
-
 /// Returns the Full Disk Access warning if FDA is not granted, or `null`.
 ///
 /// Call this when an operation returns zero results to inform the user
@@ -236,7 +234,6 @@ Future<String?> getFullDiskAccessWarningIfNeeded() async {
   if (fdaStatus == false) return fullDiskAccessWarning;
   return null;
 }
-
 
 // ──────────────────────── Private helpers ────────────────────────
 
@@ -264,8 +261,10 @@ bool _isSystemFolderPath(String path) {
 /// Used by attachment operations that still use AppleScript batch processing.
 /// Example: `buildMessageIdSet(['a', 'b'])` → `{"a", "b"}`
 String buildMessageIdSet(List<String> ids) {
-  final escaped = ids.map((id) {
-    return '"${escapeAppleScript(id)}"';
-  }).join(', ');
+  final escaped = ids
+      .map((id) {
+        return '"${escapeAppleScript(id)}"';
+      })
+      .join(', ');
   return '{$escaped}';
 }

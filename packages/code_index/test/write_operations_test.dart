@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
@@ -22,7 +22,11 @@ void main() {
       final rec = normalizeRecord(
         record: {
           'references': [
-            {'symbol': 'json_serializable', 'qualifier': 'build_runner', 'count': 2},
+            {
+              'symbol': 'json_serializable',
+              'qualifier': 'build_runner',
+              'count': 2,
+            },
             {'symbol': 'Widget', 'qualifier': 'package:flutter/material.dart'},
             {'symbol': 'Loose'},
           ],
@@ -33,7 +37,10 @@ void main() {
         fileType: 'yaml',
       );
       final refs = {for (final r in rec.references) r.symbol: r};
-      expect(refs['json_serializable']!.dotPath, 'build_runner.json_serializable');
+      expect(
+        refs['json_serializable']!.dotPath,
+        'build_runner.json_serializable',
+      );
       expect(refs['json_serializable']!.resolution, 'declared');
       expect(refs['json_serializable']!.count, 2);
       expect(refs['Widget']!.dotPath, 'flutter.material.Widget');
@@ -67,8 +74,10 @@ void main() {
     late WriteOperations ops;
 
     Future<void> pubGet() async {
-      final r = await Process.run('dart', ['pub', 'get'],
-          workingDirectory: project.path);
+      final r = await Process.run('dart', [
+        'pub',
+        'get',
+      ], workingDirectory: project.path);
       expect(r.exitCode, 0, reason: 'pub get failed: ${r.stderr}');
     }
 
@@ -91,74 +100,91 @@ environment:
       await dataDir.delete(recursive: true);
     });
 
-    test('non-Dart declared refs + line clamp warning surface in response',
-        () async {
-      await File(p.join(project.path, 'build.yaml'))
-          .writeAsString('targets:\n  app: 1\n');
-      final res = _json(await ops.indexFiles({
-        'files': [
-          {
-            'path': 'build.yaml',
-            'language': 'yaml',
-            'summary': 'build config',
-            'tags': ['build', 'codegen'],
-            'symbols': [
-              {'name': 'targets', 'kind': 'key', 'line': 1, 'end_line': 99},
+    test(
+      'non-Dart declared refs + line clamp warning surface in response',
+      () async {
+        await File(
+          p.join(project.path, 'build.yaml'),
+        ).writeAsString('targets:\n  app: 1\n');
+        final res = _json(
+          await ops.indexFiles({
+            'files': [
+              {
+                'path': 'build.yaml',
+                'language': 'yaml',
+                'summary': 'build config',
+                'tags': ['build', 'codegen'],
+                'symbols': [
+                  {'name': 'targets', 'kind': 'key', 'line': 1, 'end_line': 99},
+                ],
+                'references': [
+                  {'symbol': 'json_serializable', 'qualifier': 'build_runner'},
+                ],
+              },
             ],
-            'references': [
-              {'symbol': 'json_serializable', 'qualifier': 'build_runner'},
-            ],
-          }
-        ],
-        'refresh_dependents': false,
-      }));
-      expect(res['indexed'], ['build.yaml']);
-      expect((res['warnings'] as List).single['warning'],
-          contains('end_line 99 > line_count'));
+            'refresh_dependents': false,
+          }),
+        );
+        expect(res['indexed'], ['build.yaml']);
+        expect(
+          (res['warnings'] as List).single['warning'],
+          contains('end_line 99 > line_count'),
+        );
 
-      final ref = db.select(
-          'SELECT dot_path, resolution FROM symbol_references').first;
-      expect(ref['dot_path'], 'build_runner.json_serializable');
-      expect(ref['resolution'], 'declared');
-      final fileRow = db.select('SELECT layers_present FROM files').first;
-      expect(jsonDecode(fileRow['layers_present'] as String),
-          containsAll(<int>[0, 1, 2]));
-    });
+        final ref = db
+            .select('SELECT dot_path, resolution FROM symbol_references')
+            .first;
+        expect(ref['dot_path'], 'build_runner.json_serializable');
+        expect(ref['resolution'], 'declared');
+        final fileRow = db.select('SELECT layers_present FROM files').first;
+        expect(
+          jsonDecode(fileRow['layers_present'] as String),
+          containsAll(<int>[0, 1, 2]),
+        );
+      },
+    );
 
-    test('Dart structure computed by extractor; agent structure ignored',
-        () async {
-      await File(p.join(project.path, 'lib', 'greeter.dart')).writeAsString('''
+    test(
+      'Dart structure computed by extractor; agent structure ignored',
+      () async {
+        await File(p.join(project.path, 'lib', 'greeter.dart')).writeAsString(
+          '''
 class Greeter {
   String greet() => 'hi';
 }
-''');
-      await pubGet();
-      final res = _json(await ops.indexFiles({
-        'files': [
-          {
-            'path': 'lib/greeter.dart',
-            'language': 'dart',
-            'summary': 'greets',
-            'symbol_summaries': {'Greeter': 'The greeter.'},
-            // Bogus agent structure that must be IGNORED for Dart:
-            'symbols': [
-              {'name': 'BOGUS', 'kind': 'class'}
+''',
+        );
+        await pubGet();
+        final res = _json(
+          await ops.indexFiles({
+            'files': [
+              {
+                'path': 'lib/greeter.dart',
+                'language': 'dart',
+                'summary': 'greets',
+                'symbol_summaries': {'Greeter': 'The greeter.'},
+                // Bogus agent structure that must be IGNORED for Dart:
+                'symbols': [
+                  {'name': 'BOGUS', 'kind': 'class'},
+                ],
+              },
             ],
-          }
-        ],
-        'refresh_dependents': false,
-      }));
-      expect(res['indexed'], ['lib/greeter.dart']);
-      final names = db
-          .select('SELECT name FROM symbols')
-          .map((r) => r['name'])
-          .toList();
-      expect(names, contains('Greeter'));
-      expect(names, isNot(contains('BOGUS')));
-      final summ = db.select(
-          "SELECT summary FROM symbols WHERE name = 'Greeter'").first;
-      expect(summ['summary'], 'The greeter.');
-    });
+            'refresh_dependents': false,
+          }),
+        );
+        expect(res['indexed'], ['lib/greeter.dart']);
+        final names = db
+            .select('SELECT name FROM symbols')
+            .map((r) => r['name'])
+            .toList();
+        expect(names, contains('Greeter'));
+        expect(names, isNot(contains('BOGUS')));
+        final summ = db
+            .select("SELECT summary FROM symbols WHERE name = 'Greeter'")
+            .first;
+        expect(summ['summary'], 'The greeter.');
+      },
+    );
 
     test('renamed symbol refreshes direct Dart dependents', () async {
       final greeter = File(p.join(project.path, 'lib', 'greeter.dart'));
@@ -177,31 +203,42 @@ Greeter? held;
         'refresh_dependents': false,
       });
       final before = db.select(
-          "SELECT dot_path FROM symbol_references WHERE dot_path LIKE 'test_app.greeter.%'");
-      expect(before.map((r) => r['dot_path']),
-          contains('test_app.greeter.Greeter'));
+        "SELECT dot_path FROM symbol_references WHERE dot_path LIKE 'test_app.greeter.%'",
+      );
+      expect(
+        before.map((r) => r['dot_path']),
+        contains('test_app.greeter.Greeter'),
+      );
 
       // Rename the public class and re-index only greeter.dart.
       await greeter.writeAsString('class Welcomer {}\n');
-      final res = _json(await ops.indexFiles({
-        'files': [
-          {'path': 'lib/greeter.dart'},
-        ],
-      }));
+      final res = _json(
+        await ops.indexFiles({
+          'files': [
+            {'path': 'lib/greeter.dart'},
+          ],
+        }),
+      );
 
       // (a) The changed file's declarations reflect the new name.
-      final greeterSymbols =
-          db.select('SELECT name FROM symbols').map((r) => r['name']).toList();
+      final greeterSymbols = db
+          .select('SELECT name FROM symbols')
+          .map((r) => r['name'])
+          .toList();
       expect(greeterSymbols, contains('Welcomer'));
       expect(greeterSymbols, isNot(contains('Greeter')));
 
       // (b) The importer was refreshed and its stale reference dropped.
       expect(res['dependents_refreshed'], contains('lib/consumer.dart'));
       final after = db.select(
-          "SELECT dot_path FROM symbol_references WHERE dot_path = 'test_app.greeter.Greeter'");
+        "SELECT dot_path FROM symbol_references WHERE dot_path = 'test_app.greeter.Greeter'",
+      );
       expect(after, isEmpty);
-      final consumer = db.select(
-          "SELECT structure_refreshed_at FROM files WHERE path = 'lib/consumer.dart'").first;
+      final consumer = db
+          .select(
+            "SELECT structure_refreshed_at FROM files WHERE path = 'lib/consumer.dart'",
+          )
+          .first;
       expect(consumer['structure_refreshed_at'], isNotNull);
     });
   });

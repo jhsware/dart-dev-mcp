@@ -1,5 +1,52 @@
 ## Unreleased
 
+### BREAKING: jhsware_code naming convention (packages, tools, binaries)
+
+All packages now follow one convention based on the `jhsware_code` prefix.
+Dart packages are `jhsware_code_<tool>` (snake_case), MCP tool names keep
+their simple, easy-to-type dash form (`dart-runner`, `code-index`), compiled
+binaries are `jhsware-code-<tool>`, and MCP server keys are
+`jhsware_code_<tool>`.
+
+**Package renames (pubspec `name:`):**
+- `dart_dev_mcp` (root) → `jhsware_code`
+- `filesystem_mcp` → `jhsware_code_filesystem`
+- `git_mcp` → `jhsware_code_git`
+- `dart_runner_mcp` → `jhsware_code_dart_runner`
+- `flutter_runner_mcp` → `jhsware_code_flutter_runner`
+- `fetch_mcp` → `jhsware_code_fetch`
+- `planner_mcp` → `jhsware_code_planner`
+- `code_index_mcp` → `jhsware_code_code_index`
+- `apple_mail_mcp` → `jhsware_code_apple_mail`
+
+**Tool names (dash form kept):**
+- Tool names stay simple with dashes: `filesystem`, `git`, `planner`, `fetch`,
+  `dart-runner`, `flutter-runner`, `code-index`, `apple-mail`,
+  `fetch-and-transform`.
+- `fetch_links` → `fetch-links` to match the dash convention.
+
+**Binary renames** (rebuild + reinstall required):
+- `file-edit-mcp` → `jhsware-code-filesystem`, `git-mcp` → `jhsware-code-git`,
+  `dart-runner-mcp` → `jhsware-code-dart-runner`, `flutter-runner-mcp` →
+  `jhsware-code-flutter-runner`, `fetch-mcp` → `jhsware-code-fetch`,
+  `planner-mcp` → `jhsware-code-planner`, `code-index-mcp` →
+  `jhsware-code-code-index`, `apple-mail-mcp` → `jhsware-code-apple-mail`.
+- `apple_mail_mcp` is now part of the standard build.
+- The installer package is `bin/jhsware-code-installer.pkg`.
+
+**Entrypoint rename:** `packages/filesystem/bin/file_edit_mcp.dart` →
+`packages/filesystem/bin/filesystem_mcp.dart` (a deprecated forwarder remains).
+
+**Backwards compatible project config:** the permission file is now
+`jhsware_code.yaml`, but the legacy `jhsware-code.yaml` name is still accepted
+(preferred name wins when both exist). Config keys are matched with hyphens
+normalised to underscores, so `code-index:` and `code_index:` both address the
+`code-index` tool. Existing project permission files need no changes.
+
+**Not renamed on purpose:** the code-index data root stays `~/.code-index`
+(existing stores keep working), and operation names (e.g. `read-file`,
+`branch-create`) keep their hyphenated form.
+
 ### BREAKING: planner is now a remote client (planner_remote → planner)
 
 The `planner` MCP no longer opens a local `planner.db`. It is now a thin client

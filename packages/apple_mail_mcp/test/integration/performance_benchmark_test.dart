@@ -4,7 +4,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 import 'package:test/test.dart';
 
 import 'test_helpers.dart';
@@ -29,14 +29,19 @@ void main() {
 
       final avgMs =
           durations.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              durations.length;
+          durations.length;
       // ignore: avoid_print
-      print('list-accounts avg: ${avgMs.toStringAsFixed(0)}ms '
-          '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
+      print(
+        'list-accounts avg: ${avgMs.toStringAsFixed(0)}ms '
+        '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})',
+      );
 
       for (final d in durations) {
-        expect(d, lessThan(maxSimpleOpDuration),
-            reason: 'Each run should complete within time limit');
+        expect(
+          d,
+          lessThan(maxSimpleOpDuration),
+          reason: 'Each run should complete within time limit',
+        );
       }
     });
 
@@ -52,10 +57,12 @@ void main() {
 
       final avgMs =
           durations.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              durations.length;
+          durations.length;
       // ignore: avoid_print
-      print('get-unread-count avg: ${avgMs.toStringAsFixed(0)}ms '
-          '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
+      print(
+        'get-unread-count avg: ${avgMs.toStringAsFixed(0)}ms '
+        '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})',
+      );
 
       for (final d in durations) {
         expect(d, lessThan(maxSimpleOpDuration));
@@ -67,20 +74,20 @@ void main() {
 
       for (var i = 0; i < 3; i++) {
         final (_, elapsed) = await timeOperation(
-          () => inboxHandlers['list-emails']!({
-            'account': account,
-            'limit': 10,
-          }),
+          () =>
+              inboxHandlers['list-emails']!({'account': account, 'limit': 10}),
         );
         durations.add(elapsed);
       }
 
       final avgMs =
           durations.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              durations.length;
+          durations.length;
       // ignore: avoid_print
-      print('list-emails (10) avg: ${avgMs.toStringAsFixed(0)}ms '
-          '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
+      print(
+        'list-emails (10) avg: ${avgMs.toStringAsFixed(0)}ms '
+        '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})',
+      );
 
       for (final d in durations) {
         expect(d, lessThan(maxSimpleOpDuration));
@@ -103,10 +110,12 @@ void main() {
 
       final avgMs =
           durations.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              durations.length;
+          durations.length;
       // ignore: avoid_print
-      print('search-emails avg: ${avgMs.toStringAsFixed(0)}ms '
-          '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
+      print(
+        'search-emails avg: ${avgMs.toStringAsFixed(0)}ms '
+        '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})',
+      );
 
       for (final d in durations) {
         expect(d, lessThan(maxBatchedOpDuration));
@@ -136,11 +145,13 @@ void main() {
 
       final avgMs =
           durations.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              durations.length;
+          durations.length;
       // ignore: avoid_print
-      print('classify-emails (3 cats, 50 emails) avg: '
-          '${avgMs.toStringAsFixed(0)}ms '
-          '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
+      print(
+        'classify-emails (3 cats, 50 emails) avg: '
+        '${avgMs.toStringAsFixed(0)}ms '
+        '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})',
+      );
 
       for (final d in durations) {
         expect(d, lessThan(maxBatchedOpDuration));
@@ -149,7 +160,9 @@ void main() {
 
     test('classify-emails scaling — 1 vs 3 vs 5 categories', () async {
       final configs = <int, String>{
-        1: jsonEncode({'cat_a': ['the', 'and']}),
+        1: jsonEncode({
+          'cat_a': ['the', 'and'],
+        }),
         3: jsonEncode({
           'cat_a': ['the', 'and'],
           'cat_b': ['from', 'to'],
@@ -200,11 +213,7 @@ void main() {
       final startResult = runBatchedInBackground(
         extra: extra,
         operation: 'search-emails',
-        args: {
-          'account': account,
-          'query': 'the',
-          'max_results': 10,
-        },
+        args: {'account': account, 'query': 'the', 'max_results': 10},
         handler: runBatchedSearchEmails,
         sessionManager: sessionManager,
       );
@@ -228,10 +237,16 @@ void main() {
       // ignore: avoid_print
       print('Batched total time: ${totalElapsed.inMilliseconds}ms');
 
-      expect(startElapsed, lessThan(const Duration(seconds: 2)),
-          reason: 'Start should be near-instant');
-      expect(totalElapsed, lessThan(maxBatchedOpDuration),
-          reason: 'Total should complete within batched limit');
+      expect(
+        startElapsed,
+        lessThan(const Duration(seconds: 2)),
+        reason: 'Start should be near-instant',
+      );
+      expect(
+        totalElapsed,
+        lessThan(maxBatchedOpDuration),
+        reason: 'Total should complete within batched limit',
+      );
     });
 
     test('get-inbox-overview benchmark (3 runs)', () async {
@@ -246,10 +261,12 @@ void main() {
 
       final avgMs =
           durations.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              durations.length;
+          durations.length;
       // ignore: avoid_print
-      print('get-inbox-overview avg: ${avgMs.toStringAsFixed(0)}ms '
-          '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})');
+      print(
+        'get-inbox-overview avg: ${avgMs.toStringAsFixed(0)}ms '
+        '(${durations.map((d) => '${d.inMilliseconds}ms').join(', ')})',
+      );
 
       for (final d in durations) {
         expect(d, lessThan(maxComplexOpDuration));

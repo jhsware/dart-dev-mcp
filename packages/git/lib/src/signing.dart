@@ -88,8 +88,11 @@ Future<SigningInfo> detectSigningCapabilities() async {
   bool gpgAvailable = false;
   String? gpgKeyId;
   try {
-    final gpgCheck =
-        await Process.run('gpg', ['--list-secret-keys', '--keyid-format', 'LONG']);
+    final gpgCheck = await Process.run('gpg', [
+      '--list-secret-keys',
+      '--keyid-format',
+      'LONG',
+    ]);
     if (gpgCheck.exitCode == 0) {
       final output = gpgCheck.stdout as String;
       if (output.trim().isNotEmpty) {
@@ -137,10 +140,13 @@ Future<bool> _isKeyUnprotected(String pubKeyPath) async {
 
   try {
     // Try to load the key with empty passphrase
-    final result = await Process.run(
-      'ssh-keygen',
-      ['-y', '-P', '', '-f', privateKeyPath],
-    );
+    final result = await Process.run('ssh-keygen', [
+      '-y',
+      '-P',
+      '',
+      '-f',
+      privateKeyPath,
+    ]);
     return result.exitCode == 0;
   } catch (e) {
     return false;
@@ -173,7 +179,10 @@ void clearSigningCache() {
 }
 
 /// Check signing configuration and generate status report.
-Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingInfo) async {
+Future<CallToolResult> signingStatus(
+  Directory workingDir,
+  SigningInfo signingInfo,
+) async {
   final output = StringBuffer();
   output.writeln('=== Commit Signing Status Report ===');
   output.writeln('');
@@ -186,7 +195,8 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
       final versionStr = (gitVersion.stdout as String).trim();
       output.writeln('   $versionStr');
       output.writeln(
-          '   SSH signing: ${signingInfo.gitSupportsSSH ? "✓ supported (2.34+)" : "✗ not supported (requires 2.34+)"}');
+        '   SSH signing: ${signingInfo.gitSupportsSSH ? "✓ supported (2.34+)" : "✗ not supported (requires 2.34+)"}',
+      );
     }
   } catch (e) {
     output.writeln('   ✗ Git not available: $e');
@@ -194,7 +204,9 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
   output.writeln('');
 
   // 2. Default signing method
-  output.writeln('2. Default Signing Method: ${signingInfo.defaultMethod.toUpperCase()}');
+  output.writeln(
+    '2. Default Signing Method: ${signingInfo.defaultMethod.toUpperCase()}',
+  );
   output.writeln('   (Used when sign="auto")');
   output.writeln('');
 
@@ -217,9 +229,13 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
     output.writeln('   ✗ SSH agent not found');
     output.writeln('   The SSH_AUTH_SOCK environment variable is not set.');
     if (Platform.isMacOS) {
-      output.writeln('   On macOS, try: ssh-add --apple-use-keychain ~/.ssh/id_rsa');
+      output.writeln(
+        '   On macOS, try: ssh-add --apple-use-keychain ~/.ssh/id_rsa',
+      );
     } else {
-      output.writeln(r'   Start ssh-agent: eval $(ssh-agent) && ssh-add ~/.ssh/id_rsa');
+      output.writeln(
+        r'   Start ssh-agent: eval $(ssh-agent) && ssh-add ~/.ssh/id_rsa',
+      );
     }
   }
   output.writeln('');
@@ -244,7 +260,9 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
       try {
         final fingerprint = await Process.run('ssh-keygen', ['-lf', path]);
         if (fingerprint.exitCode == 0) {
-          output.writeln('     Fingerprint: ${(fingerprint.stdout as String).trim()}');
+          output.writeln(
+            '     Fingerprint: ${(fingerprint.stdout as String).trim()}',
+          );
         }
       } catch (e) {
         // Ignore
@@ -253,7 +271,9 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
       // Check if key needs passphrase
       final isUnprotected = await _isKeyUnprotected(path);
       if (!isUnprotected) {
-        output.writeln('     ⚠ Key is passphrase-protected (requires ssh-agent)');
+        output.writeln(
+          '     ⚠ Key is passphrase-protected (requires ssh-agent)',
+        );
       }
     } else {
       output.writeln('   $status $path');
@@ -267,7 +287,9 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
     output.writeln('   Run: ssh-add ~/.ssh/id_rsa');
   } else {
     output.writeln('   Status: ✗ No SSH key found');
-    output.writeln('   To create: ssh-keygen -t ed25519 -C "your_email@example.com"');
+    output.writeln(
+      '   To create: ssh-keygen -t ed25519 -C "your_email@example.com"',
+    );
   }
   output.writeln('');
 
@@ -286,11 +308,11 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
   }
 
   try {
-    final keysResult = await Process.run(
-      'gpg',
-      ['--list-secret-keys', '--keyid-format', 'LONG'],
-      environment: Platform.environment,
-    );
+    final keysResult = await Process.run('gpg', [
+      '--list-secret-keys',
+      '--keyid-format',
+      'LONG',
+    ], environment: Platform.environment);
     if (keysResult.exitCode == 0) {
       final keysOutput = keysResult.stdout as String;
       if (keysOutput.trim().isEmpty) {
@@ -314,7 +336,8 @@ Future<CallToolResult> signingStatus(Directory workingDir, SigningInfo signingIn
   // 6. Usage hints
   output.writeln('6. Usage:');
   output.writeln(
-      '   commit with sign="auto"  - Uses ${signingInfo.defaultMethod.toUpperCase()} (auto-detected)');
+    '   commit with sign="auto"  - Uses ${signingInfo.defaultMethod.toUpperCase()} (auto-detected)',
+  );
   output.writeln('   commit with sign="ssh"   - Force SSH signing');
   output.writeln('   commit with sign="gpg"   - Force GPG signing');
   output.writeln('   commit with sign="none"  - No signing');

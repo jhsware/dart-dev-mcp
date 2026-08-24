@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
@@ -107,6 +107,7 @@ class TestIndex {
 
   /// Resolve a project-relative path to its on-disk [File].
   File file(String relPath) => File(p.join(project.path, relPath));
+
   /// Re-point the allow-list and re-wire every handler. The project path is
   /// only known after [create], so scope tests seed files first, then call
   /// this with an allow-list under [project].
@@ -115,15 +116,13 @@ class TestIndex {
     _wire();
   }
 
-
   /// `dart pub get` inside the temp project (required before the analyzer can
   /// resolve `package:` imports for Dart extraction).
   Future<void> pubGet() async {
-    final r = await Process.run(
-      'dart',
-      ['pub', 'get'],
-      workingDirectory: project.path,
-    );
+    final r = await Process.run('dart', [
+      'pub',
+      'get',
+    ], workingDirectory: project.path);
     if (r.exitCode != 0) {
       throw StateError('pub get failed: ${r.stderr}');
     }
@@ -133,21 +132,22 @@ class TestIndex {
   Future<Map<String, dynamic>> indexFiles(
     List<Map<String, dynamic>> files, {
     bool refreshDependents = false,
-  }) async =>
-      jsonOf(await write.indexFiles({
-        'files': files,
-        'refresh_dependents': refreshDependents,
-      }));
+  }) async => jsonOf(
+    await write.indexFiles({
+      'files': files,
+      'refresh_dependents': refreshDependents,
+    }),
+  );
 
   /// Convenience wrapper over [ScanOperations.scan] (defaults to `['.']`).
   Map<String, dynamic> scanDirs([Map<String, dynamic>? args]) => jsonOf(
-        scan.scan(
-          args ??
-              {
-                'directories': ['.'],
-              },
-        ),
-      );
+    scan.scan(
+      args ??
+          {
+            'directories': ['.'],
+          },
+    ),
+  );
 
   void dispose() {
     try {

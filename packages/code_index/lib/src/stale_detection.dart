@@ -96,8 +96,7 @@ class StaleDetector {
           : <int>{};
 
       // Layer 4 is derived from layer 2 at read time — no storage needed
-      final storedLayers =
-          layers.where((l) => l != 4).toList();
+      final storedLayers = layers.where((l) => l != 4).toList();
 
       for (final layer in storedLayers) {
         if (!present.contains(layer)) {
@@ -122,9 +121,10 @@ class StaleDetector {
     final changed = checkPaths(pathList);
     final changedPaths = changed.map((e) => e['path']).toSet();
 
-    final missingLayers = checkLayers(pathList, layers)
-        .where((e) => !changedPaths.contains(e['path']))
-        .toList();
+    final missingLayers = checkLayers(
+      pathList,
+      layers,
+    ).where((e) => !changedPaths.contains(e['path'])).toList();
 
     return [...changed, ...missingLayers];
   }

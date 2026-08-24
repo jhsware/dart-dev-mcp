@@ -294,11 +294,7 @@ Future<T> withRetryTransaction<T>(
   T Function() operation, {
   RetryConfig config = RetryConfig.defaultConfig,
 }) async {
-  return withRetry(
-    db,
-    () => withTransaction(db, operation),
-    config: config,
-  );
+  return withRetry(db, () => withTransaction(db, operation), config: config);
 }
 
 // =============================================================================

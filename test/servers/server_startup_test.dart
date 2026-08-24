@@ -10,16 +10,16 @@ void main() {
   });
 
   group('MCP Server Startup', () {
-    test('file_edit_mcp starts successfully', () async {
+    test('filesystem_mcp starts successfully', () async {
       final (process, stderrBuffer) = await startServer(
-        'packages/filesystem/bin/file_edit_mcp.dart',
+        'packages/filesystem/bin/filesystem_mcp.dart',
         ['--project-dir=.'],
       );
       await stopServer(process);
 
       expect(
         stderrBuffer.toString(),
-        contains('File Edit MCP Server running on stdio'),
+        contains('Filesystem MCP Server running on stdio'),
       );
     });
 
@@ -30,10 +30,7 @@ void main() {
       );
       await stopServer(process);
 
-      expect(
-        stderrBuffer.toString(),
-        contains('Server running on stdio'),
-      );
+      expect(stderrBuffer.toString(), contains('Server running on stdio'));
     });
 
     test('dart_runner_mcp starts successfully', () async {
@@ -89,8 +86,9 @@ void main() {
     });
 
     test('code_index_mcp starts successfully', () async {
-      final tempDir =
-          await Directory.systemTemp.createTemp('code_index_startup_');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'code_index_startup_',
+      );
       try {
         final (process, stderrBuffer) = await startServer(
           'packages/code_index/bin/code_index_mcp.dart',

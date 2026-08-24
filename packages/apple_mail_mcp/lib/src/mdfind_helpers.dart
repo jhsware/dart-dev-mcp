@@ -192,14 +192,10 @@ String buildMdfindQuery({
   DateTime? dateAfter,
   DateTime? dateBefore,
 }) {
-  final conditions = <String>[
-    'kMDItemContentType == "$emlxContentType"',
-  ];
+  final conditions = <String>['kMDItemContentType == "$emlxContentType"'];
 
   if (titleContains != null && titleContains.isNotEmpty) {
-    conditions.add(
-      'kMDItemTitle == "*${_escapeSpotlight(titleContains)}*"cd',
-    );
+    conditions.add('kMDItemTitle == "*${_escapeSpotlight(titleContains)}*"cd');
   }
 
   if (authorContains != null && authorContains.isNotEmpty) {
@@ -250,10 +246,7 @@ Future<List<String>> mdfindEmails({
     dateBefore: dateEnd,
   );
 
-  return runMdfind(
-    query,
-    directory: scopeDirectory ?? defaultMailDirectory,
-  );
+  return runMdfind(query, directory: scopeDirectory ?? defaultMailDirectory);
 }
 
 /// Resolves Apple Mail account names to their filesystem directories.
@@ -401,7 +394,9 @@ Map<String, String> parseMdlsOutput(String output) {
 /// When mdls processes multiple files, it outputs each file's attributes
 /// separated by a blank line or by the file path header.
 List<Map<String, String>> parseMdlsBatchOutput(
-    String output, int expectedCount) {
+  String output,
+  int expectedCount,
+) {
   final results = <Map<String, String>>[];
   final currentBlock = StringBuffer();
 
@@ -479,8 +474,7 @@ Future<Map<String, String>> _resolveAccountPathsFromFilesystem() async {
         if (accountDir is! Directory) continue;
         final accountDirName = accountDir.path.split('/').last;
 
-        if (accountDirName.startsWith('.') ||
-            accountDirName == 'Mailboxes') {
+        if (accountDirName.startsWith('.') || accountDirName == 'Mailboxes') {
           continue;
         }
 

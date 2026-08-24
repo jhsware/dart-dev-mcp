@@ -20,18 +20,16 @@ import 'package:jhsware_code_shared_libs/shared_libs.dart';
 /// Unlike standard handlers, batched handlers receive the session and extra
 /// objects directly so they can write progressive chunks and send progress
 /// notifications between batches.
-typedef BatchedHandler = Future<void> Function({
-  required Map<String, dynamic> args,
-  required ProcessSession session,
-  required RequestHandlerExtra extra,
-});
+typedef BatchedHandler =
+    Future<void> Function({
+      required Map<String, dynamic> args,
+      required ProcessSession session,
+      required RequestHandlerExtra extra,
+    });
 
 /// Set of operation names considered "slow" (potentially long-running).
 /// These are dispatched via [runInBackground] for fire-and-forget execution.
-const slowOperations = {
-  'get-statistics',
-  'export-emails',
-};
+const slowOperations = {'get-statistics', 'export-emails'};
 
 /// Set of operation names that use batched execution.
 const batchedOperations = {
@@ -44,6 +42,7 @@ const batchedOperations = {
   'classify-emails',
   'get-email-thread',
 };
+
 /// Runs a handler in the background and returns a session_id immediately.
 /// 1. Creates a session via SessionManager
 /// 2. Returns immediately with JSON containing session_id + status

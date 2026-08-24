@@ -1,4 +1,4 @@
-name: apple_mail_mcp
+name: jhsware_code_apple_mail
 description: Read-only Apple Mail MCP server for Dart
 version: 0.1.0
 publish_to: none

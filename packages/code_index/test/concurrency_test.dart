@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -15,7 +15,9 @@ void main() {
     final dbPath = p.join(dataDir.path, 'code_index.db');
 
     final conn1 = initializeDatabase(dbPath);
-    final conn2 = openOrRebuild(dbPath); // matching version → shared, not rebuilt
+    final conn2 = openOrRebuild(
+      dbPath,
+    ); // matching version → shared, not rebuilt
 
     File(p.join(project.path, 'a.yaml')).writeAsStringSync('a: 1\n');
     File(p.join(project.path, 'b.yaml')).writeAsStringSync('b: 1\n');

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:apple_mail_mcp/src/core.dart';
+import 'package:jhsware_code_apple_mail/src/core.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:test/test.dart';
 
@@ -53,7 +53,6 @@ void main() {
       expect(result[1]['read'], equals('true'));
       expect(result[1]['subject'], equals('Test Subject Two'));
     });
-
 
     test('returns empty list for empty input', () {
       expect(parseEmailList(''), isEmpty);
@@ -143,7 +142,9 @@ void main() {
 
     test('has_more is false when all results returned', () {
       final output = buildJsonEmailOutput(
-        emails: [{'subject': 'Only'}],
+        emails: [
+          {'subject': 'Only'},
+        ],
         offset: 0,
         limit: 20,
         totalAvailable: 1,
@@ -194,9 +195,7 @@ void main() {
       expect(text, contains('Error: Account "foo" not found.'));
       expect(
         text,
-        contains(
-          'Suggestion: Use list-accounts to see available accounts.',
-        ),
+        contains('Suggestion: Use list-accounts to see available accounts.'),
       );
     });
   });
@@ -212,9 +211,7 @@ void main() {
       expect(script, contains('on error'));
     });
 
-
     test('dateCutoffScript returns empty for non-positive daysBack', () {
-
       expect(dateCutoffScript(daysBack: 0), equals(''));
       expect(dateCutoffScript(daysBack: -1), equals(''));
     });
@@ -241,64 +238,66 @@ void main() {
       expect(lowercaseHandler, contains('tr'));
     });
 
-  group('safeDateScript', () {
-    test('generates script that sets day to 1 before month', () {
-      final script = safeDateScript(
-        varName: 'testDate',
-        dateStr: '2025-02-15',
-      );
-      // Verify the safe pattern: all required lines present
-      expect(script, contains('set day of testDate to 1'));
-      expect(script, contains('set year of testDate to 2025'));
-      expect(script, contains('set month of testDate to 02'));
-      expect(script, contains('set day of testDate to 15'));
-      // Verify order: day=1 comes before month setting
-      final dayOneIdx = script.indexOf('set day of testDate to 1\n');
-      final monthIdx = script.indexOf('set month of testDate to 02');
-      expect(dayOneIdx, lessThan(monthIdx),
-          reason: 'day=1 must be set before month to prevent overflow');
-    });
+    group('safeDateScript', () {
+      test('generates script that sets day to 1 before month', () {
+        final script = safeDateScript(
+          varName: 'testDate',
+          dateStr: '2025-02-15',
+        );
+        // Verify the safe pattern: all required lines present
+        expect(script, contains('set day of testDate to 1'));
+        expect(script, contains('set year of testDate to 2025'));
+        expect(script, contains('set month of testDate to 02'));
+        expect(script, contains('set day of testDate to 15'));
+        // Verify order: day=1 comes before month setting
+        final dayOneIdx = script.indexOf('set day of testDate to 1\n');
+        final monthIdx = script.indexOf('set month of testDate to 02');
+        expect(
+          dayOneIdx,
+          lessThan(monthIdx),
+          reason: 'day=1 must be set before month to prevent overflow',
+        );
+      });
 
-    test('sets time to 0 by default (start of day)', () {
-      final script = safeDateScript(
-        varName: 'startDate',
-        dateStr: '2025-01-21',
-      );
-      expect(script, contains('set time of startDate to 0'));
-    });
+      test('sets time to 0 by default (start of day)', () {
+        final script = safeDateScript(
+          varName: 'startDate',
+          dateStr: '2025-01-21',
+        );
+        expect(script, contains('set time of startDate to 0'));
+      });
 
-    test('sets time to 86399 for end of day', () {
-      final script = safeDateScript(
-        varName: 'endDate',
-        dateStr: '2025-01-25',
-        timeSeconds: 86399,
-      );
-      expect(script, contains('set time of endDate to 86399'));
-    });
+      test('sets time to 86399 for end of day', () {
+        final script = safeDateScript(
+          varName: 'endDate',
+          dateStr: '2025-01-25',
+          timeSeconds: 86399,
+        );
+        expect(script, contains('set time of endDate to 86399'));
+      });
 
-    test('handles leap year date', () {
-      final script = safeDateScript(
-        varName: 'leapDate',
-        dateStr: '2024-02-29',
-      );
-      expect(script, contains('set month of leapDate to 02'));
-      expect(script, contains('set day of leapDate to 29'));
-    });
+      test('handles leap year date', () {
+        final script = safeDateScript(
+          varName: 'leapDate',
+          dateStr: '2024-02-29',
+        );
+        expect(script, contains('set month of leapDate to 02'));
+        expect(script, contains('set day of leapDate to 29'));
+      });
 
-    test('uses provided variable name in all lines', () {
-      final script = safeDateScript(
-        varName: 'myCustomDate',
-        dateStr: '2023-12-25',
-        timeSeconds: 43200,
-      );
-      expect(script, contains('set myCustomDate to current date'));
-      expect(script, contains('set day of myCustomDate to 1'));
-      expect(script, contains('set year of myCustomDate to 2023'));
-      expect(script, contains('set month of myCustomDate to 12'));
-      expect(script, contains('set day of myCustomDate to 25'));
-      expect(script, contains('set time of myCustomDate to 43200'));
+      test('uses provided variable name in all lines', () {
+        final script = safeDateScript(
+          varName: 'myCustomDate',
+          dateStr: '2023-12-25',
+          timeSeconds: 43200,
+        );
+        expect(script, contains('set myCustomDate to current date'));
+        expect(script, contains('set day of myCustomDate to 1'));
+        expect(script, contains('set year of myCustomDate to 2023'));
+        expect(script, contains('set month of myCustomDate to 12'));
+        expect(script, contains('set day of myCustomDate to 25'));
+        expect(script, contains('set time of myCustomDate to 43200'));
+      });
     });
-  });
-
   });
 }

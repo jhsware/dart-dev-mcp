@@ -27,7 +27,7 @@ abstract class McpException implements Exception {
 
   @override
   String toString() => details != null ? '$message ($details)' : message;
-  
+
   /// Returns an error message suitable for returning to the user.
   /// Does not include technical details.
   String get userMessage => message;
@@ -55,7 +55,7 @@ class ValidationException extends McpException {
   final String field;
 
   const ValidationException(this.field, String message, [String? details])
-      : super(message, details);
+    : super(message, details);
 
   @override
   String get userMessage => 'Error: $message';
@@ -80,7 +80,7 @@ class NotFoundException extends McpException {
   final String resourceId;
 
   NotFoundException(this.resourceType, this.resourceId, [String? details])
-      : super('$resourceType not found: $resourceId', details);
+    : super('$resourceType not found: $resourceId', details);
 }
 
 /// Exception thrown when access to a resource is denied.
@@ -102,7 +102,7 @@ class PermissionException extends McpException {
   final String? path;
 
   const PermissionException(String message, {this.path, String? details})
-      : super(message, details);
+    : super(message, details);
 }
 
 /// Exception thrown for network or connectivity errors.
@@ -165,11 +165,8 @@ class DatabaseException extends McpException {
   /// SQLite error code if applicable.
   final int? errorCode;
 
-  const DatabaseException(
-    String message, {
-    this.errorCode,
-    String? details,
-  }) : super(message, details);
+  const DatabaseException(String message, {this.errorCode, String? details})
+    : super(message, details);
 }
 
 /// Exception thrown when an operation fails for reasons other than

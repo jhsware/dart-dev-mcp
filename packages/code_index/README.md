@@ -48,7 +48,7 @@ Raw file content is not stored — use `filesystem read-file` (optionally with t
 
 ## Operations
 
-A single MCP tool `code-index`, multiplexed by `operation`. `project_dir` is required on every call.
+A single MCP tool `code-index` (package `jhsware_code_code_index`), multiplexed by `operation`. `project_dir` is required on every call.
 
 ### Scanning & Indexing
 
@@ -101,19 +101,19 @@ The code index uses a **clean-rebuild** strategy instead of schema migrations:
 
 ## Allowed Paths Configuration
 
-The `jhsware-code.yaml` file in each project directory controls which paths the code index can access:
+The `jhsware_code.yaml` file (or the legacy `jhsware-code.yaml`) in each project directory controls which paths the code index can access:
 
 ```yaml
 code-index:
-  allowed_paths:
-    - lib
-    - test
-    - bin
-    - pubspec.yaml
+  - lib
+  - test
+  - bin
+  - pubspec.yaml
 ```
 
+- Hyphen and underscore spellings of the key are interchangeable (`code_index:` also works) — keys are matched with hyphens normalised to underscores.
 - Operations on paths outside the allowed list return `out_of_scope` responses.
-- If `jhsware-code.yaml` is missing, the full project root is accessible (matching `filesystem` and `git` behavior).
+- If no config file is present, the full project root is accessible (matching `filesystem` and `git` behavior).
 - Use `is-allowed` to check before calling other operations.
 
 ## External Symbol References (Dart)

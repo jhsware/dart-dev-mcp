@@ -32,8 +32,11 @@ void main() {
       expect(text, contains('FOUND:'));
       final foundCount = extractFoundCount(text);
       if (foundCount != null) {
-        expectNonZeroIfFdaGranted(foundCount,
-            reason: 'search-by-sender with "@" should find emails when FDA is granted');
+        expectNonZeroIfFdaGranted(
+          foundCount,
+          reason:
+              'search-by-sender with "@" should find emails when FDA is granted',
+        );
       }
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -76,8 +79,11 @@ void main() {
       expect(text, contains('FOUND:'));
       final foundCount = extractFoundCount(text);
       if (foundCount != null) {
-        expectNonZeroIfFdaGranted(foundCount,
-            reason: 'get-recent-from-sender with "@" should find emails when FDA is granted');
+        expectNonZeroIfFdaGranted(
+          foundCount,
+          reason:
+              'get-recent-from-sender with "@" should find emails when FDA is granted',
+        );
       }
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
@@ -93,8 +99,11 @@ void main() {
         );
 
         assertSuccessResult(result);
-        expect(elapsed, lessThan(maxComplexOpDuration),
-            reason: 'time_range=$range should complete in time');
+        expect(
+          elapsed,
+          lessThan(maxComplexOpDuration),
+          reason: 'time_range=$range should complete in time',
+        );
       }
     });
   });

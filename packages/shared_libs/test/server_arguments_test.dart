@@ -29,8 +29,10 @@ void main() {
       });
 
       test('--project-dir with space separator format', () {
-        final args =
-            ServerArguments.parse(['--project-dir', '/path/to/project']);
+        final args = ServerArguments.parse([
+          '--project-dir',
+          '/path/to/project',
+        ]);
 
         expect(args.projectDirs, hasLength(1));
         expect(args.projectDirs[0], endsWith('path/to/project'));
@@ -44,22 +46,27 @@ void main() {
       });
 
       test('--planner-data-root with space separator format', () {
-        final args =
-            ServerArguments.parse(['--planner-data-root', '/data/root']);
+        final args = ServerArguments.parse([
+          '--planner-data-root',
+          '/data/root',
+        ]);
 
         expect(args.plannerDataRoot, endsWith('data/root'));
       });
 
       test('--prompts-file argument', () {
-        final args =
-            ServerArguments.parse(['--prompts-file=/path/to/prompts.json']);
+        final args = ServerArguments.parse([
+          '--prompts-file=/path/to/prompts.json',
+        ]);
 
         expect(args.promptsFilePath, endsWith('path/to/prompts.json'));
       });
 
       test('--prompts-file with space separator format', () {
-        final args =
-            ServerArguments.parse(['--prompts-file', '/path/to/prompts.json']);
+        final args = ServerArguments.parse([
+          '--prompts-file',
+          '/path/to/prompts.json',
+        ]);
 
         expect(args.promptsFilePath, endsWith('path/to/prompts.json'));
       });
@@ -134,8 +141,10 @@ void main() {
 
     group('plannerDbPath', () {
       test('infers correct path', () {
-        final args = ServerArguments.parse(
-            ['--planner-data-root=/data', '--project-dir=/projects/my-app']);
+        final args = ServerArguments.parse([
+          '--planner-data-root=/data',
+          '--project-dir=/projects/my-app',
+        ]);
 
         final dbPath = args.plannerDbPath('/projects/my-app');
         expect(dbPath, contains('projects/my-app/db/planner.db'));
@@ -144,7 +153,7 @@ void main() {
       test('uses basename of project dir', () {
         final args = ServerArguments.parse([
           '--planner-data-root=/data',
-          '--project-dir=/very/long/path/to/my-app'
+          '--project-dir=/very/long/path/to/my-app',
         ]);
 
         final dbPath = args.plannerDbPath('/very/long/path/to/my-app');
@@ -155,10 +164,7 @@ void main() {
       test('throws StateError when plannerDataRoot is null', () {
         final args = ServerArguments.parse(['--project-dir=/projects/my-app']);
 
-        expect(
-          () => args.plannerDbPath('/projects/my-app'),
-          throwsStateError,
-        );
+        expect(() => args.plannerDbPath('/projects/my-app'), throwsStateError);
       });
 
       test('different projects get different paths', () {
@@ -179,8 +185,10 @@ void main() {
 
     group('codeIndexDbPath', () {
       test('infers correct path', () {
-        final args = ServerArguments.parse(
-            ['--planner-data-root=/data', '--project-dir=/projects/my-app']);
+        final args = ServerArguments.parse([
+          '--planner-data-root=/data',
+          '--project-dir=/projects/my-app',
+        ]);
 
         final dbPath = args.codeIndexDbPath('/projects/my-app');
         expect(dbPath, contains('projects/my-app/db/code_index.db'));
@@ -196,8 +204,10 @@ void main() {
       });
 
       test('different DB filename from planner', () {
-        final args = ServerArguments.parse(
-            ['--planner-data-root=/data', '--project-dir=/projects/my-app']);
+        final args = ServerArguments.parse([
+          '--planner-data-root=/data',
+          '--project-dir=/projects/my-app',
+        ]);
 
         final plannerDb = args.plannerDbPath('/projects/my-app');
         final codeIndexDb = args.codeIndexDbPath('/projects/my-app');

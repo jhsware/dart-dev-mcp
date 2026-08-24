@@ -19,12 +19,8 @@ Future<String> runAppleScript(String script) async {
   final stdout = StringBuffer();
   final stderr = StringBuffer();
 
-  process.stdout
-      .transform(utf8.decoder)
-      .listen((data) => stdout.write(data));
-  process.stderr
-      .transform(utf8.decoder)
-      .listen((data) => stderr.write(data));
+  process.stdout.transform(utf8.decoder).listen((data) => stdout.write(data));
+  process.stderr.transform(utf8.decoder).listen((data) => stderr.write(data));
 
   final exitCode = await process.exitCode.timeout(
     const Duration(seconds: 120),
@@ -68,7 +64,6 @@ List<Map<String, String>> parseEmailList(String output) {
         'read': trimmed.startsWith('✓') ? 'true' : 'false',
         'subject': trimmed.length >= 2 ? trimmed.substring(2).trim() : '',
       };
-
     } else if (current != null) {
       if (trimmed.startsWith('From: ')) {
         current['sender'] = trimmed.substring(6).trim();
@@ -115,11 +110,10 @@ String buildJsonEmailOutput({
 /// Formats the error with both the problem description and a suggestion
 /// for how to fix it, making it easier for callers to recover.
 CallToolResult actionableError(String message, String suggestion) {
-  return CallToolResult.fromContent(
-    [TextContent(text: 'Error: $message\nSuggestion: $suggestion')],
-  );
+  return CallToolResult.fromContent([
+    TextContent(text: 'Error: $message\nSuggestion: $suggestion'),
+  ]);
 }
-
 
 /// Generates AppleScript that safely constructs a date from a YYYY-MM-DD string.
 ///
@@ -187,10 +181,17 @@ String dateCutoffScript({required int daysBack}) {
 /// AppleScript condition fragment that skips system folders listed in
 /// [skipFolders] from constants.dart.
 String skipFoldersCondition() {
-  final folders =
-      ['Trash', 'Junk', 'Spam', 'Sent', 'Sent Messages', 'Drafts',
-       'Deleted Messages', 'Deleted Items', 'Archive', 'Notes']
-          .map((f) => '"$f"')
-          .join(', ');
+  final folders = [
+    'Trash',
+    'Junk',
+    'Spam',
+    'Sent',
+    'Sent Messages',
+    'Drafts',
+    'Deleted Messages',
+    'Deleted Items',
+    'Archive',
+    'Notes',
+  ].map((f) => '"$f"').join(', ');
   return 'if mailboxName is not in {$folders} then';
 }

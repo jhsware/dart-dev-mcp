@@ -3,7 +3,7 @@ import 'dart:io';
 
 /// All server scripts available for compilation
 const serverScripts = [
-  'packages/filesystem/bin/file_edit_mcp.dart',
+  'packages/filesystem/bin/filesystem_mcp.dart',
   'packages/fetch/bin/fetch_mcp.dart',
   'packages/dart_runner/bin/dart_runner_mcp.dart',
   'packages/flutter_runner/bin/flutter_runner_mcp.dart',
@@ -41,11 +41,13 @@ Future<String> compileToKernel(String scriptPath) async {
     }
   }
 
-  final result = await Process.run(
-    'dart',
-    ['compile', 'kernel', scriptPath, '-o', dillPath],
-    workingDirectory: Directory.current.path,
-  );
+  final result = await Process.run('dart', [
+    'compile',
+    'kernel',
+    scriptPath,
+    '-o',
+    dillPath,
+  ], workingDirectory: Directory.current.path);
 
   if (result.exitCode != 0) {
     throw Exception('Failed to compile $scriptPath: ${result.stderr}');
@@ -71,11 +73,11 @@ Future<(Process, StringBuffer)> startServer(
 ) async {
   final dillPath = await compileToKernel(scriptPath);
 
-  final process = await Process.start(
-    'dart',
-    ['run', dillPath, ...args],
-    workingDirectory: Directory.current.path,
-  );
+  final process = await Process.start('dart', [
+    'run',
+    dillPath,
+    ...args,
+  ], workingDirectory: Directory.current.path);
 
   final stderrBuffer = StringBuffer();
   var complete = false;
@@ -100,16 +102,13 @@ Future<(Process, StringBuffer)> startServer(
 }
 
 /// Runs a compiled server synchronously and returns the result.
-Future<ProcessResult> runServer(
-  String scriptPath,
-  List<String> args,
-) async {
+Future<ProcessResult> runServer(String scriptPath, List<String> args) async {
   final dillPath = await compileToKernel(scriptPath);
-  return Process.run(
-    'dart',
-    ['run', dillPath, ...args],
-    workingDirectory: Directory.current.path,
-  );
+  return Process.run('dart', [
+    'run',
+    dillPath,
+    ...args,
+  ], workingDirectory: Directory.current.path);
 }
 
 /// Stops a server process gracefully.

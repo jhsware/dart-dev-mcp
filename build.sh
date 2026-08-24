@@ -4,26 +4,35 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# All MCP server binaries
-BINARIES="file_edit_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp code_index_mcp"
+# All MCP server bin entrypoints
+BINARIES="filesystem_mcp fetch_mcp dart_runner_mcp flutter_runner_mcp git_mcp planner_mcp code_index_mcp apple_mail_mcp"
 
-# Get package directory for a binary
+# Get package directory for a bin entrypoint
 get_package_dir() {
   case "$1" in
-    file_edit_mcp) echo "filesystem" ;;
+    filesystem_mcp) echo "filesystem" ;;
     fetch_mcp) echo "fetch" ;;
     dart_runner_mcp) echo "dart_runner" ;;
     flutter_runner_mcp) echo "flutter_runner" ;;
     git_mcp) echo "git" ;;
     planner_mcp) echo "planner" ;;
     code_index_mcp) echo "code_index" ;;
+    apple_mail_mcp) echo "apple_mail_mcp" ;;
     *) echo "$1" ;;
   esac
 }
 
+# Compiled binary name for a bin entrypoint: strip the _mcp suffix,
+# convert underscores to hyphens, and add the jhsware-code- prefix.
+# Example: dart_runner_mcp -> jhsware-code-dart-runner
+get_output_name() {
+  local name="${1%_mcp}"
+  echo "jhsware-code-${name//_/-}"
+}
+
 show_help() {
   cat <<EOF
-Dart Dev MCP - Build Script
+jhsware_code - Build Script
 ============================
 
 Usage: $0 <command> [options]
@@ -47,7 +56,7 @@ Options:
 Environment variables for release-macos:
   DEV_CERTIFICATE         Developer ID Installer certificate name
   DEV_APP_CERTIFICATE     Developer ID Application certificate name
-  DEV_IDENTIFIER          Bundle identifier (e.g., com.example.dart-dev-mcp)
+  DEV_IDENTIFIER          Bundle identifier (e.g., com.example.jhsware-code)
   DEV_CREDENTIAL_PROFILE  Keychain profile name for notarytool
 
 Examples:
@@ -94,7 +103,7 @@ do_build() {
   echo "Compiling MCP servers${target_os:+ for $target_os}..."
   
   for binary in $BINARIES; do
-    local output_name="${binary//_/-}"  # Convert underscores to hyphens for binary name
+    local output_name=$(get_output_name "$binary")
     echo "  Compiling $binary..."
     dart compile exe --verbosity error $os_flag \
       -o "$output_dir/$output_name" \
@@ -111,7 +120,7 @@ do_clean() {
   
   # Remove compiled binaries (files without .dart extension in bin/)
   for binary in $BINARIES; do
-    local output_name="${binary//_/-}"
+    local output_name=$(get_output_name "$binary")
     [ -f "bin/$output_name" ] && rm -f "bin/$output_name" && echo "  Removed bin/$output_name"
   done
   
@@ -123,8 +132,8 @@ do_clean() {
   find bin packages/*/bin \( -name "*.dill" -o -name "*.dill.sdk" \) -delete 2>/dev/null && echo "  Removed .dill files"
   
   # Remove installer package
-  [ -d "bin/dart-dev-mcp-installer" ] && rm -rf "bin/dart-dev-mcp-installer" && echo "  Removed bin/dart-dev-mcp-installer/"
-  [ -f "bin/dart-dev-mcp-installer.pkg" ] && rm -f "bin/dart-dev-mcp-installer.pkg" && echo "  Removed bin/dart-dev-mcp-installer.pkg"
+  [ -d "bin/jhsware-code-installer" ] && rm -rf "bin/jhsware-code-installer" && echo "  Removed bin/jhsware-code-installer/"
+  [ -f "bin/jhsware-code-installer.pkg" ] && rm -f "bin/jhsware-code-installer.pkg" && echo "  Removed bin/jhsware-code-installer.pkg"
   
   echo "Clean complete!"
 }
@@ -154,7 +163,7 @@ do_release_macos() {
   # Build list of binary names (with hyphens)
   local binary_names=""
   for binary in $BINARIES; do
-    binary_names="$binary_names ${binary//_/-}"
+    binary_names="$binary_names $(get_output_name "$binary")"
   done
   
   echo "******************************************************"
@@ -164,14 +173,14 @@ do_release_macos() {
 
   # Check that binaries exist
   for binary in $BINARIES; do
-    local output_name="${binary//_/-}"
+    local output_name=$(get_output_name "$binary")
     if [ ! -f "bin/$output_name" ]; then
       echo "You have not yet built $output_name, please run '$0 build-macos' and retry the release." >&2
       exit 1
     fi
   done
 
-  PKG="bin/dart-dev-mcp-installer"
+  PKG="bin/jhsware-code-installer"
   VERSION=$(grep -E '^version: ' pubspec.yaml | awk '{print $2}')
 
   # Clean up previous build artifacts
@@ -182,7 +191,7 @@ do_release_macos() {
 
   # Sign and stage all binaries
   for binary in $BINARIES; do
-    local output_name="${binary//_/-}"
+    local output_name=$(get_output_name "$binary")
     cp "bin/$output_name" "$PKG/"
 
     # Sign the application with hardened runtime
@@ -221,7 +230,7 @@ do_create_keychain_profile() {
   echo "Creating keychain profile for notarytool..."
   echo ""
   echo "You will be prompted for:"
-  echo "  - Profile name (e.g., dart-dev-mcp)"
+  echo "  - Profile name (e.g., jhsware-code)"
   echo "  - Developer Apple ID (your email)"
   echo "  - Developer Team ID (from list-identities)"
   echo "  - App-specific password (from appleid.apple.com)"

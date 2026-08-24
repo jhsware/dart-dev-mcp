@@ -2,14 +2,26 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
-/// The name of the project configuration file.
-const String configFileName = 'jhsware-code.yaml';
+/// The preferred name of the project configuration file.
+const String configFileName = 'jhsware_code.yaml';
 
-/// Holds parsed configuration from a jhsware-code.yaml file.
+/// Legacy configuration file name, still accepted so existing projects
+/// keep working without changes.
+const String legacyConfigFileName = 'jhsware-code.yaml';
+
+/// Accepted configuration file names in lookup order. When both files
+/// exist, the preferred name wins.
+const List<String> configFileNames = [configFileName, legacyConfigFileName];
+
+/// Holds parsed configuration from a project configuration file
+/// (jhsware_code.yaml or the legacy jhsware-code.yaml).
 ///
-/// Maps MCP tool names to lists of relative paths that tool is allowed to access.
+/// Maps MCP tool names to lists of relative paths that tool is allowed to
+/// access. Tool keys are stored in canonical form: hyphens replaced with
+/// underscores. Hyphen and underscore spellings are interchangeable: a
+/// `code_index:` entry matches the `code-index` tool and the other way around.
 class ProjectConfig {
-  /// Tool name → list of relative paths (as specified in the YAML file).
+  /// Canonical tool name → list of relative paths (as specified in the YAML file).
   final Map<String, List<String>> toolPaths;
 
   const ProjectConfig(this.toolPaths);
@@ -21,27 +33,34 @@ class ProjectConfig {
   bool get hasConfig => toolPaths.isNotEmpty;
 }
 
-/// Cache entry holding a parsed config and the file modification time.
+/// Cache entry holding a parsed config plus the source file identity used
+/// for invalidation (path and modification time).
 class _CacheEntry {
+  final String configPath;
   final DateTime modTime;
   final ProjectConfig config;
 
-  _CacheEntry(this.modTime, this.config);
+  _CacheEntry(this.configPath, this.modTime, this.config);
 }
 
-/// Service for loading and caching project configuration from jhsware-code.yaml.
+/// Service for loading and caching project configuration from
+/// jhsware_code.yaml (or the legacy jhsware-code.yaml).
 ///
 /// Each MCP tool can call [getAllowedPaths] with a project root and tool name
 /// to get a list of absolute paths it is allowed to access.
 ///
 /// Behavior:
-/// - If jhsware-code.yaml does not exist: returns `[projectRoot]` (full access).
+/// - If no config file exists: returns `[projectRoot]` (full access).
 /// - If the tool name is not in the config: returns `[projectRoot]` (full access).
 /// - If the tool name is in the config with an empty list: returns `[]` (no access).
 /// - Otherwise: returns the resolved absolute paths for that tool.
 ///
-/// Results are cached per project root and invalidated when the file's
-/// modification time changes.
+/// Tool names are matched in canonical form (hyphens replaced with
+/// underscores), so hyphen and underscore spellings are interchangeable: a
+/// `code_index:` key matches the `code-index` tool and the other way around.
+///
+/// Results are cached per project root and invalidated when the config
+/// file's path or modification time changes.
 class ProjectConfigService {
   /// Internal cache keyed by absolute project root path.
   static final Map<String, _CacheEntry> _cache = {};
@@ -51,14 +70,30 @@ class ProjectConfigService {
     _cache.clear();
   }
 
-  /// Loads and parses the config from `<projectRoot>/jhsware-code.yaml`.
-  ///
-  /// Returns [ProjectConfig.empty] if the file does not exist.
-  /// Throws [FormatException] if the YAML is malformed or has unexpected structure.
-  static ProjectConfig loadConfig(String projectRoot) {
-    final configFile = File(p.join(projectRoot, configFileName));
+  /// Canonical form of a tool name or config key: hyphens become underscores.
+  static String canonicalToolName(String name) => name.replaceAll('-', '_');
 
-    if (!configFile.existsSync()) {
+  /// Returns the first existing config file for [projectRoot], or null.
+  static File? _findConfigFile(String projectRoot) {
+    for (final name in configFileNames) {
+      final file = File(p.join(projectRoot, name));
+      if (file.existsSync()) {
+        return file;
+      }
+    }
+    return null;
+  }
+
+  /// Loads and parses the config for [projectRoot].
+  ///
+  /// Looks for `jhsware_code.yaml` first, then the legacy
+  /// `jhsware-code.yaml`. Returns [ProjectConfig.empty] if neither exists.
+  /// Throws [FormatException] if the YAML is malformed or has unexpected
+  /// structure.
+  static ProjectConfig loadConfig(String projectRoot) {
+    final configFile = _findConfigFile(projectRoot);
+
+    if (configFile == null) {
       return ProjectConfig.empty;
     }
 
@@ -67,16 +102,18 @@ class ProjectConfigService {
 
     // Check cache
     final cached = _cache[absRoot];
-    if (cached != null && cached.modTime == modTime) {
+    if (cached != null &&
+        cached.configPath == configFile.path &&
+        cached.modTime == modTime) {
       return cached.config;
     }
 
     // Parse
     final content = configFile.readAsStringSync();
-    final config = _parseYaml(content);
+    final config = _parseYaml(content, p.basename(configFile.path));
 
     // Cache
-    _cache[absRoot] = _CacheEntry(modTime, config);
+    _cache[absRoot] = _CacheEntry(configFile.path, modTime, config);
 
     return config;
   }
@@ -96,12 +133,13 @@ class ProjectConfigService {
       return [absRoot];
     }
 
-    if (!config.toolPaths.containsKey(toolName)) {
+    final key = canonicalToolName(toolName);
+    if (!config.toolPaths.containsKey(key)) {
       // Tool not mentioned in config — full project access
       return [absRoot];
     }
 
-    final relativePaths = config.toolPaths[toolName]!;
+    final relativePaths = config.toolPaths[key]!;
     if (relativePaths.isEmpty) {
       // Explicitly empty — no access
       return [];
@@ -115,15 +153,15 @@ class ProjectConfigService {
 
   /// Parses YAML content into a [ProjectConfig].
   ///
-  /// Expects a YAML map where each key is a tool name and each value is a list of strings.
-  static ProjectConfig _parseYaml(String content) {
+  /// Expects a YAML map where each key is a tool name and each value is a
+  /// list of strings. Keys are stored in canonical form (hyphens replaced
+  /// with underscores).
+  static ProjectConfig _parseYaml(String content, String fileName) {
     final dynamic yaml;
     try {
       yaml = loadYaml(content);
     } catch (e) {
-      throw FormatException(
-        'Failed to parse $configFileName: $e',
-      );
+      throw FormatException('Failed to parse $fileName: $e');
     }
 
     if (yaml == null) {
@@ -133,7 +171,7 @@ class ProjectConfigService {
 
     if (yaml is! YamlMap) {
       throw FormatException(
-        'Invalid $configFileName: expected a YAML map at the top level, '
+        'Invalid $fileName: expected a YAML map at the top level, '
         'got ${yaml.runtimeType}',
       );
     }
@@ -144,20 +182,20 @@ class ProjectConfigService {
       final key = entry.key;
       if (key is! String) {
         throw FormatException(
-          'Invalid $configFileName: expected string key, got ${key.runtimeType} ($key)',
+          'Invalid $fileName: expected string key, got ${key.runtimeType} ($key)',
         );
       }
 
       final value = entry.value;
       if (value == null) {
         // Tool listed with no paths — no access
-        toolPaths[key] = [];
+        toolPaths[canonicalToolName(key)] = [];
         continue;
       }
 
       if (value is! YamlList) {
         throw FormatException(
-          'Invalid $configFileName: expected a list for key "$key", '
+          'Invalid $fileName: expected a list for key "$key", '
           'got ${value.runtimeType}',
         );
       }
@@ -166,13 +204,13 @@ class ProjectConfigService {
       for (final item in value) {
         if (item is! String) {
           throw FormatException(
-            'Invalid $configFileName: expected string path in list for "$key", '
+            'Invalid $fileName: expected string path in list for "$key", '
             'got ${item.runtimeType} ($item)',
           );
         }
         paths.add(item);
       }
-      toolPaths[key] = paths;
+      toolPaths[canonicalToolName(key)] = paths;
     }
 
     return ProjectConfig(toolPaths);

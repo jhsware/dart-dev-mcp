@@ -23,8 +23,7 @@ void main() {
       addTearDown(service.dispose);
 
       expect(service.promptPack.hasTemplate('copy_task_prompt'), isTrue);
-      expect(
-          service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
+      expect(service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
     });
 
     test('falls back to defaults when file does not exist', () {
@@ -35,8 +34,7 @@ void main() {
       addTearDown(service.dispose);
 
       expect(service.promptPack.hasTemplate('copy_task_prompt'), isTrue);
-      expect(
-          service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
+      expect(service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
     });
 
     test('loads templates from YAML file when path provided', () {
@@ -49,17 +47,14 @@ templates:
       - value
 ''');
 
-      final service = PromptPackService(
-        promptsFilePath: yamlFile.path,
-      );
+      final service = PromptPackService(promptsFilePath: yamlFile.path);
       service.initialize();
       addTearDown(service.dispose);
 
       expect(service.promptPack.hasTemplate('custom_template'), isTrue);
       // Defaults should still be present
       expect(service.promptPack.hasTemplate('copy_task_prompt'), isTrue);
-      expect(
-          service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
+      expect(service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
     });
 
     test('merges file templates with defaults (file overrides)', () {
@@ -72,9 +67,7 @@ templates:
       - task_title
 ''');
 
-      final service = PromptPackService(
-        promptsFilePath: yamlFile.path,
-      );
+      final service = PromptPackService(promptsFilePath: yamlFile.path);
       service.initialize();
       addTearDown(service.dispose);
 
@@ -83,17 +76,14 @@ templates:
       expect(tmpl.template, 'Overridden: {{task_title}}');
 
       // Default still present for the other template
-      expect(
-          service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
+      expect(service.promptPack.hasTemplate('copy_parent_task_prompt'), isTrue);
     });
 
     test('falls back to defaults when YAML is malformed', () {
       final yamlFile = File('${tempDir.path}/bad.yaml');
       yamlFile.writeAsStringSync(': : : invalid yaml [[[');
 
-      final service = PromptPackService(
-        promptsFilePath: yamlFile.path,
-      );
+      final service = PromptPackService(promptsFilePath: yamlFile.path);
       service.initialize();
       addTearDown(service.dispose);
 
@@ -120,12 +110,7 @@ templates:
       String details = 'Task details here',
       String status = 'started',
     }) {
-      return {
-        'id': id,
-        'title': title,
-        'details': details,
-        'status': status,
-      };
+      return {'id': id, 'title': title, 'details': details, 'status': status};
     }
 
     List<Map<String, dynamic>> makeSteps() {
@@ -228,33 +213,25 @@ templates:
     });
 
     test('handles empty steps list', () {
-      final result = service.renderSubtaskPrompt(
-        task: makeTask(),
-        steps: [],
-      );
+      final result = service.renderSubtaskPrompt(task: makeTask(), steps: []);
       // Should still render without error
       expect(result, contains('task-1'));
       expect(result, contains('Test Task'));
     });
 
     test('handles task with null/missing fields gracefully', () {
-      final task = <String, dynamic>{
-        'id': null,
-        'title': null,
-      };
+      final task = <String, dynamic>{'id': null, 'title': null};
       // Should not throw, uses empty string defaults
-      final result = service.renderSubtaskPrompt(
-        task: task,
-        steps: [],
-      );
+      final result = service.renderSubtaskPrompt(task: task, steps: []);
       expect(result, isA<String>());
     });
   });
 
   group('PromptPackService with custom file templates', () {
     test('renderSubtaskPrompt uses overridden template from file', () {
-      final tempDir2 =
-          Directory.systemTemp.createTempSync('prompt_custom_test_');
+      final tempDir2 = Directory.systemTemp.createTempSync(
+        'prompt_custom_test_',
+      );
       addTearDown(() => tempDir2.deleteSync(recursive: true));
 
       final yamlFile = File('${tempDir2.path}/prompts.yaml');
@@ -270,9 +247,7 @@ templates:
       - steps
 ''');
 
-      final service = PromptPackService(
-        promptsFilePath: yamlFile.path,
-      );
+      final service = PromptPackService(promptsFilePath: yamlFile.path);
       service.initialize();
       addTearDown(service.dispose);
 

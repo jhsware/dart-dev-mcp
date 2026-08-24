@@ -76,7 +76,8 @@ bool isAllowedByRobotsTxt(String robotsTxt, String url, String userAgent) {
 
     if (directive == 'user-agent') {
       currentUserAgent = value.toLowerCase();
-      matchesUserAgent = currentUserAgent == '*' ||
+      matchesUserAgent =
+          currentUserAgent == '*' ||
           userAgent.toLowerCase().contains(currentUserAgent);
     } else if (matchesUserAgent) {
       if (directive == 'disallow' && value.isNotEmpty) {
@@ -113,7 +114,7 @@ String extractContentFromHtml(String html) {
       'header',
       'footer',
       'iframe',
-      '[role="complementary"]'
+      '[role="complementary"]',
     ]) {
       for (final element in document.querySelectorAll(selector)) {
         element.remove();
@@ -121,7 +122,8 @@ String extractContentFromHtml(String html) {
     }
 
     // Try to find main content
-    final mainContent = document.querySelector('main') ??
+    final mainContent =
+        document.querySelector('main') ??
         document.querySelector('article') ??
         document.querySelector('#content') ??
         document.querySelector('.content') ??

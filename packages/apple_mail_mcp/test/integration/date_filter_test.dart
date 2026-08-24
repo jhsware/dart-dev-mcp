@@ -10,7 +10,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 import 'package:test/test.dart';
 
 import 'test_helpers.dart';
@@ -43,30 +43,32 @@ void main() {
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
 
-    test('with start_date 1 year ago returns valid JSON or times out',
-        () async {
-      final oneYearAgo = DateTime.now().subtract(const Duration(days: 365));
-      final dateStr = _formatDate(oneYearAgo);
+    test(
+      'with start_date 1 year ago returns valid JSON or times out',
+      () async {
+        final oneYearAgo = DateTime.now().subtract(const Duration(days: 365));
+        final dateStr = _formatDate(oneYearAgo);
 
-      final (result, elapsed, error) = await timeOperationTolerant(
-        () => inboxHandlers['list-emails']!({
-          'account': account,
-          'limit': 3,
-          'start_date': dateStr,
-        }),
-      );
+        final (result, elapsed, error) = await timeOperationTolerant(
+          () => inboxHandlers['list-emails']!({
+            'account': account,
+            'limit': 3,
+            'start_date': dateStr,
+          }),
+        );
 
-      if (error != null) {
-        // Timeout is acceptable for very old dates with large mailboxes
-        expect(error, contains('timed out'));
-      } else {
-        assertSuccessResult(result!);
-        final text = extractText(result);
-        final parsed = jsonDecode(text) as Map<String, dynamic>;
-        expect(parsed, contains('emails'));
-      }
-      expect(elapsed, lessThan(maxComplexOpDuration));
-    });
+        if (error != null) {
+          // Timeout is acceptable for very old dates with large mailboxes
+          expect(error, contains('timed out'));
+        } else {
+          assertSuccessResult(result!);
+          final text = extractText(result);
+          final parsed = jsonDecode(text) as Map<String, dynamic>;
+          expect(parsed, contains('emails'));
+        }
+        expect(elapsed, lessThan(maxComplexOpDuration));
+      },
+    );
 
     test('with start_date on month boundary (Jan 31)', () async {
       // Jan 31 can cause overflow if current date is in a shorter month
@@ -121,31 +123,39 @@ void main() {
       expect(elapsed, lessThan(maxComplexOpDuration));
     });
 
-    test('with start_date in the originally failing range (Jan 21-25)',
-        () async {
-      // These dates consistently failed before the fix when running
-      // on certain current dates (e.g. March 31)
-      for (final day in [21, 22, 23, 24, 25]) {
-        final dateStr = '2025-01-${day.toString().padLeft(2, '0')}';
-        final (result, _, error) = await timeOperationTolerant(
-          () => inboxHandlers['list-emails']!({
-            'account': account,
-            'limit': 3,
-            'start_date': dateStr,
-          }),
-        );
+    test(
+      'with start_date in the originally failing range (Jan 21-25)',
+      () async {
+        // These dates consistently failed before the fix when running
+        // on certain current dates (e.g. March 31)
+        for (final day in [21, 22, 23, 24, 25]) {
+          final dateStr = '2025-01-${day.toString().padLeft(2, '0')}';
+          final (result, _, error) = await timeOperationTolerant(
+            () => inboxHandlers['list-emails']!({
+              'account': account,
+              'limit': 3,
+              'start_date': dateStr,
+            }),
+          );
 
-        if (error != null) {
-          expect(error, contains('timed out'),
-              reason: 'Date $dateStr should not cause an AppleScript error');
-        } else {
-          assertSuccessResult(result!);
-          final text = extractText(result);
-          expect(text, isNot(contains('ERROR')),
-              reason: 'Date $dateStr should not produce errors');
+          if (error != null) {
+            expect(
+              error,
+              contains('timed out'),
+              reason: 'Date $dateStr should not cause an AppleScript error',
+            );
+          } else {
+            assertSuccessResult(result!);
+            final text = extractText(result);
+            expect(
+              text,
+              isNot(contains('ERROR')),
+              reason: 'Date $dateStr should not produce errors',
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
     test('with year boundary start_date (Dec 31 previous year)', () async {
       final (result, elapsed) = await timeOperation(
@@ -197,17 +207,17 @@ void main() {
         expect(ids, isA<List<String>>());
       } on Exception catch (e) {
         sw.stop();
-        expect(e.toString(),
-            anyOf(contains('timed out'), contains('not found')));
+        expect(
+          e.toString(),
+          anyOf(contains('timed out'), contains('not found')),
+        );
       }
       expect(sw.elapsed, lessThan(maxComplexOpDuration));
     });
 
     test('with dates far in the past (6+ months)', () async {
-      final sixMonthsAgo =
-          DateTime.now().subtract(const Duration(days: 180));
-      final sevenMonthsAgo =
-          DateTime.now().subtract(const Duration(days: 210));
+      final sixMonthsAgo = DateTime.now().subtract(const Duration(days: 180));
+      final sevenMonthsAgo = DateTime.now().subtract(const Duration(days: 210));
 
       final sw = Stopwatch()..start();
       try {
@@ -221,20 +231,17 @@ void main() {
         expect(ids, isA<List<String>>());
       } on Exception catch (e) {
         sw.stop();
-        expect(e.toString(),
-            anyOf(contains('timed out'), contains('not found')));
+        expect(
+          e.toString(),
+          anyOf(contains('timed out'), contains('not found')),
+        );
       }
       expect(sw.elapsed, lessThan(maxComplexOpDuration));
     });
 
-
     test('with daysBack parameter works correctly', () async {
       final (ids, elapsed) = await timeOperation(
-        () => fetchMessageIds(
-          account: account,
-          mailbox: 'INBOX',
-          daysBack: 7,
-        ),
+        () => fetchMessageIds(account: account, mailbox: 'INBOX', daysBack: 7),
       );
 
       expect(ids, isA<List<String>>());
@@ -255,12 +262,13 @@ void main() {
         expect(ids, isA<List<String>>());
       } on Exception catch (e) {
         sw.stop();
-        expect(e.toString(),
-            anyOf(contains('timed out'), contains('not found')));
+        expect(
+          e.toString(),
+          anyOf(contains('timed out'), contains('not found')),
+        );
       }
       expect(sw.elapsed, lessThan(maxComplexOpDuration));
     });
-
   });
 }
 

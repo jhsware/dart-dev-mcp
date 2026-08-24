@@ -67,9 +67,7 @@ class ReferenceRefresh {
       );
       for (final row in rows) {
         final path = row['path'] as String;
-        if (path == rel ||
-            excludePaths.contains(path) ||
-            seen.contains(path)) {
+        if (path == rel || excludePaths.contains(path) || seen.contains(path)) {
           continue;
         }
         seen.add(path);
@@ -94,8 +92,9 @@ class ReferenceRefresh {
 
     final now = DateTime.now().toUtc().toIso8601String();
     withRetryTransactionSync(database, () {
-      database
-          .execute('DELETE FROM symbol_references WHERE file_id = ?', [fileId]);
+      database.execute('DELETE FROM symbol_references WHERE file_id = ?', [
+        fileId,
+      ]);
       for (final ref in extracted.references) {
         database.execute(
           '''
@@ -104,13 +103,24 @@ class ReferenceRefresh {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
-            _uuid.v4(), fileId, ref.symbol, ref.module, ref.sourcePath,
-            ref.dotPath, ref.symbolKind, ref.resolution, ref.count, now,
+            _uuid.v4(),
+            fileId,
+            ref.symbol,
+            ref.module,
+            ref.sourcePath,
+            ref.dotPath,
+            ref.symbolKind,
+            ref.resolution,
+            ref.count,
+            now,
           ],
         );
       }
       _replaceFtsReferences(
-          database, fileId, extracted.references.map((r) => r.dotPath));
+        database,
+        fileId,
+        extracted.references.map((r) => r.dotPath),
+      );
       database.execute(
         'UPDATE files SET structure_refreshed_at = ?, updated_at = ? WHERE id = ?',
         [now, now, fileId],

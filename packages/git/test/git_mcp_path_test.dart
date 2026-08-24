@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:git_mcp/git_mcp.dart';
+import 'package:jhsware_code_git/git_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
 import 'package:path/path.dart' as p;
@@ -10,22 +10,22 @@ import 'package:test/test.dart';
 /// the implementation is tested independently.
 bool gitMcpIsAllowedPath(List<String> allowedPaths, String path) {
   final normalizedPath = p.normalize(path);
-  
+
   return allowedPaths.any((String allowedRoot) {
     final normalizedRoot = p.normalize(allowedRoot);
-    
+
     // Exact match
     if (normalizedPath == normalizedRoot) {
       return true;
     }
-    
+
     // Check if path is a child of the allowed root
     // Ensure we match complete path segments (not partial names)
     // e.g., /lib should match /lib/models but NOT /library
-    final rootWithSep = normalizedRoot.endsWith(p.separator) 
-        ? normalizedRoot 
+    final rootWithSep = normalizedRoot.endsWith(p.separator)
+        ? normalizedRoot
         : normalizedRoot + p.separator;
-    
+
     return normalizedPath.startsWith(rootWithSep);
   });
 }
@@ -62,17 +62,29 @@ void main() {
 
       test('allows file in nested subdirectory', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/lib/models/user.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/lib/models/user.dart'),
+          isTrue,
+        );
       });
 
       test('allows deeply nested file', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/lib/src/models/entities/user.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(
+            allowed,
+            '/project/lib/src/models/entities/user.dart',
+          ),
+          isTrue,
+        );
       });
 
       test('allows file in any of multiple allowed paths', () {
         final allowed = ['/project/lib', '/project/bin', '/project/test'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/test/utils/helpers_test.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/test/utils/helpers_test.dart'),
+          isTrue,
+        );
       });
     });
 
@@ -102,17 +114,26 @@ void main() {
       test('rejects path that starts with similar name but is not a child', () {
         // This is the critical test - /lib should NOT match /library
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/library/file.dart'), isFalse);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/library/file.dart'),
+          isFalse,
+        );
       });
 
       test('rejects path with allowed path as substring', () {
         final allowed = ['/project/bin'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/binary/file.dart'), isFalse);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/binary/file.dart'),
+          isFalse,
+        );
       });
 
       test('rejects path with partial directory name match', () {
         final allowed = ['/project/test'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/testing/file.dart'), isFalse);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/testing/file.dart'),
+          isFalse,
+        );
       });
 
       test('allows actual child despite similar named sibling existing', () {
@@ -124,12 +145,18 @@ void main() {
     group('path normalization', () {
       test('handles paths with double slashes', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/lib//models/file.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/lib//models/file.dart'),
+          isTrue,
+        );
       });
 
       test('handles paths with dot segments', () {
         final allowed = ['/project/lib'];
-        expect(gitMcpIsAllowedPath(allowed, '/project/lib/./models/../file.dart'), isTrue);
+        expect(
+          gitMcpIsAllowedPath(allowed, '/project/lib/./models/../file.dart'),
+          isTrue,
+        );
       });
     });
 
@@ -138,23 +165,35 @@ void main() {
         // This was the original failing case
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
         expect(
-          gitMcpIsAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart'),
+          gitMcpIsAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart',
+          ),
           isTrue,
         );
       });
 
-      test('allows lib/mcp_server/utils/path_helpers.dart when ./lib is allowed', () {
-        final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
-        expect(
-          gitMcpIsAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/mcp_server/utils/path_helpers.dart'),
-          isTrue,
-        );
-      });
+      test(
+        'allows lib/mcp_server/utils/path_helpers.dart when ./lib is allowed',
+        () {
+          final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/lib'];
+          expect(
+            gitMcpIsAllowedPath(
+              allowed,
+              '/Users/jhsware/DEV/dart_dev_mcp/lib/mcp_server/utils/path_helpers.dart',
+            ),
+            isTrue,
+          );
+        },
+      );
 
       test('allows test/utils/path_helpers_test.dart when ./test is allowed', () {
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/test'];
         expect(
-          gitMcpIsAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/test/utils/path_helpers_test.dart'),
+          gitMcpIsAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/test/utils/path_helpers_test.dart',
+          ),
           isTrue,
         );
       });
@@ -162,7 +201,10 @@ void main() {
       test('rejects lib/models/models.dart when only ./bin is allowed', () {
         final allowed = ['/Users/jhsware/DEV/dart_dev_mcp/bin'];
         expect(
-          gitMcpIsAllowedPath(allowed, '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart'),
+          gitMcpIsAllowedPath(
+            allowed,
+            '/Users/jhsware/DEV/dart_dev_mcp/lib/models/models.dart',
+          ),
           isFalse,
         );
       });
@@ -172,7 +214,7 @@ void main() {
       test('allows staging file in lib when lib is allowed', () {
         final projectPath = '/Users/dev/myproject';
         final allowed = ['$projectPath/lib', '$projectPath/bin'];
-        
+
         // Simulates: git add lib/src/feature.dart
         final filePath = '$projectPath/lib/src/feature.dart';
         expect(gitMcpIsAllowedPath(allowed, filePath), isTrue);
@@ -181,7 +223,7 @@ void main() {
       test('rejects staging file outside allowed paths', () {
         final projectPath = '/Users/dev/myproject';
         final allowed = ['$projectPath/lib', '$projectPath/bin'];
-        
+
         // Simulates: git add .env (should be rejected)
         final filePath = '$projectPath/.env';
         expect(gitMcpIsAllowedPath(allowed, filePath), isFalse);
@@ -190,7 +232,7 @@ void main() {
       test('rejects staging file in docs when only lib/bin allowed', () {
         final projectPath = '/Users/dev/myproject';
         final allowed = ['$projectPath/lib', '$projectPath/bin'];
-        
+
         // Simulates: git add docs/README.md
         final filePath = '$projectPath/docs/README.md';
         expect(gitMcpIsAllowedPath(allowed, filePath), isFalse);
@@ -199,7 +241,7 @@ void main() {
       test('allows staging pubspec.yaml when explicitly allowed', () {
         final projectPath = '/Users/dev/myproject';
         final allowed = ['$projectPath/lib', '$projectPath/pubspec.yaml'];
-        
+
         final filePath = '$projectPath/pubspec.yaml';
         expect(gitMcpIsAllowedPath(allowed, filePath), isTrue);
       });
@@ -241,10 +283,16 @@ void main() {
 
       // git init at repo root
       await Process.run('git', ['init'], workingDirectory: repoDir.path);
-      await Process.run('git', ['config', 'user.email', 'test@example.com'],
-          workingDirectory: repoDir.path);
-      await Process.run('git', ['config', 'user.name', 'Test User'],
-          workingDirectory: repoDir.path);
+      await Process.run('git', [
+        'config',
+        'user.email',
+        'test@example.com',
+      ], workingDirectory: repoDir.path);
+      await Process.run('git', [
+        'config',
+        'user.name',
+        'Test User',
+      ], workingDirectory: repoDir.path);
     });
 
     tearDown(() async {
@@ -283,7 +331,6 @@ void main() {
       final result = await gitOps.add([outsideFile.path]);
       final text = (result.content.first as TextContent).text;
       expect(text, contains('allowed paths'));
-
     });
 
     test('git add --all filters files outside the sub-project', () async {
@@ -294,10 +341,12 @@ void main() {
       await outsideFile.writeAsString('# Repo');
 
       await Process.run('git', ['add', '.'], workingDirectory: repoDir.path);
-      await Process.run(
-        'git', ['commit', '--no-gpg-sign', '-m', 'initial'],
-        workingDirectory: repoDir.path,
-      );
+      await Process.run('git', [
+        'commit',
+        '--no-gpg-sign',
+        '-m',
+        'initial',
+      ], workingDirectory: repoDir.path);
 
       // Now modify both files so they show up individually in porcelain output
       await insideFile.writeAsString('void bar() { /* changed */ }');
@@ -317,4 +366,3 @@ void main() {
     });
   });
 }
-

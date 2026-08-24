@@ -1,14 +1,15 @@
 import 'dart:io';
 
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
-import 'package:git_mcp/git_mcp.dart';
+import 'package:jhsware_code_git/git_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
 /// Git MCP Server
 ///
 /// Provides Git operations for version control with path restrictions.
 /// Supports SSH and GPG commit signing.
-/// Allowed paths are resolved from jhsware-code.yaml per project.
+/// Allowed paths are resolved from jhsware_code.yaml (or the legacy
+/// jhsware-code.yaml) per project.
 ///
 /// Usage: `dart run bin/git_mcp.dart --project-dir=PATH1 [--project-dir=PATH2 ...]`
 void main(List<String> arguments) async {
@@ -41,18 +42,18 @@ void main(List<String> arguments) async {
 
   logInfo('git', 'Git MCP Server starting...');
   logInfo('git', 'Project dirs: ${serverArgs.projectDirs.join(", ")}');
-  logInfo('git',
-      'Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})');
+  logInfo(
+    'git',
+    'Signing: ${signingInfo.defaultMethod} (SSH: ${signingInfo.sshAvailable ? "available" : "not available"}, GPG: ${signingInfo.gpgAvailable ? "available" : "not available"})',
+  );
   if (signingInfo.sshAgentSocket != null) {
     logInfo('git', 'SSH Agent: ${signingInfo.sshAgentSocket}');
   }
 
   final server = McpServer(
-    Implementation(name: 'git-mcp', version: '1.0.0'),
+    Implementation(name: 'jhsware_code_git', version: '1.0.0'),
     options: McpServerOptions(
-      capabilities: ServerCapabilities(
-        tools: ServerCapabilitiesTools(),
-      ),
+      capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
   );
 
@@ -90,8 +91,7 @@ Operations:
           enumValues: _validOperations,
         ),
         'branch': JsonSchema.string(
-          description:
-              'Branch name (for branch-create, branch-switch, merge)',
+          description: 'Branch name (for branch-create, branch-switch, merge)',
         ),
         'from': JsonSchema.string(
           description:
@@ -119,9 +119,7 @@ Operations:
           description:
               'Stash index to apply (for stash-apply, stash-pop). Default: 0 (latest)',
         ),
-        'tag': JsonSchema.string(
-          description: 'Tag name (for tag-create)',
-        ),
+        'tag': JsonSchema.string(description: 'Tag name (for tag-create)'),
         'annotated': JsonSchema.boolean(
           description:
               'Create an annotated tag with message (for tag-create). Default: false',
@@ -141,8 +139,7 @@ Operations:
       },
       required: ['project_dir'],
     ),
-    callback: (args, extra) =>
-        _handleGit(args, serverArgs, signingInfo),
+    callback: (args, extra) => _handleGit(args, serverArgs, signingInfo),
   );
 
   final transport = StdioServerTransport();
@@ -152,15 +149,18 @@ Operations:
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: git_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]');
+    'Usage: git_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]',
+  );
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH  Path to a project directory (required, can be repeated)');
+    '  --project-dir=PATH  Path to a project directory (required, can be repeated)',
+  );
   stderr.writeln('  --help, -h          Show this help message');
   stderr.writeln('');
   stderr.writeln(
-      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
+    'Allowed paths are resolved from jhsware_code.yaml (or legacy jhsware-code.yaml) in each project directory.',
+  );
 }
 
 const _validOperations = [
@@ -218,11 +218,15 @@ Future<CallToolResult> _handleGit(
   if (requireString(requestedDir, 'project_dir') case final error?) {
     return error;
   }
-  final projectDir =
-      resolveProjectDirAlias(requestedDir!, serverArgs.projectDirs);
+  final projectDir = resolveProjectDirAlias(
+    requestedDir!,
+    serverArgs.projectDirs,
+  );
   if (projectDir == null) {
-    return validationError('project_dir',
-        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+    return validationError(
+      'project_dir',
+      'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}',
+    );
   }
 
   final operation = args['operation'] as String?;
@@ -246,8 +250,8 @@ Future<CallToolResult> _handleGit(
     return validationError(
       'path',
       'No git repository found. Searched for a .git directory starting at '
-      '"$projectDir" and walking up to the filesystem root without success. '
-      'Run "git init" here or in a parent directory.',
+          '"$projectDir" and walking up to the filesystem root without success. '
+          'Run "git init" here or in a parent directory.',
     );
   }
 
@@ -255,8 +259,7 @@ Future<CallToolResult> _handleGit(
   final projectDirectory = Directory(projectDir);
 
   // Resolve allowed paths from ProjectConfigService
-  final allowedPaths =
-      ProjectConfigService.getAllowedPaths(projectDir, 'git');
+  final allowedPaths = ProjectConfigService.getAllowedPaths(projectDir, 'git');
 
   // Create operation handlers for this project
   final gitOps = GitOperations(
@@ -275,7 +278,9 @@ Future<CallToolResult> _handleGit(
         return gitOps.status();
       case 'branch-create':
         return gitOps.branchCreate(
-            args['branch'] as String?, args['from'] as String?);
+          args['branch'] as String?,
+          args['from'] as String?,
+        );
       case 'branch-list':
         return gitOps.branchList();
       case 'branch-switch':
@@ -283,28 +288,38 @@ Future<CallToolResult> _handleGit(
       case 'merge':
         return gitOps.merge(args['branch'] as String?);
       case 'add':
-        return gitOps.add(getFilesArg(args),
-            all: args['all'] as bool? ?? false);
+        return gitOps.add(
+          getFilesArg(args),
+          all: args['all'] as bool? ?? false,
+        );
       case 'commit':
-        return commitOps.commit(args['message'] as String?,
-            sign: args['sign'] as String? ?? 'auto');
+        return commitOps.commit(
+          args['message'] as String?,
+          sign: args['sign'] as String? ?? 'auto',
+        );
       case 'stash':
-        return commitOps.stash(args['message'] as String?,
-            includeUntracked:
-                args['include_untracked'] as bool? ?? false);
+        return commitOps.stash(
+          args['message'] as String?,
+          includeUntracked: args['include_untracked'] as bool? ?? false,
+        );
       case 'stash-list':
         return commitOps.stashList();
       case 'stash-apply':
         return commitOps.stashApply(
-            (args['stash_index'] as num?)?.toInt() ?? 0,
-            pop: false);
+          (args['stash_index'] as num?)?.toInt() ?? 0,
+          pop: false,
+        );
       case 'stash-pop':
         return commitOps.stashApply(
-            (args['stash_index'] as num?)?.toInt() ?? 0,
-            pop: true);
+          (args['stash_index'] as num?)?.toInt() ?? 0,
+          pop: true,
+        );
       case 'tag-create':
-        return gitOps.tagCreate(args['tag'] as String?,
-            args['message'] as String?, args['annotated'] as bool? ?? false);
+        return gitOps.tagCreate(
+          args['tag'] as String?,
+          args['message'] as String?,
+          args['annotated'] as bool? ?? false,
+        );
       case 'tag-list':
         return gitOps.tagList();
       case 'remote-list':

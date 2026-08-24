@@ -41,7 +41,8 @@ void main() {
       expect(parsed['total_emails_scanned'], isA<int>());
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'single category classify with broad query should find emails when FDA is granted',
+        reason:
+            'single category classify with broad query should find emails when FDA is granted',
       );
 
       final summary = parsed['summary'] as Map<String, dynamic>;
@@ -75,7 +76,8 @@ void main() {
       expect(parsed, contains('total_emails_scanned'));
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'three category classify with broad query should find emails when FDA is granted',
+        reason:
+            'three category classify with broad query should find emails when FDA is granted',
       );
 
       final categories = parsed['categories'] as Map<String, dynamic>;
@@ -116,7 +118,8 @@ void main() {
       expect(parsed['total_emails_scanned'], isA<int>());
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'five category classify with broad query should find emails when FDA is granted',
+        reason:
+            'five category classify with broad query should find emails when FDA is granted',
       );
 
       expect(elapsed, lessThan(maxBatchedOpDuration));
@@ -143,7 +146,8 @@ void main() {
       expect(parsed, contains('summary'));
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'subject-only classify with broad query should find emails when FDA is granted',
+        reason:
+            'subject-only classify with broad query should find emails when FDA is granted',
       );
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -169,7 +173,8 @@ void main() {
       expect(parsed, contains('summary'));
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'sender-only classify with broad query should find emails when FDA is granted',
+        reason:
+            'sender-only classify with broad query should find emails when FDA is granted',
       );
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -212,16 +217,17 @@ void main() {
         reason: 'min_score=0 classify should scan emails when FDA is granted',
       );
 
-      final noFilterSummary =
-          noFilterParsed['summary'] as Map<String, dynamic>;
-      final filteredSummary =
-          filteredParsed['summary'] as Map<String, dynamic>;
+      final noFilterSummary = noFilterParsed['summary'] as Map<String, dynamic>;
+      final filteredSummary = filteredParsed['summary'] as Map<String, dynamic>;
 
       // With high min_score, we should have fewer or equal results
       final noFilterCount = noFilterSummary['test_cat'] as int? ?? 0;
       final filteredCount = filteredSummary['test_cat'] as int? ?? 0;
-      expect(filteredCount, lessThanOrEqualTo(noFilterCount),
-          reason: 'Higher min_score should produce fewer or equal results');
+      expect(
+        filteredCount,
+        lessThanOrEqualTo(noFilterCount),
+        reason: 'Higher min_score should produce fewer or equal results',
+      );
 
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -251,7 +257,8 @@ void main() {
       // the keyword won't match — they'll all land in unmatched.
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'include_unmatched classify should scan emails when FDA is granted',
+        reason:
+            'include_unmatched classify should scan emails when FDA is granted',
       );
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
@@ -274,17 +281,20 @@ void main() {
       assertSuccessResult(result);
       final text = extractText(result);
       final parsed = jsonDecode(text) as Map<String, dynamic>;
-      expect(parsed.containsKey('unmatched'), isFalse,
-          reason: 'Should not contain unmatched key when false');
+      expect(
+        parsed.containsKey('unmatched'),
+        isFalse,
+        reason: 'Should not contain unmatched key when false',
+      );
       expectNonZeroIfFdaGranted(
         parsed['total_emails_scanned'] as int,
-        reason: 'include_unmatched=false classify should still scan emails when FDA is granted',
+        reason:
+            'include_unmatched=false classify should still scan emails when FDA is granted',
       );
       expect(elapsed, lessThan(maxBatchedOpDuration));
     });
 
-    test('BM25 scores are present and positive for matching results',
-        () async {
+    test('BM25 scores are present and positive for matching results', () async {
       final classifiers = jsonEncode({
         'test_cat': ['the', 'and'],
       });
@@ -313,8 +323,11 @@ void main() {
           final map = match as Map<String, dynamic>;
           expect(map, contains('score'));
           expect(map['score'], isA<num>());
-          expect((map['score'] as num).toDouble(), greaterThan(0.0),
-              reason: 'BM25 scores should be positive');
+          expect(
+            (map['score'] as num).toDouble(),
+            greaterThan(0.0),
+            reason: 'BM25 scores should be positive',
+          );
           // Check email structure
           expect(map, contains('subject'));
           expect(map, contains('sender'));

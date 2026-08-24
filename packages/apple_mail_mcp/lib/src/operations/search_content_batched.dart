@@ -34,8 +34,7 @@ Future<void> runBatchedSearchEmailContent({
   final searchOperator = args['search_operator'] as String? ?? 'or';
   final searchField = args['search_field'] as String? ?? 'all';
 
-  final keywords =
-      query.split(' ').where((k) => k.trim().isNotEmpty).toList();
+  final keywords = query.split(' ').where((k) => k.trim().isNotEmpty).toList();
 
   // Write header chunk
   session.chunks.add(
@@ -56,7 +55,8 @@ Future<void> runBatchedSearchEmailContent({
       if (mailbox == 'All') {
         scopeDir = entry.value;
       } else {
-        scopeDir = await findMailboxDirectory(
+        scopeDir =
+            await findMailboxDirectory(
               accountPath: entry.value,
               mailbox: mailbox,
             ) ??
@@ -77,8 +77,9 @@ Future<void> runBatchedSearchEmailContent({
   }
   if (startDate != null) dateAfter = DateTime.parse(startDate);
   if (endDate != null) {
-    dateBefore = DateTime.parse(endDate)
-        .add(const Duration(hours: 23, minutes: 59, seconds: 59));
+    dateBefore = DateTime.parse(
+      endDate,
+    ).add(const Duration(hours: 23, minutes: 59, seconds: 59));
   }
 
   // Build keyword conditions for Spotlight
@@ -103,9 +104,7 @@ Future<void> runBatchedSearchEmailContent({
   }
 
   // Build complete query
-  final conditions = <String>[
-    'kMDItemContentType == "$emlxContentType"',
-  ];
+  final conditions = <String>['kMDItemContentType == "$emlxContentType"'];
 
   if (dateAfter != null) {
     conditions.add(
@@ -151,9 +150,10 @@ Future<void> runBatchedSearchEmailContent({
     return;
   }
 
-  await extra.sendProgress(0,
-      message:
-          'Found ${allMetadata.length} matching messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} matching messages, processing...',
+  );
 
   // Process metadata in batches
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -171,8 +171,7 @@ Future<void> runBatchedSearchEmailContent({
     for (final meta in batch) {
       matchedCount++;
       if (matchedCount > offset && resultCount < maxResults) {
-        final readIndicator =
-            meta['read_status'] == 'read' ? '✓' : '✉';
+        final readIndicator = meta['read_status'] == 'read' ? '✓' : '✉';
         batchOutput.writeln('$readIndicator ${meta['subject']}');
         batchOutput.writeln('   From: ${meta['sender']}');
         batchOutput.writeln('   Date: ${meta['date']}');
@@ -188,9 +187,12 @@ Future<void> runBatchedSearchEmailContent({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages, '
-            'found $matchedCount matches');
+    await extra.sendProgress(
+      0,
+      message:
+          'Processed $scanned of ${allMetadata.length} messages, '
+          'found $matchedCount matches',
+    );
   }
 
   session.chunks.add(

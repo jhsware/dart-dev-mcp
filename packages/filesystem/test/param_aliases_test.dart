@@ -1,4 +1,4 @@
-import 'package:filesystem_mcp/filesystem_mcp.dart';
+import 'package:jhsware_code_filesystem/filesystem_mcp.dart';
 import 'package:test/test.dart';
 
 /// Tests for tolerant line-parameter reading. A misread line parameter is

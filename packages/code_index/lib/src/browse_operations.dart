@@ -91,7 +91,10 @@ class BrowseOperations {
     final layers = _parseLayers(args?['layers']);
 
     if (pathsDynamic == null || pathsDynamic.isEmpty) {
-      return validationError('paths', 'paths is required and must not be empty');
+      return validationError(
+        'paths',
+        'paths is required and must not be empty',
+      );
     }
     if (_validateLayers(layers) case final error?) return error;
 
@@ -155,8 +158,9 @@ class BrowseOperations {
       filters['language'] = language;
     }
 
-    final whereClause =
-        conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final whereClause = conditions.isEmpty
+        ? ''
+        : 'WHERE ${conditions.join(' AND ')}';
     final result = database.select(
       'SELECT f.id, f.path, f.summary, f.tags, f.line_count '
       'FROM files f $whereClause ORDER BY f.path LIMIT ?',
@@ -213,9 +217,9 @@ class BrowseOperations {
           database.select('SELECT COUNT(*) AS c FROM $table').first['c'] as int;
     }
 
-    final lastScan = database
-        .select('SELECT MAX(indexed_at) AS m FROM files')
-        .first['m'] as String?;
+    final lastScan =
+        database.select('SELECT MAX(indexed_at) AS m FROM files').first['m']
+            as String?;
 
     final info = <String, dynamic>{
       'project_path': workingDir.path,
@@ -280,7 +284,8 @@ class BrowseOperations {
       final decoded = jsonDecode(file.readAsStringSync());
       final projects = (decoded as Map)['projects'];
       if (projects is Map) {
-        final entry = projects[workingDir.path] ??
+        final entry =
+            projects[workingDir.path] ??
             projects[p.normalize(p.absolute(workingDir.path))];
         if (entry is Map) return entry.cast<String, dynamic>();
       }
@@ -387,15 +392,17 @@ class BrowseOperations {
           'ORDER BY count DESC, dot_path',
           [fileId],
         )
-        .map((u) => {
-              'dot_path': u['dot_path'],
-              'symbol': u['symbol'],
-              'module': u['module'],
-              'source_path': u['source_path'],
-              'kind': u['symbol_kind'],
-              'resolution': u['resolution'],
-              'count': u['count'],
-            })
+        .map(
+          (u) => {
+            'dot_path': u['dot_path'],
+            'symbol': u['symbol'],
+            'module': u['module'],
+            'source_path': u['source_path'],
+            'kind': u['symbol_kind'],
+            'resolution': u['resolution'],
+            'count': u['count'],
+          },
+        )
         .toList();
   }
 
@@ -406,11 +413,13 @@ class BrowseOperations {
           'ORDER BY line',
           [fileId],
         )
-        .map((a) => {
-              'kind': a['kind'],
-              'message': a['message'],
-              'line': a['line'],
-            })
+        .map(
+          (a) => {
+            'kind': a['kind'],
+            'message': a['message'],
+            'line': a['line'],
+          },
+        )
         .toList();
   }
 }

@@ -6,7 +6,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:test/test.dart';
@@ -128,8 +128,10 @@ Future<String> discoverFirstAccount() async {
   final result = await handler({});
   final text = extractText(result);
   // Parse "  - AccountName" lines
-  final lines =
-      text.split('\n').where((l) => l.trimLeft().startsWith('- ')).toList();
+  final lines = text
+      .split('\n')
+      .where((l) => l.trimLeft().startsWith('- '))
+      .toList();
   if (lines.isNotEmpty) {
     return lines.first.trimLeft().substring(2).trim();
   }
@@ -140,33 +142,41 @@ Future<String> discoverFirstAccount() async {
     return fsNames.first;
   }
 
-  fail('No Apple Mail accounts found. Integration tests require at least '
-      'one configured account.');
+  fail(
+    'No Apple Mail accounts found. Integration tests require at least '
+    'one configured account.',
+  );
 }
 
 /// Extracts all text content from a [CallToolResult].
 String extractText(CallToolResult result) {
-  return result.content
-      .whereType<TextContent>()
-      .map((c) => c.text)
-      .join('\n');
+  return result.content.whereType<TextContent>().map((c) => c.text).join('\n');
 }
 
 /// Asserts the result text does not indicate an error.
 void assertSuccessResult(CallToolResult result) {
   final text = extractText(result);
-  expect(text, isNot(startsWith('Error:')),
-      reason: 'Result should not start with Error: got: $text');
+  expect(
+    text,
+    isNot(startsWith('Error:')),
+    reason: 'Result should not start with Error: got: $text',
+  );
   // Also check for the actionableError format
-  expect(text, isNot(startsWith('Error: ')),
-      reason: 'Result should not be an actionable error');
+  expect(
+    text,
+    isNot(startsWith('Error: ')),
+    reason: 'Result should not be an actionable error',
+  );
 }
 
 /// Asserts the result text indicates an error.
 void assertErrorResult(CallToolResult result) {
   final text = extractText(result);
-  expect(text.contains('Error:') || text.contains('ERROR:'), isTrue,
-      reason: 'Expected an error result, got: $text');
+  expect(
+    text.contains('Error:') || text.contains('ERROR:'),
+    isTrue,
+    reason: 'Expected an error result, got: $text',
+  );
 }
 
 /// Checks if a result contains a timeout error from AppleScript.
@@ -189,8 +199,9 @@ Future<(T, Duration)> timeOperation<T>(Future<T> Function() fn) async {
 /// Some handlers don't catch the AppleScript timeout exception internally,
 /// so it propagates as an unhandled Exception. This wrapper lets tests
 /// treat such timeouts as an acceptable outcome.
-Future<(CallToolResult?, Duration, String?)>
-    timeOperationTolerant(Future<CallToolResult> Function() fn) async {
+Future<(CallToolResult?, Duration, String?)> timeOperationTolerant(
+  Future<CallToolResult> Function() fn,
+) async {
   final sw = Stopwatch()..start();
   try {
     final result = await fn();
@@ -210,8 +221,11 @@ class FakeRequestHandlerExtra implements RequestHandlerExtra {
   final List<({double progress, String? message})> progressCalls = [];
 
   @override
-  Future<void> sendProgress(double progress,
-      {String? message, double? total}) async {
+  Future<void> sendProgress(
+    double progress, {
+    String? message,
+    double? total,
+  }) async {
     progressCalls.add((progress: progress, message: message));
   }
 
@@ -241,24 +255,28 @@ Future<void> checkFullDiskAccessOrWarn() async {
   _fdaStatus = await checkFullDiskAccess();
   if (_fdaStatus == false) {
     // ignore: avoid_print
-    print('\n'
-        '╔══════════════════════════════════════════════════════════════╗\n'
-        '║  WARNING: Full Disk Access is NOT granted.                  ║\n'
-        '║                                                             ║\n'
-        '║  Spotlight (mdfind) operations will return 0 results.       ║\n'
-        '║  Tests will pass but with empty data.                       ║\n'
-        '║                                                             ║\n'
-        '║  To test with real data, grant Full Disk Access to your     ║\n'
-        '║  terminal/IDE in:                                           ║\n'
-        '║  System Settings > Privacy & Security > Full Disk Access    ║\n'
-        '╚══════════════════════════════════════════════════════════════╝\n');
+    print(
+      '\n'
+      '╔══════════════════════════════════════════════════════════════╗\n'
+      '║  WARNING: Full Disk Access is NOT granted.                  ║\n'
+      '║                                                             ║\n'
+      '║  Spotlight (mdfind) operations will return 0 results.       ║\n'
+      '║  Tests will pass but with empty data.                       ║\n'
+      '║                                                             ║\n'
+      '║  To test with real data, grant Full Disk Access to your     ║\n'
+      '║  terminal/IDE in:                                           ║\n'
+      '║  System Settings > Privacy & Security > Full Disk Access    ║\n'
+      '╚══════════════════════════════════════════════════════════════╝\n',
+    );
   } else if (_fdaStatus == true) {
     // ignore: avoid_print
     print('✓ Full Disk Access is granted — mdfind operations will work.');
   } else {
     // ignore: avoid_print
-    print('⚠ Could not determine Full Disk Access status '
-        '(~/Library/Mail may not exist).');
+    print(
+      '⚠ Could not determine Full Disk Access status '
+      '(~/Library/Mail may not exist).',
+    );
   }
 }
 

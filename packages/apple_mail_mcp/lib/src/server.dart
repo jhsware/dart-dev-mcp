@@ -25,7 +25,7 @@ import 'session_operations.dart';
 
 /// Builds the merged dispatch map from all operation modules.
 Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
-    _buildOperationHandlers() {
+_buildOperationHandlers() {
   return {
     ...getInboxOperations(),
     ...getSearchOperations(),
@@ -35,12 +35,12 @@ Map<String, Future<CallToolResult> Function(Map<String, dynamic>)>
 
 /// All supported operation names for the apple-mail tool.
 List<String> get allOperations => [
-      ..._buildOperationHandlers().keys,
-      ...batchedOperations,
-      'get_output',
-      'list_sessions',
-      'cancel',
-    ];
+  ..._buildOperationHandlers().keys,
+  ...batchedOperations,
+  'get_output',
+  'list_sessions',
+  'cancel',
+];
 
 /// Creates and configures the Apple Mail MCP server.
 ///
@@ -52,7 +52,7 @@ McpServer createAppleMailServer() {
   final sessionManager = SessionManager();
 
   final server = McpServer(
-    Implementation(name: 'apple-mail-mcp', version: '0.1.0'),
+    Implementation(name: 'jhsware_code_apple_mail', version: '0.1.0'),
   );
 
   server.registerTool(
@@ -353,8 +353,7 @@ McpServer createAppleMailServer() {
           }
           // Validate JSON parses correctly
           try {
-            final parsed =
-                jsonDecode(classifiersJson) as Map<String, dynamic>;
+            final parsed = jsonDecode(classifiersJson) as Map<String, dynamic>;
             if (parsed.isEmpty) {
               return actionableError(
                 'classifiers must contain at least one category.',

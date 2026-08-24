@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:mcp_dart/mcp_dart.dart';
-import 'package:planner_mcp/planner_mcp.dart';
+import 'package:jhsware_code_planner/planner_mcp.dart';
 
 /// Planner MCP Server.
 ///
@@ -34,7 +34,7 @@ void main(List<String> arguments) async {
   final client = PlannerApiClient.fromConfig(config);
 
   final server = McpServer(
-    Implementation(name: 'planner-mcp', version: '1.0.0'),
+    Implementation(name: 'jhsware_code_planner', version: '1.0.0'),
     options: McpServerOptions(
       capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
@@ -49,17 +49,30 @@ void main(List<String> arguments) async {
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: planner_mcp --project-dir=PATH [--project-dir=PATH2 ...] '
-      '--server-url=URL [--token=TOKEN] [--ca-cert=PATH] '
-      '[--client-cert=PATH --client-key=PATH] [--insecure]');
+    'Usage: planner_mcp --project-dir=PATH [--project-dir=PATH2 ...] '
+    '--server-url=URL [--token=TOKEN] [--ca-cert=PATH] '
+    '[--client-cert=PATH --client-key=PATH] [--insecure]',
+  );
   stderr.writeln('');
   stderr.writeln('Options (env-var fallback in parentheses):');
-  stderr.writeln('  --project-dir=PATH   Project directory (repeatable, required)');
-  stderr.writeln('  --server-url=URL     planner_server base URL (PLANNER_SERVER_URL)');
+  stderr.writeln(
+    '  --project-dir=PATH   Project directory (repeatable, required)',
+  );
+  stderr.writeln(
+    '  --server-url=URL     planner_server base URL (PLANNER_SERVER_URL)',
+  );
   stderr.writeln('  --token=TOKEN        Bearer token (PLANNER_SERVER_TOKEN)');
-  stderr.writeln('  --ca-cert=PATH       Pin server CA (PLANNER_SERVER_CA_CERT)');
-  stderr.writeln('  --client-cert=PATH   mTLS client cert (PLANNER_SERVER_CLIENT_CERT)');
-  stderr.writeln('  --client-key=PATH    mTLS client key (PLANNER_SERVER_CLIENT_KEY)');
-  stderr.writeln('  --insecure           Skip TLS verification (PLANNER_SERVER_INSECURE)');
+  stderr.writeln(
+    '  --ca-cert=PATH       Pin server CA (PLANNER_SERVER_CA_CERT)',
+  );
+  stderr.writeln(
+    '  --client-cert=PATH   mTLS client cert (PLANNER_SERVER_CLIENT_CERT)',
+  );
+  stderr.writeln(
+    '  --client-key=PATH    mTLS client key (PLANNER_SERVER_CLIENT_KEY)',
+  );
+  stderr.writeln(
+    '  --insecure           Skip TLS verification (PLANNER_SERVER_INSECURE)',
+  );
   stderr.writeln('  --help, -h           Show this help');
 }

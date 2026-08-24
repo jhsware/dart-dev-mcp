@@ -22,7 +22,7 @@ DEV_MODE=false
 PROJECT_DIRS=()
 
 __help_text__=$(cat <<EOF
-Dart Dev MCP - Claude Desktop Launcher
+jhsware_code - Claude Desktop Launcher
 =======================================
 
 Usage: $0 <servers> [options]
@@ -71,7 +71,7 @@ SSH Signing:
 
 Allowed paths:
   File system and git allowed paths are now configured per-project via
-  jhsware-code.yaml in each project directory.
+  jhsware_code.yaml (or legacy jhsware-code.yaml) in each project directory.
 
 Examples:
   # Launch with all tools for a single project
@@ -137,7 +137,7 @@ while [[ $# -gt 0 ]]; do
         SERVERS="$1"
       else
         echo "Unknown positional argument: $1" >&2
-        echo "Allowed paths are now configured via jhsware-code.yaml in each project directory." >&2
+        echo "Allowed paths are now configured via jhsware_code.yaml (or legacy jhsware-code.yaml) in each project directory." >&2
         exit 1
       fi
       shift
@@ -179,7 +179,7 @@ fi
 
 # Backup existing config
 if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json" ]; then
-  cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json" "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak"
+  cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json" "$PATH_TO_CLAUDE/claude_desktop_config.json.jhsware_code.bak"
 fi
 
 # Find SSH agent socket
@@ -242,7 +242,7 @@ output_server_cmd() {
   # Look up package directory for this binary
   local package_dir=""
   case "$dart_source" in
-    file_edit_mcp.dart) package_dir="filesystem" ;;
+    filesystem_mcp.dart) package_dir="filesystem" ;;
     fetch_mcp.dart) package_dir="fetch" ;;
     dart_runner_mcp.dart) package_dir="dart_runner" ;;
     flutter_runner_mcp.dart) package_dir="flutter_runner" ;;
@@ -336,8 +336,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    echo '    "dart-dev-mcp-fs": {'
-    output_server_cmd "file-edit-mcp" "file_edit_mcp.dart" "null" "${project_dir_args[@]}"
+    echo '    "jhsware_code_filesystem": {'
+    output_server_cmd "jhsware-code-filesystem" "filesystem_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
 
@@ -346,8 +346,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    echo '    "dart-dev-mcp-fetch": {'
-    output_server_cmd "fetch-mcp" "fetch_mcp.dart" "null"
+    echo '    "jhsware_code_fetch": {'
+    output_server_cmd "jhsware-code-fetch" "fetch_mcp.dart" "null"
     echo '    }'
   fi
   
@@ -356,8 +356,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    echo '    "dart-dev-mcp-dart-runner": {'
-    output_server_cmd "dart-runner-mcp" "dart_runner_mcp.dart" "null" "${project_dir_args[@]}"
+    echo '    "jhsware_code_dart_runner": {'
+    output_server_cmd "jhsware-code-dart-runner" "dart_runner_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
   
@@ -366,8 +366,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    echo '    "dart-dev-mcp-flutter-runner": {'
-    output_server_cmd "flutter-runner-mcp" "flutter_runner_mcp.dart" "null" "${project_dir_args[@]}"
+    echo '    "jhsware_code_flutter_runner": {'
+    output_server_cmd "jhsware-code-flutter-runner" "flutter_runner_mcp.dart" "null" "${project_dir_args[@]}"
     echo '    }'
   fi
   
@@ -376,8 +376,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
     
-    echo '    "dart-dev-mcp-git": {'
-    output_server_cmd "git-mcp" "git_mcp.dart" "$git_env" "${project_dir_args[@]}"
+    echo '    "jhsware_code_git": {'
+    output_server_cmd "jhsware-code-git" "git_mcp.dart" "$git_env" "${project_dir_args[@]}"
     echo '    }'
   fi
   
@@ -408,8 +408,8 @@ build_mcp_config() {
       planner_env="\"env\": { \"PLANNER_SERVER_TOKEN\": \"$PLANNER_SERVER_TOKEN\" }"
     fi
 
-    echo '    "dart-dev-mcp-planner": {'
-    output_server_cmd "planner-mcp" "planner_mcp.dart" "$planner_env" "${planner_args[@]}"
+    echo '    "jhsware_code_planner": {'
+    output_server_cmd "jhsware-code-planner" "planner_mcp.dart" "$planner_env" "${planner_args[@]}"
     echo '    }'
   fi
 
@@ -418,8 +418,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
 
-    echo '    "dart-dev-mcp-code-index": {'
-    output_server_cmd "code-index-mcp" "code_index_mcp.dart" "null" "--planner-data-root=$PLANNER_DATA_ROOT" "${project_dir_args[@]}"
+    echo '    "jhsware_code_code_index": {'
+    output_server_cmd "jhsware-code-code-index" "code_index_mcp.dart" "null" "--planner-data-root=$PLANNER_DATA_ROOT" "${project_dir_args[@]}"
     echo '    }'
   fi
 
@@ -428,8 +428,8 @@ build_mcp_config() {
     if [ "$first" != true ]; then echo ','; fi
     first=false
 
-    echo '    "apple-mail-mcp": {'
-    output_server_cmd "apple-mail-mcp" "apple_mail_mcp.dart" "null"
+    echo '    "jhsware_code_apple_mail": {'
+    output_server_cmd "jhsware-code-apple-mail" "apple_mail_mcp.dart" "null"
     echo '    }'
   fi
 
@@ -555,8 +555,8 @@ sleep 10
 
 echo ""
 echo "Claude started. Restoring claude_desktop_config.json to previous state"
-if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak" ]; then
-  cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json.dart-dev-mcp.bak" "$PATH_TO_CLAUDE/claude_desktop_config.json"
+if [ -f "$PATH_TO_CLAUDE/claude_desktop_config.json.jhsware_code.bak" ]; then
+  cp -f "$PATH_TO_CLAUDE/claude_desktop_config.json.jhsware_code.bak" "$PATH_TO_CLAUDE/claude_desktop_config.json"
 else
   rm -f "$PATH_TO_CLAUDE/claude_desktop_config.json"
 fi

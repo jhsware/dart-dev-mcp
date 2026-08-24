@@ -112,62 +112,68 @@ Stream<String> streamCommand(
   final controller = StreamController<String>();
 
   Process.start(
-    executable,
-    arguments,
-    workingDirectory: workingDir.path,
-    runInShell: false,
-    environment: environment,
-  ).then((process) {
-    // Notify caller of the process reference
-    onProcessStarted?.call(process);
+        executable,
+        arguments,
+        workingDirectory: workingDir.path,
+        runInShell: false,
+        environment: environment,
+      )
+      .then((process) {
+        // Notify caller of the process reference
+        onProcessStarted?.call(process);
 
-    var stdoutDone = false;
-    var stderrDone = false;
+        var stdoutDone = false;
+        var stderrDone = false;
 
-    void checkClose() {
-      if (stdoutDone && stderrDone) {
-        process.exitCode.then((exitCode) {
-          if (exitCode != 0) {
-            controller.add('\n[Process exited with code: $exitCode]\n');
-          } else {
-            controller.add('\n[Process completed successfully]\n');
+        void checkClose() {
+          if (stdoutDone && stderrDone) {
+            process.exitCode.then((exitCode) {
+              if (exitCode != 0) {
+                controller.add('\n[Process exited with code: $exitCode]\n');
+              } else {
+                controller.add('\n[Process completed successfully]\n');
+              }
+              controller.close();
+            });
           }
-          controller.close();
-        });
-      }
-    }
+        }
 
-    // Stream stdout
-    process.stdout.transform(utf8.decoder).listen(
-      (data) {
-        controller.add(data);
-      },
-      onError: (error) {
-        controller.add('STDOUT ERROR: $error\n');
-      },
-      onDone: () {
-        stdoutDone = true;
-        checkClose();
-      },
-    );
+        // Stream stdout
+        process.stdout
+            .transform(utf8.decoder)
+            .listen(
+              (data) {
+                controller.add(data);
+              },
+              onError: (error) {
+                controller.add('STDOUT ERROR: $error\n');
+              },
+              onDone: () {
+                stdoutDone = true;
+                checkClose();
+              },
+            );
 
-    // Stream stderr
-    process.stderr.transform(utf8.decoder).listen(
-      (data) {
-        controller.add(data);
-      },
-      onError: (error) {
-        controller.add('STDERR ERROR: $error\n');
-      },
-      onDone: () {
-        stderrDone = true;
-        checkClose();
-      },
-    );
-  }).catchError((error) {
-    controller.add('Failed to start process: $error\n');
-    controller.close();
-  });
+        // Stream stderr
+        process.stderr
+            .transform(utf8.decoder)
+            .listen(
+              (data) {
+                controller.add(data);
+              },
+              onError: (error) {
+                controller.add('STDERR ERROR: $error\n');
+              },
+              onDone: () {
+                stderrDone = true;
+                checkClose();
+              },
+            );
+      })
+      .catchError((error) {
+        controller.add('Failed to start process: $error\n');
+        controller.close();
+      });
 
   return controller.stream;
 }

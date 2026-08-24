@@ -19,33 +19,35 @@ void main() {
     // "Can't make missing value into type specifier" on certain accounts.
     // These are known limitations, not test bugs.
 
-    test('account_overview returns volume metrics or acceptable error',
-        () async {
-      final (result, elapsed, error) = await timeOperationTolerant(
-        () => attachmentHandlers['get-statistics']!({
-          'account': account,
-          'scope': 'account_overview',
-          'days_back': 7,
-        }),
-      );
+    test(
+      'account_overview returns volume metrics or acceptable error',
+      () async {
+        final (result, elapsed, error) = await timeOperationTolerant(
+          () => attachmentHandlers['get-statistics']!({
+            'account': account,
+            'scope': 'account_overview',
+            'days_back': 7,
+          }),
+        );
 
-      if (error != null) {
-        // ignore: avoid_print
-        print('account_overview threw exception: $error');
-      } else if (result != null) {
-        final text = extractText(result);
-        if (text.startsWith('Error:')) {
-          // AppleScript error is acceptable — log and pass
+        if (error != null) {
           // ignore: avoid_print
-          print('account_overview returned error (acceptable): $text');
-        } else {
-          expect(text, contains('EMAIL STATISTICS'));
-          expect(text, contains('VOLUME METRICS'));
-          expect(text, contains('Total Emails:'));
+          print('account_overview threw exception: $error');
+        } else if (result != null) {
+          final text = extractText(result);
+          if (text.startsWith('Error:')) {
+            // AppleScript error is acceptable — log and pass
+            // ignore: avoid_print
+            print('account_overview returned error (acceptable): $text');
+          } else {
+            expect(text, contains('EMAIL STATISTICS'));
+            expect(text, contains('VOLUME METRICS'));
+            expect(text, contains('Total Emails:'));
+          }
         }
-      }
-      expect(elapsed, lessThan(maxComplexOpDuration));
-    });
+        expect(elapsed, lessThan(maxComplexOpDuration));
+      },
+    );
 
     test('mailbox_breakdown returns mailbox stats', () async {
       final (result, elapsed, error) = await timeOperationTolerant(
@@ -83,31 +85,33 @@ void main() {
       expect(text, contains('sender parameter is required'));
     });
 
-    test('sender_stats with generic sender works or acceptable error',
-        () async {
-      final (result, elapsed, error) = await timeOperationTolerant(
-        () => attachmentHandlers['get-statistics']!({
-          'account': account,
-          'scope': 'sender_stats',
-          'sender': '@',
-          'days_back': 7,
-        }),
-      );
+    test(
+      'sender_stats with generic sender works or acceptable error',
+      () async {
+        final (result, elapsed, error) = await timeOperationTolerant(
+          () => attachmentHandlers['get-statistics']!({
+            'account': account,
+            'scope': 'sender_stats',
+            'sender': '@',
+            'days_back': 7,
+          }),
+        );
 
-      if (error != null) {
-        // ignore: avoid_print
-        print('sender_stats threw exception: $error');
-      } else if (result != null) {
-        final text = extractText(result);
-        if (text.startsWith('Error:')) {
+        if (error != null) {
           // ignore: avoid_print
-          print('sender_stats returned error (acceptable): $text');
-        } else {
-          expect(text, contains('SENDER STATISTICS'));
+          print('sender_stats threw exception: $error');
+        } else if (result != null) {
+          final text = extractText(result);
+          if (text.startsWith('Error:')) {
+            // ignore: avoid_print
+            print('sender_stats returned error (acceptable): $text');
+          } else {
+            expect(text, contains('SENDER STATISTICS'));
+          }
         }
-      }
-      expect(elapsed, lessThan(maxComplexOpDuration));
-    });
+        expect(elapsed, lessThan(maxComplexOpDuration));
+      },
+    );
 
     test('invalid scope returns error', () async {
       final (result, _) = await timeOperation(
@@ -177,9 +181,7 @@ void main() {
 
     test('requires scope parameter', () async {
       final (result, _) = await timeOperation(
-        () => attachmentHandlers['export-emails']!({
-          'account': account,
-        }),
+        () => attachmentHandlers['export-emails']!({'account': account}),
       );
 
       final text = extractText(result);

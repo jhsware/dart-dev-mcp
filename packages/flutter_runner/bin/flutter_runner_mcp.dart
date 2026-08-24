@@ -60,26 +60,26 @@ void main(List<String> arguments) async {
       logInfo('flutter-runner', 'Project $dir -> using fvm (.fvm detected)');
     } else {
       logInfo(
-          'flutter-runner', 'Project $dir -> using system flutter (no .fvm)');
+        'flutter-runner',
+        'Project $dir -> using system flutter (no .fvm)',
+      );
     }
   }
-
 
   final sessionManager = SessionManager();
 
   final server = McpServer(
-    Implementation(name: 'flutter-runner-mcp', version: '1.0.0'),
+    Implementation(name: 'jhsware_code_flutter_runner', version: '1.0.0'),
     options: McpServerOptions(
-      capabilities: ServerCapabilities(
-        tools: ServerCapabilitiesTools(),
-      ),
+      capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
   );
 
   // Register the flutter-runner tool
   server.registerTool(
     'flutter-runner',
-    description: '''Run Flutter commands via FVM with support for long-running processes.
+    description:
+        '''Run Flutter commands via FVM with support for long-running processes.
 
 Operations:
 - analyze: Run 'fvm flutter analyze' to check for errors (supports target file/directory)
@@ -143,8 +143,7 @@ useful for monorepo packages (e.g. working_dir='packages/app_core' for code gene
         ),
         'args': JsonSchema.array(
           items: JsonSchema.string(),
-          description:
-              'Additional arguments to pass to the Flutter command',
+          description: 'Additional arguments to pass to the Flutter command',
         ),
         'session_id': JsonSchema.string(
           description:
@@ -162,8 +161,12 @@ useful for monorepo packages (e.g. working_dir='packages/app_core' for code gene
       required: ['project_dir'],
     ),
     callback: (args, extra) => _handleFlutterRunner(
-        args, extra, serverArgs, sessionManager, fvmResolver),
-
+      args,
+      extra,
+      serverArgs,
+      sessionManager,
+      fvmResolver,
+    ),
   );
 
   final transport = StdioServerTransport();
@@ -173,21 +176,24 @@ useful for monorepo packages (e.g. working_dir='packages/app_core' for code gene
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: flutter_runner_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]');
+    'Usage: flutter_runner_mcp --project-dir=PATH1 [--project-dir=PATH2 ...]',
+  );
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH             Path to a project directory (required, can be repeated)');
+    '  --project-dir=PATH             Path to a project directory (required, can be repeated)',
+  );
   stderr.writeln(
-      '  --allow-toolchain-fallback     When .fvm is present but the `fvm` binary is');
+    '  --allow-toolchain-fallback     When .fvm is present but the `fvm` binary is',
+  );
   stderr.writeln(
-      '                                 missing, log a warning and fall back to the');
+    '                                 missing, log a warning and fall back to the',
+  );
   stderr.writeln(
-      '                                 system flutter instead of erroring.');
-  stderr.writeln(
-      '  --help, -h                     Show this help message');
+    '                                 system flutter instead of erroring.',
+  );
+  stderr.writeln('  --help, -h                     Show this help message');
 }
-
 
 const _validOperations = [
   'analyze',
@@ -216,11 +222,15 @@ Future<CallToolResult> _handleFlutterRunner(
   if (requireString(requestedDir, 'project_dir') case final error?) {
     return error;
   }
-  final projectDir =
-      resolveProjectDirAlias(requestedDir!, serverArgs.projectDirs);
+  final projectDir = resolveProjectDirAlias(
+    requestedDir!,
+    serverArgs.projectDirs,
+  );
   if (projectDir == null) {
-    return validationError('project_dir',
-        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+    return validationError(
+      'project_dir',
+      'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}',
+    );
   }
 
   final operation = args['operation'] as String?;
@@ -253,9 +263,7 @@ Future<CallToolResult> _handleFlutterRunner(
   }
   final useFvm = fvmResolution.useFvm;
   try {
-
     switch (operation) {
-
       case 'analyze':
         final target = args['target'] as String?;
         return _startFlutterCommandWithProgress(
@@ -275,13 +283,7 @@ Future<CallToolResult> _handleFlutterRunner(
           sessionManager,
           useFvm,
           'test',
-          [
-            'test',
-            '--reporter',
-            'silent',
-            ?target,
-            ...?_getExtraArgs(args),
-          ],
+          ['test', '--reporter', 'silent', ?target, ...?_getExtraArgs(args)],
         );
 
       case 'run':
@@ -319,11 +321,11 @@ Future<CallToolResult> _handleFlutterRunner(
         );
 
       case 'pub-get':
-        return await _runFlutterCommandSync(
-          workingDir,
-          useFvm,
-          ['pub', 'get', ...?_getExtraArgs(args)],
-        );
+        return await _runFlutterCommandSync(workingDir, useFvm, [
+          'pub',
+          'get',
+          ...?_getExtraArgs(args),
+        ]);
 
       case 'pub-run':
         final target = args['target'] as String?;
@@ -340,27 +342,25 @@ Future<CallToolResult> _handleFlutterRunner(
         );
 
       case 'clean':
-        return await _runFlutterCommandSync(
-          workingDir,
-          useFvm,
-          ['clean', ...?_getExtraArgs(args)],
-        );
+        return await _runFlutterCommandSync(workingDir, useFvm, [
+          'clean',
+          ...?_getExtraArgs(args),
+        ]);
 
       case 'doctor':
-        return await _runFlutterCommandSync(
-          workingDir,
-          useFvm,
-          ['doctor', ...?_getExtraArgs(args)],
-        );
-
+        return await _runFlutterCommandSync(workingDir, useFvm, [
+          'doctor',
+          ...?_getExtraArgs(args),
+        ]);
 
       case 'get_output':
         final sessionId = args['session_id'] as String?;
         final chunkIndex = (args['chunk_index'] as num?)?.toInt() ?? 0;
-        final maxChunks =
-            ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(1, 200);
-        return _getOutput(
-            sessionManager, sessionId, chunkIndex, maxChunks);
+        final maxChunks = ((args['max_chunks'] as num?)?.toInt() ?? 50).clamp(
+          1,
+          200,
+        );
+        return _getOutput(sessionManager, sessionId, chunkIndex, maxChunks);
 
       case 'list_sessions':
         return _listSessions(sessionManager);
@@ -370,8 +370,7 @@ Future<CallToolResult> _handleFlutterRunner(
         return await _cancelSession(sessionManager, sessionId);
 
       default:
-        return validationError(
-            'operation', 'Unknown operation: $operation');
+        return validationError('operation', 'Unknown operation: $operation');
     }
   } catch (e, stackTrace) {
     return errorResult('flutter-runner:$operation', e, stackTrace, {
@@ -390,7 +389,9 @@ List<String>? _getExtraArgs(Map<String, dynamic> args) {
 
 /// Get the Flutter executable and arguments
 (String, List<String>) _getFlutterCommand(
-    bool useFvm, List<String> flutterArgs) {
+  bool useFvm,
+  List<String> flutterArgs,
+) {
   if (useFvm) {
     return ('fvm', ['flutter', ...flutterArgs]);
   } else {
@@ -407,14 +408,12 @@ Future<CallToolResult> _startFlutterCommandWithProgress(
   String operation,
   List<String> flutterArgs,
 ) async {
-  final (executable, cmdArgs) =
-      _getFlutterCommand(useFvm, flutterArgs);
+  final (executable, cmdArgs) = _getFlutterCommand(useFvm, flutterArgs);
   final commandStr = useFvm
       ? 'fvm flutter ${flutterArgs.join(' ')}'
       : 'flutter ${flutterArgs.join(' ')}';
 
-  final sessionId =
-      sessionManager.createSession(operation, commandStr);
+  final sessionId = sessionManager.createSession(operation, commandStr);
   final session = sessionManager.getSession(sessionId)!;
 
   final outputStream = streamCommand(
@@ -435,8 +434,7 @@ Future<CallToolResult> _startFlutterCommandWithProgress(
     // Send progress notification with latest output
     await extra.sendProgress(
       chunkCount.toDouble(),
-      message:
-          'Running $operation... (${allOutput.length} chars received)',
+      message: 'Running $operation... (${allOutput.length} chars received)',
     );
   }
 
@@ -461,8 +459,7 @@ Future<CallToolResult> _runFlutterCommandSync(
   List<String> flutterArgs,
 ) async {
   try {
-    final (executable, args) =
-        _getFlutterCommand(useFvm, flutterArgs);
+    final (executable, args) = _getFlutterCommand(useFvm, flutterArgs);
     final commandStr = useFvm
         ? 'fvm flutter ${flutterArgs.join(' ')}'
         : 'flutter ${flutterArgs.join(' ')}';
@@ -541,8 +538,7 @@ CallToolResult _getOutput(
     response['message'] =
         'More chunks available. Call get_output with chunk_index: $nextChunkIndex';
   } else if (session.isComplete && !hasMoreChunks) {
-    response['message'] =
-        'All output has been retrieved. Operation complete.';
+    response['message'] = 'All output has been retrieved. Operation complete.';
   }
 
   return textResult(jsonEncode(response));
@@ -554,20 +550,19 @@ CallToolResult _listSessions(SessionManager sessionManager) {
   sessionManager.cleanupOldSessions();
 
   final sessions = sessionManager.allSessions
-      .map((s) => {
-            'session_id': s.id,
-            'operation': s.operation,
-            'description': s.description,
-            'is_complete': s.isComplete,
-            'chunks_collected': s.chunks.length,
-            'started_at': s.startedAt.toIso8601String(),
-          })
+      .map(
+        (s) => {
+          'session_id': s.id,
+          'operation': s.operation,
+          'description': s.description,
+          'is_complete': s.isComplete,
+          'chunks_collected': s.chunks.length,
+          'started_at': s.startedAt.toIso8601String(),
+        },
+      )
       .toList();
 
-  final response = {
-    'sessions': sessions,
-    'total': sessions.length,
-  };
+  final response = {'sessions': sessions, 'total': sessions.length};
 
   return textResult(jsonEncode(response));
 }
@@ -679,9 +674,5 @@ class FvmResolution {
   /// fall back to the system flutter (which would use the wrong SDK).
   final bool fvmBinaryMissing;
 
-  const FvmResolution({
-    required this.useFvm,
-    required this.fvmBinaryMissing,
-  });
+  const FvmResolution({required this.useFvm, required this.fvmBinaryMissing});
 }
-

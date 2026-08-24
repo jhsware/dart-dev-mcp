@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 
 void main() {
   group('constants', () {
@@ -61,10 +61,13 @@ void main() {
         'Deleted Messages',
         'Deleted Items',
         'Archive',
-        'Notes'
+        'Notes',
       ]) {
-        expect(skipFolders, contains(folder),
-            reason: 'skipFolders should contain $folder');
+        expect(
+          skipFolders,
+          contains(folder),
+          reason: 'skipFolders should contain $folder',
+        );
       }
     });
 
@@ -85,8 +88,11 @@ void main() {
 
     test('allEmailFields is a superset of defaultEmailFields', () {
       for (final field in defaultEmailFields) {
-        expect(allEmailFields, contains(field),
-            reason: 'allEmailFields should contain default field "$field"');
+        expect(
+          allEmailFields,
+          contains(field),
+          reason: 'allEmailFields should contain default field "$field"',
+        );
       }
     });
 

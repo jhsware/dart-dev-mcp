@@ -108,14 +108,15 @@ NormalizedRecord normalizeRecord({
   final content = file.readAsStringSync();
   final stat = file.statSync();
   final lineCount = content.isEmpty ? 0 : content.split('\n').length;
-  final wordCount =
-      content.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+  final wordCount = content
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .length;
 
   final summary = record['summary'] as String?;
   final language = record['language'] as String?;
-  final tags = (record['tags'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList() ??
+  final tags =
+      (record['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
       const <String>[];
   final symbolSummaries = <String, String>{};
   final rawSummaries = record['symbol_summaries'] as Map<String, dynamic>?;
@@ -129,7 +130,8 @@ NormalizedRecord normalizeRecord({
   final rawImports = record['imports'] as List<dynamic>?;
   final rawReferences = record['references'] as List<dynamic>?;
   final rawAnnotations = record['annotations'] as List<dynamic>?;
-  final hasStructure = rawSymbols != null ||
+  final hasStructure =
+      rawSymbols != null ||
       rawImports != null ||
       rawReferences != null ||
       rawAnnotations != null;
@@ -143,28 +145,31 @@ NormalizedRecord normalizeRecord({
     var endLine = (m['end_line'] as num?)?.toInt();
     if (line != null && line > lineCount) {
       warnings.add(
-          'line $line > line_count $lineCount; range cleared for symbol "$sName"');
+        'line $line > line_count $lineCount; range cleared for symbol "$sName"',
+      );
       line = null;
       endLine = null;
     } else if (endLine != null && endLine > lineCount) {
       warnings.add(
-          'end_line $endLine > line_count $lineCount; range cleared for symbol "$sName"');
+        'end_line $endLine > line_count $lineCount; range cleared for symbol "$sName"',
+      );
       endLine = null;
     }
-    symbols.add(RecordSymbol(
-      name: sName,
-      kind: m['kind']?.toString() ?? 'unknown',
-      visibility: m['visibility']?.toString() ?? 'public',
-      parent: m['parent']?.toString(),
-      signature: m['signature']?.toString(),
-      line: line,
-      endLine: endLine,
-      summary: m['summary']?.toString() ?? symbolSummaries[sName],
-    ));
+    symbols.add(
+      RecordSymbol(
+        name: sName,
+        kind: m['kind']?.toString() ?? 'unknown',
+        visibility: m['visibility']?.toString() ?? 'public',
+        parent: m['parent']?.toString(),
+        signature: m['signature']?.toString(),
+        line: line,
+        endLine: endLine,
+        summary: m['summary']?.toString() ?? symbolSummaries[sName],
+      ),
+    );
   }
 
-  final imports =
-      (rawImports ?? const []).map((e) => e.toString()).toList();
+  final imports = (rawImports ?? const []).map((e) => e.toString()).toList();
 
   final references = <SymbolReference>[];
   for (final raw in rawReferences ?? const []) {
@@ -245,10 +250,5 @@ List<int> deriveLayersPresent({
   required bool hasStructure,
   required bool hasSymbolSummaries,
 }) {
-  return [
-    0,
-    if (hasSummary) 1,
-    if (hasStructure) 2,
-    if (hasSymbolSummaries) 3,
-  ];
+  return [0, if (hasSummary) 1, if (hasStructure) 2, if (hasSymbolSummaries) 3];
 }

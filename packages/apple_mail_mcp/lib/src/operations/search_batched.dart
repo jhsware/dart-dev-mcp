@@ -97,8 +97,10 @@ Future<void> runBatchedSearchEmails({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allMetadata.length} messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} messages, processing...',
+  );
 
   // Process metadata — apply post-filters and format output
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -116,15 +118,15 @@ Future<void> runBatchedSearchEmails({
     for (final meta in batch) {
       // Apply Dart-side post-filters
       if (subjectKeyword != null &&
-          !(meta['subject'] ?? '')
-              .toLowerCase()
-              .contains(subjectKeyword.toLowerCase())) {
+          !(meta['subject'] ?? '').toLowerCase().contains(
+            subjectKeyword.toLowerCase(),
+          )) {
         continue;
       }
       if (sender != null &&
-          !(meta['sender'] ?? '')
-              .toLowerCase()
-              .contains(sender.toLowerCase())) {
+          !(meta['sender'] ?? '').toLowerCase().contains(
+            sender.toLowerCase(),
+          )) {
         continue;
       }
       if (hasAttachments == true && meta['has_attachments'] != 'true') {
@@ -140,8 +142,7 @@ Future<void> runBatchedSearchEmails({
 
       matchedCount++;
       if (matchedCount > offset && resultCount < maxResults) {
-        final readIndicator =
-            meta['read_status'] == 'read' ? '✓' : '✉';
+        final readIndicator = meta['read_status'] == 'read' ? '✓' : '✉';
         batchOutput.writeln('$readIndicator ${meta['subject']}');
         batchOutput.writeln('   From: ${meta['sender']}');
         batchOutput.writeln('   Date: ${meta['date']}');
@@ -157,9 +158,12 @@ Future<void> runBatchedSearchEmails({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages, '
-            'found $matchedCount matches');
+    await extra.sendProgress(
+      0,
+      message:
+          'Processed $scanned of ${allMetadata.length} messages, '
+          'found $matchedCount matches',
+    );
   }
 
   session.chunks.add(
@@ -195,8 +199,9 @@ Future<void> runBatchedMultiSearch({
   // Parse query groups
   final groups = queries
       .split(',')
-      .map((g) =>
-          g.trim().split(' ').where((k) => k.trim().isNotEmpty).toList())
+      .map(
+        (g) => g.trim().split(' ').where((k) => k.trim().isNotEmpty).toList(),
+      )
       .where((g) => g.isNotEmpty)
       .toList();
 
@@ -254,8 +259,10 @@ Future<void> runBatchedMultiSearch({
     return;
   }
 
-  await extra.sendProgress(0,
-      message: 'Found ${allMetadata.length} messages, processing...');
+  await extra.sendProgress(
+    0,
+    message: 'Found ${allMetadata.length} messages, processing...',
+  );
 
   // Process metadata and tag with query groups
   final batches = batchList(allMetadata, _metadataBatchSize);
@@ -273,8 +280,7 @@ Future<void> runBatchedMultiSearch({
     for (final meta in batch) {
       matchedCount++;
       if (matchedCount > offset && resultCount < maxResults) {
-        final readIndicator =
-            meta['read_status'] == 'read' ? '✓' : '✉';
+        final readIndicator = meta['read_status'] == 'read' ? '✓' : '✉';
         final subject = meta['subject'] ?? '';
         final senderVal = meta['sender'] ?? '';
 
@@ -309,9 +315,12 @@ Future<void> runBatchedMultiSearch({
     }
 
     scanned += batch.length;
-    await extra.sendProgress(0,
-        message: 'Processed $scanned of ${allMetadata.length} messages, '
-            'found $matchedCount matches');
+    await extra.sendProgress(
+      0,
+      message:
+          'Processed $scanned of ${allMetadata.length} messages, '
+          'found $matchedCount matches',
+    );
   }
 
   session.chunks.add(
@@ -351,7 +360,8 @@ Future<List<String>> _searchWithKeywords({
       if (mailbox == 'All') {
         scopeDir = entry.value;
       } else {
-        scopeDir = await findMailboxDirectory(
+        scopeDir =
+            await findMailboxDirectory(
               accountPath: entry.value,
               mailbox: mailbox,
             ) ??
@@ -372,8 +382,9 @@ Future<List<String>> _searchWithKeywords({
   }
   if (startDate != null) dateAfter = DateTime.parse(startDate);
   if (endDate != null) {
-    dateBefore = DateTime.parse(endDate)
-        .add(const Duration(hours: 23, minutes: 59, seconds: 59));
+    dateBefore = DateTime.parse(
+      endDate,
+    ).add(const Duration(hours: 23, minutes: 59, seconds: 59));
   }
 
   // Build keyword conditions for Spotlight
@@ -381,12 +392,12 @@ Future<List<String>> _searchWithKeywords({
   for (final keyword in keywords) {
     final fieldConditions = <String>[];
     if (searchField == 'all' || searchField == 'subject') {
-      fieldConditions
-          .add('kMDItemTitle == "*${_escapeSpotlight(keyword)}*"cd');
+      fieldConditions.add('kMDItemTitle == "*${_escapeSpotlight(keyword)}*"cd');
     }
     if (searchField == 'all' || searchField == 'sender') {
-      fieldConditions
-          .add('kMDItemAuthors == "*${_escapeSpotlight(keyword)}*"cd');
+      fieldConditions.add(
+        'kMDItemAuthors == "*${_escapeSpotlight(keyword)}*"cd',
+      );
     }
     if (fieldConditions.isEmpty) continue;
     if (fieldConditions.length == 1) {
@@ -397,9 +408,7 @@ Future<List<String>> _searchWithKeywords({
   }
 
   // Build the complete query
-  final conditions = <String>[
-    'kMDItemContentType == "$emlxContentType"',
-  ];
+  final conditions = <String>['kMDItemContentType == "$emlxContentType"'];
 
   if (dateAfter != null) {
     conditions.add(

@@ -16,10 +16,7 @@ void main() {
     });
 
     test('handles mixed line endings', () {
-      expect(
-        normalizeLineEndings('a\r\nb\nc\rd'),
-        'a\nb\nc\nd',
-      );
+      expect(normalizeLineEndings('a\r\nb\nc\rd'), 'a\nb\nc\nd');
     });
 
     test('handles empty string', () {
@@ -53,10 +50,7 @@ void main() {
     });
 
     test('detects multiple CRLF as windows', () {
-      expect(
-        detectLineEndings('a\r\nb\r\nc\r\n'),
-        LineEndingStyle.windows,
-      );
+      expect(detectLineEndings('a\r\nb\r\nc\r\n'), LineEndingStyle.windows);
     });
   });
 
@@ -134,10 +128,7 @@ void main() {
     });
 
     test('handles mixed lines with and without prefixes', () {
-      expect(
-        stripLineNumbers('L1: a\nno prefix\nL3: c'),
-        'a\nno prefix\nc',
-      );
+      expect(stripLineNumbers('L1: a\nno prefix\nL3: c'), 'a\nno prefix\nc');
     });
 
     test('handles high line numbers', () {

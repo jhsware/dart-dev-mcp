@@ -72,8 +72,10 @@ Database openOrRebuild(String dbPath) {
     return database;
   }
 
-  logInfo('code-index',
-      'Schema version $version != $schemaVersion, rebuilding database');
+  logInfo(
+    'code-index',
+    'Schema version $version != $schemaVersion, rebuilding database',
+  );
   return rebuildDatabase(dbPath, existingDb: database);
 }
 

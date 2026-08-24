@@ -12,14 +12,13 @@ class FileReadOperations {
   final Directory workingDir;
   final List<String> allowedPaths;
 
-  FileReadOperations({
-    required this.workingDir,
-    required this.allowedPaths,
-  });
+  FileReadOperations({required this.workingDir, required this.allowedPaths});
 
   /// Allowed paths formatted as relative paths for error messages.
-  late final String _allowedPathsHint =
-      formatAllowedPathsHint(workingDir, allowedPaths);
+  late final String _allowedPathsHint = formatAllowedPathsHint(
+    workingDir,
+    allowedPaths,
+  );
 
   /// List content recursively.
   Future<CallToolResult> listContent(String path) async {
@@ -30,7 +29,10 @@ class FileReadOperations {
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
+      return validationError(
+        'path',
+        'Not allowed for: $path. $_allowedPathsHint',
+      );
     }
 
     final directory = Directory(dirPath);
@@ -62,7 +64,8 @@ class FileReadOperations {
 
     final filtered = output.where((s) => s.isNotEmpty).toList();
     return textResult(
-        filtered.isEmpty ? 'Directory is empty' : filtered.join('\n'));
+      filtered.isEmpty ? 'Directory is empty' : filtered.join('\n'),
+    );
   }
 
   /// Read a single file with line numbers.
@@ -83,7 +86,9 @@ class FileReadOperations {
     final filePath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, filePath)) {
       return validationError(
-          'path', 'Not allowed for: $path. $_allowedPathsHint');
+        'path',
+        'Not allowed for: $path. $_allowedPathsHint',
+      );
     }
 
     final file = File(filePath);
@@ -101,11 +106,8 @@ class FileReadOperations {
     if (endLine != null && startLine == null) {
       return validationError('endLine', 'endLine requires startLine');
     }
-    if (startLine != null &&
-        endLine != null &&
-        endLine < startLine) {
-      return validationError(
-          'endLine', 'endLine must be >= startLine');
+    if (startLine != null && endLine != null && endLine < startLine) {
+      return validationError('endLine', 'endLine must be >= startLine');
     }
 
     final content = await file.readAsString();
@@ -120,19 +122,23 @@ class FileReadOperations {
     final lines = normalized.split('\n');
 
     if (startLine > lines.length) {
-      return validationError('startLine',
-          'startLine ($startLine) exceeds file length (${lines.length} lines)');
+      return validationError(
+        'startLine',
+        'startLine ($startLine) exceeds file length (${lines.length} lines)',
+      );
     }
 
     // Clamp endLine to file length
-    final actualEndLine =
-        endLine == null ? lines.length : endLine.clamp(1, lines.length);
+    final actualEndLine = endLine == null
+        ? lines.length
+        : endLine.clamp(1, lines.length);
 
     final slicedLines = lines.sublist(startLine - 1, actualEndLine);
     final slicedContent = slicedLines.join('\n');
 
     return textResult(
-        addLineNumbers(slicedContent, startLineNumber: startLine));
+      addLineNumbers(slicedContent, startLineNumber: startLine),
+    );
   }
 
   /// Read multiple files.
@@ -185,7 +191,10 @@ class FileReadOperations {
 
     final dirPath = getAbsolutePath(workingDir, path);
     if (!isAllowedPath(allowedPaths, dirPath)) {
-      return validationError('path', 'Not allowed for: $path. $_allowedPathsHint');
+      return validationError(
+        'path',
+        'Not allowed for: $path. $_allowedPathsHint',
+      );
     }
 
     final directory = Directory(dirPath);
@@ -210,11 +219,7 @@ class FileReadOperations {
         caseSensitive,
       );
     } catch (e) {
-      return await _searchWithDart(
-        dirPath,
-        regex,
-        filePattern,
-      );
+      return await _searchWithDart(dirPath, regex, filePattern);
     }
   }
 
@@ -291,8 +296,10 @@ class FileReadOperations {
     final matches = <Map<String, dynamic>>[];
     final directory = Directory(dirPath);
 
-    await for (final entity
-        in directory.list(recursive: true, followLinks: false)) {
+    await for (final entity in directory.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is! File) continue;
 
       final filePath = entity.path;

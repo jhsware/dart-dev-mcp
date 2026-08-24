@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:apple_mail_mcp/apple_mail_mcp.dart';
+import 'package:jhsware_code_apple_mail/apple_mail_mcp.dart';
 
 void main() {
   group('buildMdfindQuery', () {
@@ -20,27 +20,20 @@ void main() {
 
     test('adds text content filter', () {
       final query = buildMdfindQuery(textContains: 'quarterly report');
-      expect(
-          query, contains('kMDItemTextContent == "*quarterly report*"cd'));
+      expect(query, contains('kMDItemTextContent == "*quarterly report*"cd'));
     });
 
     test('adds date after filter with ISO format', () {
       final date = DateTime.utc(2024, 6, 15, 0, 0, 0);
       final query = buildMdfindQuery(dateAfter: date);
-      expect(
-        query,
-        contains(r'kMDItemContentCreationDate >= $time.iso('),
-      );
+      expect(query, contains(r'kMDItemContentCreationDate >= $time.iso('));
       expect(query, contains('2024-06-15'));
     });
 
     test('adds date before filter with ISO format', () {
       final date = DateTime.utc(2024, 12, 31, 23, 59, 59);
       final query = buildMdfindQuery(dateBefore: date);
-      expect(
-        query,
-        contains(r'kMDItemContentCreationDate <= $time.iso('),
-      );
+      expect(query, contains(r'kMDItemContentCreationDate <= $time.iso('));
       expect(query, contains('2024-12-31'));
     });
 
@@ -93,11 +86,9 @@ kMDItemAuthors = (null)
     });
 
     test('handles date values without quotes', () {
-      final output =
-          'kMDItemContentCreationDate = 2024-01-15 10:30:00 +0000\n';
+      final output = 'kMDItemContentCreationDate = 2024-01-15 10:30:00 +0000\n';
       final result = parseMdlsOutput(output);
-      expect(result['kMDItemContentCreationDate'],
-          '2024-01-15 10:30:00 +0000');
+      expect(result['kMDItemContentCreationDate'], '2024-01-15 10:30:00 +0000');
     });
 
     test('handles empty output', () {

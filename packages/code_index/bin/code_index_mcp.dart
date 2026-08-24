@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:code_index_mcp/code_index_mcp.dart';
+import 'package:jhsware_code_code_index/code_index_mcp.dart';
 import 'package:jhsware_code_shared_libs/shared_libs.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
@@ -89,17 +89,16 @@ void main(List<String> arguments) async {
   });
 
   final server = McpServer(
-    Implementation(name: 'code-index-mcp', version: '2.0.0'),
+    Implementation(name: 'jhsware_code_code_index', version: '2.0.0'),
     options: McpServerOptions(
-      capabilities: ServerCapabilities(
-        tools: ServerCapabilitiesTools(),
-      ),
+      capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
   );
 
   server.registerTool(
     'code-index',
-    description: '''Maintains a layered, searchable index of code files in a project.
+    description:
+        '''Maintains a layered, searchable index of code files in a project.
 
 Operations:
 - scan: Walk the tree, detect added/changed/deleted files (SHA-256), and return a language-aware indexing plan. Params: directories, extensions, since, rebuild, remove_deleted, verify.
@@ -136,7 +135,8 @@ Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so w
         ),
         'paths': JsonSchema.array(
           items: JsonSchema.string(),
-          description: 'List of relative paths from project root (for get-files)',
+          description:
+              'List of relative paths from project root (for get-files)',
         ),
         'layers': JsonSchema.array(
           items: JsonSchema.integer(),
@@ -205,7 +205,8 @@ Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so w
           description: 'Exact concept-tag match (for search).',
         ),
         'symbol_name': JsonSchema.string(
-          description: 'Files declaring a symbol with this exact name (for search).',
+          description:
+              'Files declaring a symbol with this exact name (for search).',
         ),
         'symbol_kind': JsonSchema.string(
           description:
@@ -224,7 +225,8 @@ Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so w
           enumValues: const ['exact', 'prefix'],
         ),
         'visibility': JsonSchema.string(
-          description: "Filter by visibility: 'public' or 'private' (for find-symbol).",
+          description:
+              "Filter by visibility: 'public' or 'private' (for find-symbol).",
         ),
         // ── references params ────────────────────────────────────────────
         'symbol': JsonSchema.string(
@@ -251,7 +253,8 @@ Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so w
         ),
         // ── annotations params ───────────────────────────────────────────
         'message_pattern': JsonSchema.string(
-          description: 'LIKE pattern for annotation messages (for annotations).',
+          description:
+              'LIKE pattern for annotation messages (for annotations).',
         ),
         // ── shared: limit ────────────────────────────────────────────────
         'limit': JsonSchema.integer(
@@ -261,8 +264,7 @@ Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store, so w
       },
       required: ['project_dir'],
     ),
-    callback: (args, extra) =>
-        _handleCodeIndex(args, serverArgs, getResources),
+    callback: (args, extra) => _handleCodeIndex(args, serverArgs, getResources),
   );
 
   final transport = StdioServerTransport();
@@ -318,7 +320,13 @@ final _allowedArgsByOperation = <String, Set<String>>{
   'index-files': {..._commonArgs, 'files', 'refresh_dependents'},
   'get-file': {..._commonArgs, 'path', 'layers'},
   'get-files': {..._commonArgs, 'paths', 'layers'},
-  'overview': {..._commonArgs, 'path_pattern', 'file_type', 'language', 'limit'},
+  'overview': {
+    ..._commonArgs,
+    'path_pattern',
+    'file_type',
+    'language',
+    'limit',
+  },
   'search': {
     ..._commonArgs,
     'query',
@@ -379,11 +387,15 @@ Future<CallToolResult> _handleCodeIndex(
   if (requireString(requestedDir, 'project_dir') case final error?) {
     return error;
   }
-  final projectDir =
-      resolveProjectDirAlias(requestedDir!, serverArgs.projectDirs);
+  final projectDir = resolveProjectDirAlias(
+    requestedDir!,
+    serverArgs.projectDirs,
+  );
   if (projectDir == null) {
-    return validationError('project_dir',
-        'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}');
+    return validationError(
+      'project_dir',
+      'project_dir must be one of: ${serverArgs.projectDirs.join(", ")}',
+    );
   }
 
   final operation = args['operation'] as String?;
@@ -401,8 +413,10 @@ Future<CallToolResult> _handleCodeIndex(
   }
 
   final workingDir = Directory(projectDir);
-  final allowedPaths =
-      ProjectConfigService.getAllowedPaths(projectDir, 'code-index');
+  final allowedPaths = ProjectConfigService.getAllowedPaths(
+    projectDir,
+    'code-index',
+  );
 
   // `is-allowed` needs no database.
   if (operation == 'is-allowed') {
@@ -430,8 +444,7 @@ Future<CallToolResult> _handleCodeIndex(
   // database — handle it before opening project resources.
   if (operation == 'prune-stores') {
     final delete = args['delete'] as bool? ?? false;
-    return jsonResult(
-        pruneOrphanedStores(serverArgs.dataRoot, delete: delete));
+    return jsonResult(pruneOrphanedStores(serverArgs.dataRoot, delete: delete));
   }
   final _ProjectResources res;
   try {
@@ -541,8 +554,10 @@ Future<CallToolResult> _handleCodeIndex(
     });
 
     if (category == SqliteErrorCategory.corruption) {
-      logWarning('code-index',
-          'CRITICAL: Database corruption detected. Database may need repair.');
+      logWarning(
+        'code-index',
+        'CRITICAL: Database corruption detected. Database may need repair.',
+      );
     }
 
     return textResult('Error: $userMessage');
@@ -555,36 +570,54 @@ Future<CallToolResult> _handleCodeIndex(
 
 void _printUsage() {
   stderr.writeln(
-      'Usage: code_index_mcp --project-dir=PATH1 [--project-dir=PATH2 ...] [--data-root=PATH]');
+    'Usage: code_index_mcp --project-dir=PATH1 [--project-dir=PATH2 ...] [--data-root=PATH]',
+  );
   stderr.writeln('');
   stderr.writeln('Options:');
   stderr.writeln(
-      '  --project-dir=PATH   Path to a project directory (required, can be repeated)');
+    '  --project-dir=PATH   Path to a project directory (required, can be repeated)',
+  );
   stderr.writeln(
-      '  --data-root=PATH     Root of the code-index store (optional, default ~/.code-index)');
+    '  --data-root=PATH     Root of the code-index store (optional, default ~/.code-index)',
+  );
   stderr.writeln('  --help, -h           Show this help message');
   stderr.writeln('');
   stderr.writeln('Operations:');
-  stderr.writeln('  scan           Walk the tree, detect changes, return an indexing plan');
+  stderr.writeln(
+    '  scan           Walk the tree, detect changes, return an indexing plan',
+  );
   stderr.writeln('  index-files    Batched write of file records (1..N)');
   stderr.writeln('  get-file       Get a single file with layered data');
   stderr.writeln('  get-files      Get multiple files with layered data');
-  stderr.writeln('  overview       Compact listing: path, summary, tags, public symbols');
+  stderr.writeln(
+    '  overview       Compact listing: path, summary, tags, public symbols',
+  );
   stderr.writeln('  search         FTS5 search across the index');
   stderr.writeln('  find-symbol    Resolve a declaration to file + line range');
-  stderr.writeln('  references     Which files use a symbol (dot-path queries)');
+  stderr.writeln(
+    '  references     Which files use a symbol (dot-path queries)',
+  );
   stderr.writeln('  dependents     Which files import a given path');
   stderr.writeln('  dependencies   What a file imports (internal/external)');
   stderr.writeln('  annotations    TODO/FIXME/HACK/NOTE/DEPRECATED queries');
   stderr.writeln('  stats          Aggregate statistics about the code index');
-  stderr.writeln('  project-info   Data dir, db path, registry entry, schema version');
-  stderr.writeln('  is-allowed     Check if a path is within the allowed paths');
-  stderr.writeln('  prune-stores   Report/remove orphaned stores under the data root');
+  stderr.writeln(
+    '  project-info   Data dir, db path, registry entry, schema version',
+  );
+  stderr.writeln(
+    '  is-allowed     Check if a path is within the allowed paths',
+  );
+  stderr.writeln(
+    '  prune-stores   Report/remove orphaned stores under the data root',
+  );
   stderr.writeln('');
   stderr.writeln(
-      'The store lives at [data-root]/[basename]-[sha8] (default ~/.code-index).');
+    'The store lives at [data-root]/[basename]-[sha8] (default ~/.code-index).',
+  );
   stderr.writeln(
-      "Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store.");
+    "Git worktrees (<root>/.worktrees/<slug>) share their main checkout's store.",
+  );
   stderr.writeln(
-      'Allowed paths are resolved from jhsware-code.yaml in each project directory.');
+    'Allowed paths are resolved from jhsware_code.yaml (or legacy jhsware-code.yaml) in each project directory.',
+  );
 }

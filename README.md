@@ -1,13 +1,27 @@
-# Dart Dev MCP
+# jhsware_code
 
-MCP (Model Context Protocol) servers for Dart/Flutter development.
+MCP (Model Context Protocol) servers for AI-assisted development (formerly "Dart Dev MCP").
+
+## Naming convention
+
+Everything in this repository follows one convention, based on the `jhsware_code` prefix:
+
+| Kind | Pattern | Example |
+|------|---------|---------|
+| Dart package (pubspec `name:`) | `jhsware_code_<tool>` | `jhsware_code_filesystem` |
+| MCP tool name (what agents call) | `<tool>` (dashes, easy to type) | `filesystem`, `dart-runner`, `git` |
+| Bin entrypoint | `packages/<tool>/bin/<tool>_mcp.dart` | `packages/filesystem/bin/filesystem_mcp.dart` |
+| Compiled binary | `jhsware-code-<tool>` (hyphens) | `jhsware-code-filesystem` |
+| MCP server key (claude.sh / mcp config) | `jhsware_code_<tool>` | `jhsware_code_filesystem` |
+
+Tool names stay simple and use dashes because they are typed often. Code identifiers (package names, server keys) use snake_case. In config files the two spellings are interchangeable (see Project Configuration).
 
 ## Features
 
 This package provides the following MCP servers:
 
-### 1. File Edit MCP (`packages/filesystem/bin/file_edit_mcp.dart`)
-File system operations with restricted access to allowed paths:
+### 1. Filesystem MCP (`packages/filesystem/bin/filesystem_mcp.dart`)
+Package `jhsware_code_filesystem`, tool `filesystem`. File system operations with restricted access to allowed paths:
 - `list-content` - Recursively list files and directories
 - `read-file` - Read a single file with line numbers
 - `read-files` - Read multiple files
@@ -18,7 +32,7 @@ File system operations with restricted access to allowed paths:
 - `extract` - Extract lines from one file and insert into another
 
 ### 2. Git MCP (`packages/git/bin/git_mcp.dart`)
-Git version control operations with SSH/GPG signing support:
+Package `jhsware_code_git`, tool `git`. Git version control operations with SSH/GPG signing support:
 - `status` - Show working tree status
 - `branch-create` - Create a new branch
 - `branch-list` - List all branches
@@ -41,13 +55,13 @@ Git version control operations with SSH/GPG signing support:
 
 The Git MCP auto-detects the enclosing git repository by walking upward from the `--project-dir` until a `.git` entry is found. This means you can point `--project-dir` at any sub-directory of a monorepo and git operations work transparently — no configuration is required.
 
-Path-based access control (the `git:` list in `jhsware-code.yaml`) stays anchored at the project directory. Even though git runs from the parent repo root, you can only stage and commit files inside your project's allowed paths.
+Path-based access control (the `git:` list in `jhsware_code.yaml`) stays anchored at the project directory. Even though git runs from the parent repo root, you can only stage and commit files inside your project's allowed paths.
 
 If no `.git` is found all the way up to the filesystem root, the server returns a clear error: `No git repository found. Searched for a .git directory starting at "<projectDir>" and walking up to the filesystem root without success. Run "git init" here or in a parent directory.`
 
 
 ### 3. Planner MCP (`packages/planner/bin/planner_mcp.dart`)
-Task and step management for AI-assisted development. The planner is a **client**
+Package `jhsware_code_planner`, tool `planner`. Task and step management for AI-assisted development. The planner is a **client**
 that proxies every operation to a running **planner_server** over HTTPS — it
 requires a server URL and a service token (or mTLS client cert) and keeps no local
 database (see [Planner server connection](#planner-server-connection)). Operations:
@@ -60,7 +74,7 @@ database (see [Planner server connection](#planner-server-connection)). Operatio
 - Parent task pattern with sub-task references
 
 ### 4. Code Index MCP (`packages/code_index/bin/code_index_mcp.dart`)
-Layered code indexing for token-efficient codebase exploration. Maintains a persistent SQLite index with five information layers (metadata → short summary → symbols → per-symbol descriptions → public API). Uses `package:analyzer` for Dart files; delegates to Haiku for LLM-generated summaries. Stale detection on every read via XXH3 hashing.
+Package `jhsware_code_code_index`, tool `code-index`. Layered code indexing for token-efficient codebase exploration. Maintains a persistent SQLite index with five information layers (metadata → short summary → symbols → per-symbol descriptions → public API). Uses `package:analyzer` for Dart files; delegates to Haiku for LLM-generated summaries. Stale detection on every read via XXH3 hashing.
 - `auto-scan` - Scan project tree and produce an indexing plan
 - `auto-index` - Layer-aware indexing of a file
 - `get-file` / `get-files` - Retrieve layered file data (selectable layers 0–4)
@@ -74,7 +88,7 @@ Layered code indexing for token-efficient codebase exploration. Maintains a pers
 - `is-allowed` - Check if a path is within allowed paths
 - `prune-stores` - Report/remove orphaned stores under the data root
 ### 5. Dart Runner MCP (`packages/dart_runner/bin/dart_runner_mcp.dart`)
-Run Dart programs with polling for long-running processes:
+Package `jhsware_code_dart_runner`, tool `dart-runner`. Run Dart programs with polling for long-running processes:
 - `analyze` - Run `dart analyze`
 - `test` - Run `dart test`
 - `run` - Run `dart run`
@@ -85,7 +99,7 @@ Run Dart programs with polling for long-running processes:
 - `cancel` - Cancel a running session
 
 ### 6. Flutter Runner MCP (`packages/flutter_runner/bin/flutter_runner_mcp.dart`)
-Run Flutter programs via FVM with polling:
+Package `jhsware_code_flutter_runner`, tool `flutter-runner`. Run Flutter programs via FVM with polling:
 - `analyze` - Run `fvm flutter analyze`
 - `test` - Run `fvm flutter test`
 - `run` - Run `fvm flutter run`
@@ -95,17 +109,20 @@ Run Flutter programs via FVM with polling:
 - `cancel` - Cancel a running session
 
 ### 7. Fetch MCP (`packages/fetch/bin/fetch_mcp.dart`)
-URL fetching with HTML to Markdown conversion:
+Package `jhsware_code_fetch`, tools `fetch`, `fetch-links`, `fetch-and-transform`. URL fetching with HTML to Markdown conversion:
 - `fetch` - Fetch URL content with optional Markdown conversion
 - `fetch-links` - Extract links from a URL
 - `fetch-and-transform` - Fetch and convert HTML content
+
+### 8. Apple Mail MCP (`packages/apple_mail_mcp/bin/apple_mail_mcp.dart`)
+Package `jhsware_code_apple_mail`, tool `apple-mail`. Read-only Apple Mail operations for listing, searching, and exporting emails (macOS only).
 
 ## CLI Arguments
 
 All MCP servers share a common CLI argument format:
 
 ```bash
-dart run packages/<server>/bin/<server>_mcp.dart \
+dart run packages/<package-dir>/bin/<tool>_mcp.dart \
   --project-dir=/path/to/project1 \
   --project-dir=/path/to/project2 \
   --planner-data-root=/path/to/data \
@@ -145,22 +162,26 @@ planner_server token issue --name <label> --kind mcp [--owner you@example.com]
 ```
 
 ### Project Configuration
-Each project directory can contain a `jhsware-code.yaml` configuration file that specifies allowed paths per tool:
+Each project directory can contain a `jhsware_code.yaml` configuration file that specifies allowed paths per tool:
 
 ```yaml
 filesystem:
-  allowed_paths:
-    - packages
-    - test
-    - README.md
-    - pubspec.yaml
+  - packages
+  - test
+  - README.md
+  - pubspec.yaml
 git:
-  allowed_paths:
-    - .
+  - .
 code-index:
-  allowed_paths:
-    - packages
+  - packages
 ```
+
+Each key is an MCP tool name and its value is a flat list of paths, relative to the project directory. A tool that is not listed gets full project access; a tool listed with no paths gets no access.
+
+Backwards compatibility:
+
+- The legacy file name `jhsware-code.yaml` is still accepted. If both files exist, `jhsware_code.yaml` wins.
+- Hyphen and underscore spellings of a key are interchangeable: `code_index:` matches the `code-index` tool and the other way around. Existing config files keep working without changes.
 
 ### Tool Parameter: project_dir
 All tool operations require a `project_dir` parameter that must match one of the registered `--project-dir` values. This enables multi-project sessions where each tool invocation specifies which project it operates on.
@@ -169,22 +190,18 @@ All tool operations require a `project_dir` parameter that must match one of the
 
 ```bash
 # Clone the repository
-git clone https://github.com/jhsware/dart_dev_mcp.git
-cd dart_dev_mcp
+git clone https://github.com/jhsware/dart_dev_mcp.git jhsware_code
+cd jhsware_code
 
-# Get dependencies for all packages
-cd packages/shared_libs && dart pub get && cd ../..
-cd packages/planner && dart pub get && cd ../..
-cd packages/code_index && dart pub get && cd ../..
-cd packages/filesystem && dart pub get && cd ../..
-cd packages/git && dart pub get && cd ../..
-cd packages/dart_runner && dart pub get && cd ../..
-cd packages/flutter_runner && dart pub get && cd ../..
+# Get dependencies for the workspace
+dart pub get
 ```
 
 ## Usage with Claude Desktop
 
-Use the `claude.sh` script to launch Claude with the MCP servers. The `planner`
+Use the `claude.sh` script to launch Claude with the MCP servers. The servers are
+registered under `jhsware_code_<tool>` keys (e.g. `jhsware_code_filesystem`) and
+expose simple tool names (`filesystem`, `git`, `dart-runner`, ...). The `planner`
 server is a client for a separate **planner_server**, so it needs the server URL
 and a service token — pass them as flags or via environment variables:
 
@@ -201,9 +218,16 @@ export PLANNER_SERVER_TOKEN=...     # issued on the planner_server host
 `--server-url` / `--planner-token` (or `PLANNER_SERVER_URL` / `PLANNER_SERVER_TOKEN`).
 Run `./claude.sh --help` for CA-pinning and mTLS options.
 
+## Building binaries
+
+`./build.sh build` compiles every server to `bin/` as `jhsware-code-<tool>`
+(for example `jhsware-code-filesystem`, `jhsware-code-git`,
+`jhsware-code-dart-runner`). `./build.sh release-macos` signs and packages them
+into `bin/jhsware-code-installer.pkg` installing to `/usr/local/bin`.
+
 ## Security
 
-The file system and git MCP servers only allow access to paths specified in each project's `jhsware-code.yaml` configuration file. This prevents unauthorized access to sensitive files.
+The file system and git MCP servers only allow access to paths specified in each project's `jhsware_code.yaml` (or legacy `jhsware-code.yaml`) configuration file. This prevents unauthorized access to sensitive files.
 
 All tool invocations require a valid `project_dir` parameter that must match a registered project directory, providing isolation between projects in multi-project sessions.
 

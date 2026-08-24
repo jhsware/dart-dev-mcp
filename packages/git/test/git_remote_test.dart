@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:git_mcp/git_mcp.dart';
+import 'package:jhsware_code_git/git_mcp.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -23,15 +23,18 @@ void main() {
         workingDirectory: (cwd ?? repoDir).path,
         environment: Platform.environment,
       );
-      expect(result.exitCode, 0,
-          reason: 'git ${args.join(" ")} failed: ${result.stderr}');
+      expect(
+        result.exitCode,
+        0,
+        reason: 'git ${args.join(" ")} failed: ${result.stderr}',
+      );
     }
 
     GitOperations opsFor(Directory dir) => GitOperations(
-          workingDir: dir,
-          projectDir: dir,
-          allowedPaths: [dir.path],
-        );
+      workingDir: dir,
+      projectDir: dir,
+      allowedPaths: [dir.path],
+    );
 
     Future<String> remoteListText(Directory dir) async {
       final result = await opsFor(dir).remoteList();
@@ -58,18 +61,24 @@ void main() {
       expect(text, 'No remotes');
     });
 
-    test('lists a remote once when fetch and push URLs are identical',
-        () async {
-      await git(['remote', 'add', 'origin', 'git@example.com:user/repo.git']);
+    test(
+      'lists a remote once when fetch and push URLs are identical',
+      () async {
+        await git(['remote', 'add', 'origin', 'git@example.com:user/repo.git']);
 
-      final text = await remoteListText(repoDir);
-      expect(text, 'origin\tgit@example.com:user/repo.git');
-    });
+        final text = await remoteListText(repoDir);
+        expect(text, 'origin\tgit@example.com:user/repo.git');
+      },
+    );
 
     test('lists multiple remotes', () async {
       await git(['remote', 'add', 'origin', 'git@example.com:user/repo.git']);
-      await git(
-          ['remote', 'add', 'upstream', 'https://example.com/other/repo.git']);
+      await git([
+        'remote',
+        'add',
+        'upstream',
+        'https://example.com/other/repo.git',
+      ]);
 
       final text = await remoteListText(repoDir);
       expect(text, contains('origin\tgit@example.com:user/repo.git'));
@@ -83,13 +92,15 @@ void main() {
         'set-url',
         '--push',
         'origin',
-        'git@example.com:user/push-repo.git'
+        'git@example.com:user/push-repo.git',
       ]);
 
       final text = await remoteListText(repoDir);
       expect(text, contains('origin\tgit@example.com:user/repo.git (fetch)'));
       expect(
-          text, contains('origin\tgit@example.com:user/push-repo.git (push)'));
+        text,
+        contains('origin\tgit@example.com:user/push-repo.git (push)'),
+      );
     });
 
     test('works when invoked from a worktree directory', () async {
@@ -103,10 +114,10 @@ void main() {
 
       // Provision a worktree the way builder_server does:
       // <repo>/.worktrees/<branch-slug>
-      final worktreeDir =
-          Directory(p.join(repoDir.path, '.worktrees', 'my-branch'));
-      await git(
-          ['worktree', 'add', worktreeDir.path, '-b', 'my-branch']);
+      final worktreeDir = Directory(
+        p.join(repoDir.path, '.worktrees', 'my-branch'),
+      );
+      await git(['worktree', 'add', worktreeDir.path, '-b', 'my-branch']);
 
       final text = await remoteListText(worktreeDir);
       expect(text, 'origin\tgit@example.com:user/repo.git');
